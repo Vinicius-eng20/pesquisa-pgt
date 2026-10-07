@@ -159,7 +159,14 @@ CAMPOS_CSV = [
     "duracao_api_s", "tokens_por_s", "n_arquivos", "tem_readme", "cercas_removidas", "estado", "pasta", "erro",
 ]
 
-MARCADOR_ARQUIVO = re.compile(r"^===\s*(.+?)\s*===\s*$", re.MULTILINE)
+# Aceita a linha '=== caminho ===' e também a variante em que o modelo cola uma
+# cerca (``` , ''' ou """) no início da mesma linha, por exemplo '``` === server.js ==='.
+# O nome do arquivo não pode começar com '=' (evita sublinhados de títulos '=====').
+CERCAS = ("```", "'''", '"""')
+MARCADOR_ARQUIVO = re.compile(
+    r"^[ \t]*(?P<cerca>(?:`{3,}|'{3,}|\"{3,})[ \t]*)?===[ \t]*(?P<nome>[^=\s][^\n]*?)[ \t]*===[ \t]*\r?$",
+    re.MULTILINE,
+)
 CODIGOS_RECUPERAVEIS = {408, 429, 500, 502, 503, 504, "conexao"}
 
 
@@ -304,25 +311,40 @@ def _buscar_custo(id_geracao):
 
 
 def _remover_cerca(conteudo):
-    """Remove uma cerca de código que envolva o arquivo inteiro. Devolve (texto, removida)."""
-    linhas = conteudo.split("\n")
-    if (len(linhas) >= 2 and linhas[0].lstrip().startswith("```")
-            and linhas[-1].strip() == "```"):
-        return "\n".join(linhas[1:-1]), True
-    return conteudo, False
+    """Remove cercas de código (três crases, três aspas simples ou três aspas duplas) que
+    envolvam o arquivo. A de abertura pode ter sido consumida pelo marcador; a de fechamento
+    só é removida quando fica desbalanceada. Devolve (texto, removida)."""
+    linhas = conteudo.replace("\r\n", "\n").split("\n")
+    removida = False
+    if linhas:
+        abertura = linhas[0].strip()
+        for c in CERCAS:
+            if abertura.startswith(c) and (abertura[len(c):].strip().isalnum() or abertura == c):
+                linhas = linhas[1:]
+                removida = True
+                break
+    while linhas and not linhas[-1].strip():
+        linhas.pop()
+    if linhas:
+        ultima = linhas[-1].strip()
+        if ultima in CERCAS and "\n".join(linhas).count(ultima) % 2 == 1:
+            linhas = linhas[:-1]
+            removida = True
+    return "\n".join(linhas), removida
 
 
 def extrair_arquivos(texto):
     """Separa a resposta em arquivos pelas linhas '=== caminho ==='.
-    Devolve (dict caminho->conteúdo, quantidade de cercas removidas)."""
+    Devolve (dict caminho->conteúdo, quantidade de cercas tratadas). Conta como cerca tratada
+    tanto a removida do conteúdo quanto a colada ao marcador (padrão '``` === arquivo ===')."""
     marcas = list(MARCADOR_ARQUIVO.finditer(texto))
     arquivos, cercas = {}, 0
     for i, m in enumerate(marcas):
         fim = marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)
         bruto = texto[m.end():fim].strip("\n")
         conteudo, removida = _remover_cerca(bruto)
-        cercas += int(removida)
-        arquivos[m.group(1).strip().strip("`")] = conteudo
+        cercas += int(removida) + int(bool(m.group("cerca")))
+        arquivos[m.group("nome").strip().strip("`")] = conteudo
     return arquivos, cercas
 
 
@@ -711,25 +733,26 @@ def corrigir_aplicacao(mensagem_erro, modelo, contexto):
     return {**registro, "resposta": texto}
 
 
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    MODELO = "deepseek"
-    DOMINIO = "loja_departamentos"
-
-    gerar_aplicacao(MODELO, DOMINIO)
-
-    # Rodada de reparo: comente a linha gerar_aplicacao acima, cole o erro do
-    # terminal sem alterações e aponte para o resposta.txt da rodada anterior
-    # (a geração original ou o reparo anterior).
-    #
-    # ERRO = """
-    # cole aqui o erro
-    # """
-    # corrigir_aplicacao(
-    #     ERRO,
-    #     MODELO,
-    #     r"saidas\deepseek\loja_departamentos\20261006-165818\resposta.txt",
-    # )
+def reprocessar_resposta(pasta):
+    """Refaz a pasta 'projeto' de uma geração a partir do resposta.txt já salvo, sem chamar a API
+    (sem custo). Útil quando o extrator foi corrigido depois da geração. Atualiza os campos de
+    extração do registro.json e devolve o registro."""
+    pasta = Path(pasta)
+    texto = (pasta / "resposta.txt").read_text(encoding="utf-8")
+    registro = json.loads((pasta / "registro.json").read_text(encoding="utf-8"))
+    arquivos, cercas = extrair_arquivos(texto)
+    destino = pasta / "projeto"
+    if destino.exists():
+        shutil.move(str(destino), str(pasta / f"projeto_anterior_{datetime.now().strftime('%H%M%S')}"))
+    gravados, recusados = _gravar_arquivos(arquivos, destino)
+    registro.update(
+        n_arquivos=len(gravados),
+        arquivos=gravados,
+        caminhos_recusados=recusados,
+        tem_readme=any(Path(g).name.lower().startswith("readme") for g in gravados),
+        cercas_removidas=cercas,
+    )
+    if gravados and registro.get("estado") == "sem_arquivos":
+        registro["estado"] = "gerada"
+    (pasta / "registro.json").write_text(json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")
+    return registro

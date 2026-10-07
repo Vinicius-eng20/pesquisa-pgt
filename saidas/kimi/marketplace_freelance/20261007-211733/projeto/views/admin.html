@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - FreelanceHub</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub - Admin</div>
+      <nav>
+        <a href="/">Ver Site</a>
+        <span id="userName"></span>
+        <button onclick="logout()">Sair</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('services')">Serviços</button>
+      <button class="tab" onclick="showTab('users')">Usuários</button>
+      <button class="tab" onclick="showTab('contracts')">Contratos</button>
+    </div>
+
+    <!-- Serviços -->
+    <div id="servicesTab" class="tab-content active">
+      <h2>Gerenciar Serviços</h2>
+      <div id="adminServices"></div>
+    </div>
+
+    <!-- Usuários -->
+    <div id="usersTab" class="tab-content">
+      <h2>Gerenciar Usuários</h2>
+      <div id="adminUsers"></div>
+    </div>
+
+    <!-- Contratos -->
+    <div id="contractsTab" class="tab-content">
+      <h2>Todos os Contratos</h2>
+      <div id="adminContracts"></div>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        
+        if (!currentUser.isAdmin) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
+        document.getElementById('userName').textContent = currentUser.name;
+        loadServices();
+        loadUsers();
+        loadContracts();
+      } catch (error) {
+        window.location.href = '/';
+      }
+    }
+
+    async function loadServices() {
+      try {
+        const services = await api('/api/admin/services');
+        const container = document.getElementById('adminServices');
+
+        if (services.length === 0) {
+          container.innerHTML = '<div class="card"><p>Nenhum serviço cadastrado.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Prestador</th>
+                <th>Categoria</th>
+                <th>Preço</th>
+                <th>Status</th>
+                <th>Data</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${services.map(service => `
+                <tr>
+                  <td>${service.title}</td>
+                  <td>${service.provider_name}<br><small>${service.provider_email}</small></td>
+                  <td>${service.category}</td>
+                  <td>${formatPrice(service.price)}</td>
+                  <td><span class="badge badge-${service.status}">${getStatusText(service.status)}</span></td>
+                  <td>${formatDate(service.created_at)}</td>
+                  <td>
+                    <div class="actions">
+                      ${service.status === 'pending' ? `
+                        <button class="btn btn-success" onclick="approveService(${service.id})">Aprovar</button>
+                        <button class="btn btn-secondary" onclick="rejectService(${service.id})">Rejeitar</button>
+                      ` : ''}
+                      <button class="btn btn-danger" onclick="deleteService(${service.id})">Excluir</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        const users = await api('/api/admin/users');
+        const container = document.getElementById('adminUsers');
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Email</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Cadastro</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map(user => `
+                <tr>
+                  <td>${user.name}</td>
+                  <td>${user.email}</td>
+                  <td>${user.is_admin ? '<span class="badge badge-active">Admin</span>' : 'Usuário'}</td>
+                  <td>${user.is_suspended ? '<span class="badge badge-rejected">Suspenso</span>' : '<span class="badge badge-approved">Ativo</span>'}</td>
+                  <td>${formatDate(user.created_at)}</td>
+                  <td>
+                    ${!user.is_admin ? `
+                      <button class="btn ${user.is_suspended ? 'btn-success' : 'btn-danger'}" 
+                              onclick="toggleSuspend(${user.id})">
+                        ${user.is_suspended ? 'Reativar' : 'Suspender'}
+                      </button>
+                    ` : '<em>Admin</em>'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar usuários');
+      }
+    }
+
+    async function loadContracts() {
+      try {
+        const contracts = await api('/api/admin/contracts');
+        const container = document.getElementById('adminContracts');
+
+        if (contracts.length === 0) {
+          container.innerHTML = '<div class="card"><p>Nenhum contrato registrado.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Serviço</th>
+                <th>Cliente</th>
+                <th>Prestador</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${contracts.map(contract => `
+                <tr>
+                  <td>${contract.service_title}</td>
+                  <td>${contract.client_name}<br><small>${contract.client_email}</small></td>
+                  <td>${contract.provider_name}<br><small>${contract.provider_email}</small></td>
+                  <td>${formatPrice(contract.price)}</td>
+                  <td><span class="badge badge-${contract.status}">${getContractStatusText(contract.status)}</span></td>
+                  <td>${formatDate(contract.created_at)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar contratos');
+      }
+    }
+
+    async function approveService(id) {
+      try {
+        await api(`/api/admin/services/${id}/approve`, { method: 'PATCH' });
+        showSuccess('Serviço aprovado');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function rejectService(id) {
+      try {
+        await api(`/api/admin/services/${id}/reject`, { method: 'PATCH' });
+        showSuccess('Serviço rejeitado');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function deleteService(id) {
+      if (!confirm('Deseja realmente excluir este serviço?')) return;
+
+      try {
+        await api(`/api/admin/services/${id}`, { method: 'DELETE' });
+        showSuccess('Serviço excluído');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function toggleSuspend(id) {
+      try {
+        const result = await api(`/api/admin/users/${id}/toggle-suspend`, { method: 'PATCH' });
+        showSuccess(result.suspended ? 'Usuário suspenso' : 'Usuário reativado');
+        loadUsers();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+    }
+
+    function getStatusText(status) {
+      const texts = {
+        pending: 'Pendente',
+        approved: 'Aprovado',
+        rejected: 'Rejeitado'
+      };
+      return texts[status] || status;
+    }
+
+    function getContractStatusText(status) {
+      const texts = {
+        active: 'Ativo',
+        completed: 'Concluído',
+        cancelled: 'Cancelado'
+      };
+      return texts[status] || status;
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    }
+
+    init();
+  </script>
+</body>
+</html>

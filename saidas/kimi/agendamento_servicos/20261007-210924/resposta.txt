@@ -1,0 +1,664 @@
+=== README.md ===
+# Sistema de Agendamento de Serviços
+
+Este projeto é um sistema completo de agendamento de serviços, pronto para uso na internet.
+
+## Funcionalidades
+
+- **Clientes:**
+  - Criar conta e entrar
+  - Ver lista de serviços disponíveis
+  - Ver horários livres
+  - Agendar um serviço
+  - Ver e cancelar seus agendamentos
+- **Responsável (Admin):**
+  - Entrar com conta de administrador
+  - Cadastrar, editar e excluir serviços
+  - Cadastrar, editar e excluir horários disponíveis
+  - Confirmar ou recusar agendamentos
+  - Ver todos os agendamentos de todos os clientes
+
+## Tecnologias
+
+- Node.js
+- Express
+- SQLite (banco de dados local, tudo salvo em arquivo)
+- HTML/CSS/JS (frontend simples)
+
+## Como rodar o projeto
+
+### 1. Instalar o Node.js
+Baixe e instale o Node.js em https://nodejs.org/
+
+### 2. Instalar as dependências
+Abra o terminal na pasta do projeto e rode:
+```
+npm install
+```
+
+### 3. Rodar o servidor
+```
+node server.js
+```
+
+### 4. Acessar o site
+Abra o navegador e acesse:
+```
+http://localhost:3000
+```
+
+### 5. Usuário administrador padrão
+- **Usuário:** admin
+- **Senha:** admin123
+
+> Você pode criar outros usuários pelo site.
+
+## Como publicar na internet
+
+- Você pode hospedar este projeto em qualquer servidor que rode Node.js (ex: Render, Railway, VPS, etc).
+- O banco de dados fica salvo no arquivo `database.sqlite` na pasta do projeto.
+
+---
+
+=== package.json ===
+{
+  "name": "agendamento-servicos",
+  "version": "1.0.0",
+  "description": "Sistema de agendamento de serviços com login, admin e banco de dados SQLite.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "body-parser": "^1.20.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const path = require('path');
+
+const app = express();
+const db = new sqlite3.Database('database.sqlite');
+
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(session({
+  secret: 'agendamento-secreto',
+  resave: false,
+  saveUninitialized: false
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Criação das tabelas e usuário admin padrão
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT,
+    is_admin INTEGER DEFAULT 0
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    description TEXT,
+    duration INTEGER
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_id INTEGER,
+    datetime TEXT,
+    available INTEGER DEFAULT 1,
+    FOREIGN KEY(service_id) REFERENCES services(id)
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    slot_id INTEGER,
+    status TEXT DEFAULT 'pendente',
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(slot_id) REFERENCES slots(id)
+  )`);
+
+  // Usuário admin padrão
+  db.get("SELECT * FROM users WHERE username = 'admin'", (err, row) => {
+    if (!row) {
+      const hash = bcrypt.hashSync('admin123', 10);
+      db.run("INSERT INTO users (username, password, is_admin) VALUES (?, ?, 1)", ['admin', hash]);
+    }
+  });
+});
+
+// Middleware de autenticação
+function auth(req, res, next) {
+  if (!req.session.user) return res.status(401).json({ error: 'Não autenticado' });
+  next();
+}
+function adminOnly(req, res, next) {
+  if (!req.session.user || !req.session.user.is_admin) return res.status(403).json({ error: 'Acesso negado' });
+  next();
+}
+
+// Cadastro de usuário
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.json({ error: 'Preencha todos os campos' });
+  const hash = bcrypt.hashSync(password, 10);
+  db.run("INSERT INTO users (username, password) VALUES (?, ?)", [username, hash], function(err) {
+    if (err) return res.json({ error: 'Usuário já existe' });
+    res.json({ success: true });
+  });
+});
+
+// Login
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  db.get("SELECT * FROM users WHERE username = ?", [username], (err, user) => {
+    if (!user) return res.json({ error: 'Usuário não encontrado' });
+    if (!bcrypt.compareSync(password, user.password)) return res.json({ error: 'Senha incorreta' });
+    req.session.user = { id: user.id, username: user.username, is_admin: user.is_admin };
+    res.json({ success: true, is_admin: user.is_admin });
+  });
+});
+
+// Logout
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ success: true }));
+});
+
+// Info do usuário logado
+app.get('/api/me', (req, res) => {
+  if (!req.session.user) return res.json({ user: null });
+  res.json({ user: req.session.user });
+});
+
+// Listar serviços
+app.get('/api/services', (req, res) => {
+  db.all("SELECT * FROM services", (err, rows) => res.json(rows));
+});
+
+// Admin: cadastrar serviço
+app.post('/api/services', adminOnly, (req, res) => {
+  const { name, description, duration } = req.body;
+  db.run("INSERT INTO services (name, description, duration) VALUES (?, ?, ?)", [name, description, duration], function(err) {
+    if (err) return res.json({ error: 'Erro ao cadastrar serviço' });
+    res.json({ success: true, id: this.lastID });
+  });
+});
+
+// Admin: editar serviço
+app.put('/api/services/:id', adminOnly, (req, res) => {
+  const { name, description, duration } = req.body;
+  db.run("UPDATE services SET name=?, description=?, duration=? WHERE id=?", [name, description, duration, req.params.id], function(err) {
+    if (err) return res.json({ error: 'Erro ao editar serviço' });
+    res.json({ success: true });
+  });
+});
+
+// Admin: excluir serviço
+app.delete('/api/services/:id', adminOnly, (req, res) => {
+  db.run("DELETE FROM services WHERE id=?", [req.params.id], function(err) {
+    res.json({ success: true });
+  });
+});
+
+// Listar horários disponíveis de um serviço
+app.get('/api/services/:id/slots', (req, res) => {
+  db.all("SELECT * FROM slots WHERE service_id=? AND available=1", [req.params.id], (err, rows) => res.json(rows));
+});
+
+// Admin: cadastrar horário
+app.post('/api/slots', adminOnly, (req, res) => {
+  const { service_id, datetime } = req.body;
+  db.run("INSERT INTO slots (service_id, datetime) VALUES (?, ?)", [service_id, datetime], function(err) {
+    if (err) return res.json({ error: 'Erro ao cadastrar horário' });
+    res.json({ success: true, id: this.lastID });
+  });
+});
+
+// Admin: editar horário
+app.put('/api/slots/:id', adminOnly, (req, res) => {
+  const { datetime, available } = req.body;
+  db.run("UPDATE slots SET datetime=?, available=? WHERE id=?", [datetime, available, req.params.id], function(err) {
+    if (err) return res.json({ error: 'Erro ao editar horário' });
+    res.json({ success: true });
+  });
+});
+
+// Admin: excluir horário
+app.delete('/api/slots/:id', adminOnly, (req, res) => {
+  db.run("DELETE FROM slots WHERE id=?", [req.params.id], function(err) {
+    res.json({ success: true });
+  });
+});
+
+// Cliente: agendar horário
+app.post('/api/appointments', auth, (req, res) => {
+  const { slot_id } = req.body;
+  db.get("SELECT * FROM slots WHERE id=? AND available=1", [slot_id], (err, slot) => {
+    if (!slot) return res.json({ error: 'Horário não disponível' });
+    db.run("INSERT INTO appointments (user_id, slot_id) VALUES (?, ?)", [req.session.user.id, slot_id], function(err) {
+      if (err) return res.json({ error: 'Erro ao agendar' });
+      db.run("UPDATE slots SET available=0 WHERE id=?", [slot_id]);
+      res.json({ success: true });
+    });
+  });
+});
+
+// Cliente: ver seus agendamentos
+app.get('/api/my-appointments', auth, (req, res) => {
+  db.all(`SELECT a.id, a.status, s.datetime, sv.name as service
+    FROM appointments a
+    JOIN slots s ON a.slot_id = s.id
+    JOIN services sv ON s.service_id = sv.id
+    WHERE a.user_id=?`, [req.session.user.id], (err, rows) => res.json(rows));
+});
+
+// Cliente: cancelar agendamento
+app.post('/api/cancel-appointment', auth, (req, res) => {
+  const { id } = req.body;
+  db.get("SELECT * FROM appointments WHERE id=? AND user_id=?", [id, req.session.user.id], (err, appt) => {
+    if (!appt) return res.json({ error: 'Agendamento não encontrado' });
+    db.run("DELETE FROM appointments WHERE id=?", [id]);
+    db.run("UPDATE slots SET available=1 WHERE id=?", [appt.slot_id]);
+    res.json({ success: true });
+  });
+});
+
+// Admin: ver todos os agendamentos
+app.get('/api/all-appointments', adminOnly, (req, res) => {
+  db.all(`SELECT a.id, a.status, u.username, s.datetime, sv.name as service
+    FROM appointments a
+    JOIN users u ON a.user_id = u.id
+    JOIN slots s ON a.slot_id = s.id
+    JOIN services sv ON s.service_id = sv.id`, (err, rows) => res.json(rows));
+});
+
+// Admin: confirmar ou recusar agendamento
+app.post('/api/appointment-status', adminOnly, (req, res) => {
+  const { id, status } = req.body;
+  db.run("UPDATE appointments SET status=? WHERE id=?", [status, id], function(err) {
+    res.json({ success: true });
+  });
+});
+
+// Página inicial
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Agendamento de Serviços</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <h1>Agendamento de Serviços</h1>
+    <div id="auth-section">
+      <h2>Entrar ou Cadastrar</h2>
+      <input id="username" placeholder="Usuário">
+      <input id="password" type="password" placeholder="Senha">
+      <button onclick="login()">Entrar</button>
+      <button onclick="register()">Cadastrar</button>
+      <div id="auth-msg"></div>
+    </div>
+    <div id="main-section" style="display:none">
+      <div>
+        <span id="welcome"></span>
+        <button onclick="logout()">Sair</button>
+      </div>
+      <div id="client-section" style="display:none">
+        <h2>Serviços</h2>
+        <div id="services-list"></div>
+        <h2>Meus Agendamentos</h2>
+        <div id="my-appointments"></div>
+      </div>
+      <div id="admin-section" style="display:none">
+        <h2>Administração</h2>
+        <div>
+          <h3>Serviços</h3>
+          <div id="admin-services"></div>
+          <h4>Cadastrar Serviço</h4>
+          <input id="service-name" placeholder="Nome">
+          <input id="service-desc" placeholder="Descrição">
+          <input id="service-duration" type="number" placeholder="Duração (min)">
+          <button onclick="addService()">Cadastrar</button>
+        </div>
+        <div>
+          <h3>Horários</h3>
+          <div id="admin-slots"></div>
+          <h4>Cadastrar Horário</h4>
+          <select id="slot-service"></select>
+          <input id="slot-datetime" type="datetime-local">
+          <button onclick="addSlot()">Cadastrar</button>
+        </div>
+        <div>
+          <h3>Todos os Agendamentos</h3>
+          <div id="all-appointments"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+body {
+  font-family: Arial, sans-serif;
+  background: #f4f4f4;
+  margin: 0;
+  padding: 0;
+}
+#app {
+  max-width: 700px;
+  margin: 40px auto;
+  background: #fff;
+  padding: 24px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px #0001;
+}
+input, select {
+  margin: 4px 0;
+  padding: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+button {
+  margin: 4px 0;
+  padding: 8px 16px;
+  background: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover {
+  background: #0056b3;
+}
+h1, h2, h3, h4 {
+  margin-top: 16px;
+}
+#auth-msg {
+  color: red;
+  margin-top: 8px;
+}
+.service, .slot, .appointment {
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px;
+  margin: 8px 0;
+}
+
+=== public/app.js ===
+let user = null;
+
+function showMsg(msg) {
+  document.getElementById('auth-msg').innerText = msg;
+}
+
+function register() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  fetch('/api/register', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ username, password })
+  }).then(r => r.json()).then(data => {
+    if (data.error) showMsg(data.error);
+    else showMsg('Cadastro realizado! Faça login.');
+  });
+}
+
+function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ username, password })
+  }).then(r => r.json()).then(data => {
+    if (data.error) showMsg(data.error);
+    else {
+      showMsg('');
+      checkLogin();
+    }
+  });
+}
+
+function logout() {
+  fetch('/api/logout', { method: 'POST' }).then(() => location.reload());
+}
+
+function checkLogin() {
+  fetch('/api/me').then(r => r.json()).then(data => {
+    if (!data.user) return;
+    user = data.user;
+    document.getElementById('auth-section').style.display = 'none';
+    document.getElementById('main-section').style.display = '';
+    document.getElementById('welcome').innerText = `Olá, ${user.username}${user.is_admin ? ' (admin)' : ''}!`;
+    if (user.is_admin) {
+      document.getElementById('admin-section').style.display = '';
+      loadAdmin();
+    } else {
+      document.getElementById('client-section').style.display = '';
+      loadClient();
+    }
+  });
+}
+
+function loadClient() {
+  // Serviços
+  fetch('/api/services').then(r => r.json()).then(services => {
+    const div = document.getElementById('services-list');
+    div.innerHTML = '';
+    services.forEach(s => {
+      const el = document.createElement('div');
+      el.className = 'service';
+      el.innerHTML = `<b>${s.name}</b> - ${s.description} (${s.duration} min)
+        <button onclick="showSlots(${s.id}, '${s.name}')">Ver horários</button>
+        <div id="slots-${s.id}"></div>`;
+      div.appendChild(el);
+    });
+  });
+  // Meus agendamentos
+  fetch('/api/my-appointments').then(r => r.json()).then(appts => {
+    const div = document.getElementById('my-appointments');
+    div.innerHTML = '';
+    appts.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'appointment';
+      el.innerHTML = `<b>${a.service}</b> - ${a.datetime} - Status: ${a.status}
+        <button onclick="cancelAppointment(${a.id})">Cancelar</button>`;
+      div.appendChild(el);
+    });
+  });
+}
+
+function showSlots(serviceId, serviceName) {
+  fetch(`/api/services/${serviceId}/slots`).then(r => r.json()).then(slots => {
+    const div = document.getElementById(`slots-${serviceId}`);
+    div.innerHTML = '';
+    if (slots.length === 0) div.innerHTML = '<i>Nenhum horário disponível</i>';
+    slots.forEach(s => {
+      const el = document.createElement('div');
+      el.className = 'slot';
+      el.innerHTML = `${s.datetime}
+        <button onclick="bookSlot(${s.id})">Agendar</button>`;
+      div.appendChild(el);
+    });
+  });
+}
+
+function bookSlot(slotId) {
+  fetch('/api/appointments', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ slot_id: slotId })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else {
+      alert('Agendamento realizado!');
+      loadClient();
+    }
+  });
+}
+
+function cancelAppointment(id) {
+  fetch('/api/cancel-appointment', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else {
+      alert('Agendamento cancelado!');
+      loadClient();
+    }
+  });
+}
+
+// ADMIN
+function loadAdmin() {
+  // Serviços
+  fetch('/api/services').then(r => r.json()).then(services => {
+    const div = document.getElementById('admin-services');
+    div.innerHTML = '';
+    const select = document.getElementById('slot-service');
+    select.innerHTML = '';
+    services.forEach(s => {
+      const el = document.createElement('div');
+      el.className = 'service';
+      el.innerHTML = `<b>${s.name}</b> - ${s.description} (${s.duration} min)
+        <button onclick="editService(${s.id}, '${s.name}', '${s.description}', ${s.duration})">Editar</button>
+        <button onclick="deleteService(${s.id})">Excluir</button>`;
+      div.appendChild(el);
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.innerText = s.name;
+      select.appendChild(opt);
+    });
+  });
+  // Horários
+  fetch('/api/services').then(r => r.json()).then(services => {
+    const div = document.getElementById('admin-slots');
+    div.innerHTML = '';
+    services.forEach(s => {
+      fetch(`/api/services/${s.id}/slots`).then(r => r.json()).then(slots => {
+        slots.forEach(sl => {
+          const el = document.createElement('div');
+          el.className = 'slot';
+          el.innerHTML = `<b>${s.name}</b> - ${sl.datetime} - ${sl.available ? 'Disponível' : 'Ocupado'}
+            <button onclick="editSlot(${sl.id}, '${sl.datetime}', ${sl.available})">Editar</button>
+            <button onclick="deleteSlot(${sl.id})">Excluir</button>`;
+          div.appendChild(el);
+        });
+      });
+    });
+  });
+  // Todos agendamentos
+  fetch('/api/all-appointments').then(r => r.json()).then(appts => {
+    const div = document.getElementById('all-appointments');
+    div.innerHTML = '';
+    appts.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'appointment';
+      el.innerHTML = `<b>${a.service}</b> - ${a.datetime} - Cliente: ${a.username} - Status: ${a.status}
+        <button onclick="setStatus(${a.id}, 'confirmado')">Confirmar</button>
+        <button onclick="setStatus(${a.id}, 'recusado')">Recusar</button>`;
+      div.appendChild(el);
+    });
+  });
+}
+
+function addService() {
+  const name = document.getElementById('service-name').value;
+  const description = document.getElementById('service-desc').value;
+  const duration = document.getElementById('service-duration').value;
+  fetch('/api/services', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name, description, duration })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else loadAdmin();
+  });
+}
+
+function editService(id, name, description, duration) {
+  const newName = prompt('Nome:', name);
+  const newDesc = prompt('Descrição:', description);
+  const newDuration = prompt('Duração (min):', duration);
+  fetch(`/api/services/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ name: newName, description: newDesc, duration: newDuration })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else loadAdmin();
+  });
+}
+
+function deleteService(id) {
+  if (!confirm('Excluir serviço?')) return;
+  fetch(`/api/services/${id}`, { method: 'DELETE' }).then(() => loadAdmin());
+}
+
+function addSlot() {
+  const service_id = document.getElementById('slot-service').value;
+  const datetime = document.getElementById('slot-datetime').value.replace('T', ' ');
+  fetch('/api/slots', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ service_id, datetime })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else loadAdmin();
+  });
+}
+
+function editSlot(id, datetime, available) {
+  const newDatetime = prompt('Data e hora (AAAA-MM-DD HH:MM):', datetime);
+  const newAvailable = prompt('Disponível? (1=sim, 0=não):', available);
+  fetch(`/api/slots/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ datetime: newDatetime, available: newAvailable })
+  }).then(r => r.json()).then(data => {
+    if (data.error) alert(data.error);
+    else loadAdmin();
+  });
+}
+
+function deleteSlot(id) {
+  if (!confirm('Excluir horário?')) return;
+  fetch(`/api/slots/${id}`, { method: 'DELETE' }).then(() => loadAdmin());
+}
+
+function setStatus(id, status) {
+  fetch('/api/appointment-status', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ id, status })
+  }).then(r => r.json()).then(() => loadAdmin());
+}
+
+window.onload = checkLogin;

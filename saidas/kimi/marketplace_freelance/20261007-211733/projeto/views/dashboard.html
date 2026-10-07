@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - FreelanceHub</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub</div>
+      <nav>
+        <a href="/">Início</a>
+        <span id="userName"></span>
+        <button onclick="logout()">Sair</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('services')">Meus Serviços</button>
+      <button class="tab" onclick="showTab('contracts')">Meus Contratos</button>
+      <button class="tab" onclick="showTab('new')">Publicar Serviço</button>
+    </div>
+
+    <!-- Meus Serviços -->
+    <div id="servicesTab" class="tab-content active">
+      <h2>Meus Serviços</h2>
+      <div id="myServices"></div>
+    </div>
+
+    <!-- Meus Contratos -->
+    <div id="contractsTab" class="tab-content">
+      <h2>Meus Contratos</h2>
+      <div id="myContracts"></div>
+    </div>
+
+    <!-- Novo Serviço -->
+    <div id="newTab" class="tab-content">
+      <h2>Publicar Novo Serviço</h2>
+      <form onsubmit="handleNewService(event)">
+        <div class="form-group">
+          <label>Título do Serviço</label>
+          <input type="text" name="title" minlength="5" required placeholder="Ex: Design de Logo Profissional">
+        </div>
+        <div class="form-group">
+          <label>Descrição Detalhada</label>
+          <textarea name="description" minlength="20" required placeholder="Descreva o que você oferece..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Preço (R$)</label>
+          <input type="number" name="price" step="0.01" min="0" required placeholder="150.00">
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select name="category" required>
+            <option value="">Selecione...</option>
+            <option value="Design">Design</option>
+            <option value="Programação">Programação</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Redação">Redação</option>
+            <option value="Tradução">Tradução</option>
+            <option value="Vídeo/Áudio">Vídeo/Áudio</option>
+            <option value="Consultoria">Consultoria</option>
+            <option value="Outros">Outros</option>
+          </select>
+        </div>
+        <button type="submit" class="btn">Publicar Serviço</button>
+        <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
+          * Seu serviço será analisado por um administrador antes de ficar visível.
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        document.getElementById('userName').textContent = currentUser.name;
+        
+        if (currentUser.isAdmin) {
+          window.location.href = '/admin';
+          return;
+        }
+
+        loadMyServices();
+        loadMyContracts();
+      } catch (error) {
+        window.location.href = '/';
+      }
+    }
+
+    async function loadMyServices() {
+      try {
+        const services = await api('/api/services/my');
+        const container = document.getElementById('myServices');
+
+        if (services.length === 0) {
+          container.innerHTML = '<div class="card"><p>Você ainda não publicou nenhum serviço.</p></div>';
+          return;
+        }
+
+        container.innerHTML = services.map(service => `
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <span class="badge badge-${service.status}">${getStatusText(service.status)}</span>
+                <h3 style="margin-top: 10px;">${service.title}</h3>
+                <p>${service.description}</p>
+                <p style="margin-top: 10px;"><strong>Preço:</strong> ${formatPrice(service.price)}</p>
+                <p><strong>Categoria:</strong> ${service.category}</p>
+                <p><small>Publicado em: ${formatDate(service.created_at)}</small></p>
+              </div>
+              <button class="btn btn-danger" onclick="deleteService(${service.id})">Excluir</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function loadMyContracts() {
+      try {
+        const contracts = await api('/api/contracts/my');
+        const container = document.getElementById('myContracts');
+
+        if (contracts.length === 0) {
+          container.innerHTML = '<div class="card"><p>Você ainda não possui contratos.</p></div>';
+          return;
+        }
+
+        container.innerHTML = contracts.map(contract => {
+          const isClient = contract.client_id === currentUser.id;
+          const role = isClient ? 'Cliente' : 'Fornecedor';
+          const otherParty = isClient ? contract.provider_name : contract.client_name;
+
+          return `
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                  <span class="badge badge-${contract.status}">${getContractStatusText(contract.status)}</span>
+                  <span class="badge badge-active" style="margin-left: 10px;">${role}</span>
+                  <h3 style="margin-top: 10px;">${contract.service_title}</h3>
+                  <p><strong>${isClient ? 'Fornecedor' : 'Cliente'}:</strong> ${otherParty}</p>
+                  <p><strong>Valor:</strong> ${formatPrice(contract.price)}</p>
+                  <p><strong>Categoria:</strong> ${contract.category}</p>
+                  <p><small>Contratado em: ${formatDate(contract.created_at)}</small></p>
+                </div>
+                <div class="actions">
+                  ${contract.status === 'active' ? `
+                    <button class="btn btn-success" onclick="updateContractStatus(${contract.id}, 'completed')">
+                      Concluir
+                    </button>
+                    <button class="btn btn-danger" onclick="updateContractStatus(${contract.id}, 'cancelled')">
+                      Cancelar
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        showError('Erro ao carregar contratos');
+      }
+    }
+
+    async function handleNewService(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        title: form.title.value,
+        description: form.description.value,
+        price: parseFloat(form.price.value),
+        category: form.category.value
+      };
+
+      try {
+        await api('/api/services', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        showSuccess('Serviço publicado! Aguarde aprovação do administrador.');
+        form.reset();
+        showTab('services');
+        loadMyServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function deleteService(id) {
+      if (!confirm('Deseja realmente excluir este serviço?')) return;
+
+      try {
+        await api(`/api/services/${id}`, { method: 'DELETE' });
+        showSuccess('Serviço excluído com sucesso');
+        loadMyServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function updateContractStatus(id, status) {
+      const statusText = status === 'completed' ? 'concluir' : 'cancelar';
+      if (!confirm(`Deseja realmente ${statusText} este contrato?`)) return;
+
+      try {
+        await api(`/api/contracts/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        });
+        showSuccess('Status do contrato atualizado');
+        loadMyContracts();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+    }
+
+    function getStatusText(status) {
+      const texts = {
+        pending: 'Aguardando Aprovação',
+        approved: 'Aprovado',
+        rejected: 'Rejeitado'
+      };
+      return texts[status] || status;
+    }
+
+    function getContractStatusText(status) {
+      const texts = {
+        active: 'Ativo',
+        completed: 'Concluído',
+        cancelled: 'Cancelado'
+      };
+      return texts[status] || status;
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    }
+
+    init();
+  </script>
+</body>
+</html>

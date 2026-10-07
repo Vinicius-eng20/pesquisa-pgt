@@ -1,0 +1,1863 @@
+``` === README.md ===
+Sistema de Reservas de Hotel
+=============================
+
+COMO EXECUTAR LOCALMENTE:
+1. Instale o Node.js (versão 18 ou superior): https://nodejs.org
+2. Abra o terminal na pasta do projeto
+3. Execute: npm install
+4. Execute: npm start
+5. Abra o navegador em: http://localhost:3000
+
+CREDENCIAIS PADRÃO (Gerente):
+- Email: admin@hotel.com
+- Senha: admin123
+
+FUNCIONALIDADES:
+- Hóspedes: ver quartos, reservar, ver/cancelar reservas
+- Gerente: cadastrar/editar/remover quartos, confirmar/recusar reservas, ver todas as reservas
+- Dados salvos automaticamente em banco SQLite (arquivo hotel.db)
+- Sistema de login com sessões seguras
+
+PARA HOSPEDAR NA INTERNET:
+1. Crie conta em um serviço como Render, Railway ou Heroku
+2. Faça upload do código
+3. Configure o comando de start como: node server.js
+4. O banco de dados SQLite será criado automaticamente
+
+ARQUIVOS:
+- server.js: servidor backend com API
+- package.json: dependências do projeto
+- public/: arquivos do site (HTML, CSS, JS)
+- hotel.db: banco de dados (criado automaticamente)
+``` === package.json ===
+{
+  "name": "hotel-reservas",
+  "version": "1.0.0",
+  "description": "Sistema completo de reservas de hotel",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "bcryptjs": "^2.4.3",
+    "express-session": "^1.17.3",
+    "connect-sqlite3": "^0.9.13",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5"
+  }
+}
+``` === server.js ===
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configuração do banco de dados
+const db = new sqlite3.Database('./hotel.db', (err) => {
+  if (err) {
+    console.error('Erro ao conectar ao banco:', err);
+  } else {
+    console.log('Conectado ao banco de dados SQLite');
+    initDatabase();
+  }
+});
+
+// Inicializar tabelas
+function initDatabase() {
+  db.serialize(() => {
+    // Tabela de usuários
+    db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nome TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      senha TEXT NOT NULL,
+      tipo TEXT CHECK(tipo IN ('hospede', 'gerente')) NOT NULL DEFAULT 'hospede',
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Tabela de quartos
+    db.run(`CREATE TABLE IF NOT EXISTS quartos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      numero TEXT NOT NULL,
+      tipo TEXT NOT NULL,
+      descricao TEXT,
+      capacidade INTEGER NOT NULL,
+      preco_diaria DECIMAL(10,2) NOT NULL,
+      ativo BOOLEAN DEFAULT 1,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    // Tabela de reservas
+    db.run(`CREATE TABLE IF NOT EXISTS reservas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      usuario_id INTEGER NOT NULL,
+      quarto_id INTEGER NOT NULL,
+      data_checkin DATE NOT NULL,
+      data_checkout DATE NOT NULL,
+      status TEXT CHECK(status IN ('pendente', 'confirmada', 'recusada', 'cancelada')) DEFAULT 'pendente',
+      valor_total DECIMAL(10,2) NOT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+      FOREIGN KEY (quarto_id) REFERENCES quartos(id)
+    )`);
+
+    // Criar usuário admin padrão se não existir
+    const adminEmail = 'admin@hotel.com';
+    db.get('SELECT id FROM usuarios WHERE email = ?', [adminEmail], (err, row) => {
+      if (!row) {
+        const senhaHash = bcrypt.hashSync('admin123', 10);
+        db.run(`INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)`,
+          ['Gerente do Hotel', adminEmail, senhaHash, 'gerente'],
+          (err) => {
+            if (err) console.error('Erro ao criar admin:', err);
+            else console.log('Usuário gerente criado: admin@hotel.com / admin123');
+          }
+        );
+      }
+    });
+
+    // Inserir quartos de exemplo se não existirem
+    db.get('SELECT COUNT(*) as count FROM quartos', (err, row) => {
+      if (row.count === 0) {
+        const quartosExemplo = [
+          ['101', 'Standard', 'Quarto confortável com vista para o jardim', 2, 150.00],
+          ['102', 'Standard', 'Quarto confortável com vista para o jardim', 2, 150.00],
+          ['201', 'Luxo', 'Quarto espaçoso com varanda e vista para o mar', 3, 300.00],
+          ['202', 'Luxo', 'Quarto espaçoso com varanda e vista para o mar', 3, 300.00],
+          ['301', 'Suíte', 'Suíte master com hidromassagem e sala de estar', 4, 500.00],
+          ['302', 'Suíte Presidencial', 'Suíte luxuosa com dois quartos e vista panorâmica', 6, 800.00]
+        ];
+
+        const stmt = db.prepare(`INSERT INTO quartos (numero, tipo, descricao, capacidade, preco_diaria) VALUES (?, ?, ?, ?, ?)`);
+        quartosExemplo.forEach(q => stmt.run(q));
+        stmt.finalize();
+        console.log('Quartos de exemplo criados');
+      }
+    });
+  });
+}
+
+// Middleware
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// Configuração de sessão
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: './'
+  }),
+  secret: 'hotel-reservas-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+  }
+}));
+
+// Middleware de autenticação
+function requireAuth(req, res, next) {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Não autorizado' });
+  }
+}
+
+function requireGerente(req, res, next) {
+  if (req.session.userId && req.session.userTipo === 'gerente') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Acesso negado. Apenas gerentes.' });
+  }
+}
+
+// Rotas de autenticação
+app.post('/api/registro', async (req, res) => {
+  const { nome, email, senha } = req.body;
+
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+  }
+
+  try {
+    const senhaHash = await bcrypt.hash(senha, 10);
+    
+    db.run(
+      'INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)',
+      [nome, email, senhaHash, 'hospede'],
+      function(err) {
+        if (err) {
+          if (err.message.includes('UNIQUE constraint failed')) {
+            return res.status(400).json({ error: 'Email já cadastrado' });
+          }
+          return res.status(500).json({ error: 'Erro ao criar conta' });
+        }
+        
+        req.session.userId = this.lastID;
+        req.session.userTipo = 'hospede';
+        req.session.userNome = nome;
+        
+        res.json({ 
+          success: true, 
+          usuario: { id: this.lastID, nome, email, tipo: 'hospede' }
+        });
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ error: 'Erro no servidor' });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+
+  db.get('SELECT * FROM usuarios WHERE email = ?', [email], async (err, usuario) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro no servidor' });
+    }
+
+    if (!usuario) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
+    }
+
+    const senhaValida = await bcrypt.compare(senha, usuario.senha);
+    
+    if (!senhaValida) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
+    }
+
+    req.session.userId = usuario.id;
+    req.session.userTipo = usuario.tipo;
+    req.session.userNome = usuario.nome;
+
+    res.json({
+      success: true,
+      usuario: {
+        id: usuario.id,
+        nome: usuario.nome,
+        email: usuario.email,
+        tipo: usuario.tipo
+      }
+    });
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
+app.get('/api/usuario', requireAuth, (req, res) => {
+  db.get(
+    'SELECT id, nome, email, tipo FROM usuarios WHERE id = ?',
+    [req.session.userId],
+    (err, usuario) => {
+      if (err || !usuario) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+      res.json({ usuario });
+    }
+  );
+});
+
+// Rotas de quartos (público para consulta)
+app.get('/api/quartos/disponiveis', (req, res) => {
+  const { checkin, checkout } = req.query;
+
+  if (!checkin || !checkout) {
+    return res.status(400).json({ error: 'Datas de check-in e check-out são obrigatórias' });
+  }
+
+  const query = `
+    SELECT q.* 
+    FROM quartos q
+    WHERE q.ativo = 1 
+    AND q.id NOT IN (
+      SELECT r.quarto_id 
+      FROM reservas r 
+      WHERE r.status IN ('pendente', 'confirmada')
+      AND (
+        (r.data_checkin <= ? AND r.data_checkout >= ?)
+        OR (r.data_checkin <= ? AND r.data_checkout >= ?)
+        OR (r.data_checkin >= ? AND r.data_checkout <= ?)
+      )
+    )
+    ORDER BY q.numero
+  `;
+
+  db.all(query, [checkin, checkin, checkout, checkout, checkin, checkout], (err, quartos) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao buscar quartos' });
+    }
+    res.json({ quartos });
+  });
+});
+
+// Rotas de quartos (gerente)
+app.get('/api/quartos', requireAuth, requireGerente, (req, res) => {
+  db.all('SELECT * FROM quartos ORDER BY numero', (err, quartos) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao buscar quartos' });
+    }
+    res.json({ quartos });
+  });
+});
+
+app.post('/api/quartos', requireAuth, requireGerente, (req, res) => {
+  const { numero, tipo, descricao, capacidade, preco_diaria } = req.body;
+
+  if (!numero || !tipo || !capacidade || !preco_diaria) {
+    return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+  }
+
+  db.run(
+    'INSERT INTO quartos (numero, tipo, descricao, capacidade, preco_diaria) VALUES (?, ?, ?, ?, ?)',
+    [numero, tipo, descricao, capacidade, preco_diaria],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Erro ao criar quarto' });
+      }
+      res.json({ success: true, id: this.lastID });
+    }
+  );
+});
+
+app.put('/api/quartos/:id', requireAuth, requireGerente, (req, res) => {
+  const { id } = req.params;
+  const { numero, tipo, descricao, capacidade, preco_diaria, ativo } = req.body;
+
+  db.run(
+    'UPDATE quartos SET numero = ?, tipo = ?, descricao = ?, capacidade = ?, preco_diaria = ?, ativo = ? WHERE id = ?',
+    [numero, tipo, descricao, capacidade, preco_diaria, ativo, id],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Erro ao atualizar quarto' });
+      }
+      res.json({ success: true });
+    }
+  );
+});
+
+app.delete('/api/quartos/:id', requireAuth, requireGerente, (req, res) => {
+  const { id } = req.params;
+
+  db.run('DELETE FROM quartos WHERE id = ?', [id], function(err) {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao remover quarto' });
+    }
+    res.json({ success: true });
+  });
+});
+
+// Rotas de reservas (hóspede)
+app.get('/api/minhas-reservas', requireAuth, (req, res) => {
+  const query = `
+    SELECT r.*, q.numero as quarto_numero, q.tipo as quarto_tipo 
+    FROM reservas r
+    JOIN quartos q ON r.quarto_id = q.id
+    WHERE r.usuario_id = ?
+    ORDER BY r.criado_em DESC
+  `;
+
+  db.all(query, [req.session.userId], (err, reservas) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao buscar reservas' });
+    }
+    res.json({ reservas });
+  });
+});
+
+app.post('/api/reservas', requireAuth, (req, res) => {
+  const { quarto_id, data_checkin, data_checkout } = req.body;
+
+  if (!quarto_id || !data_checkin || !data_checkout) {
+    return res.status(400).json({ error: 'Dados incompletos' });
+  }
+
+  // Verificar se o quarto está disponível
+  const checkQuery = `
+    SELECT COUNT(*) as count 
+    FROM reservas 
+    WHERE quarto_id = ? 
+    AND status IN ('pendente', 'confirmada')
+    AND (
+      (data_checkin <= ? AND data_checkout >= ?)
+      OR (data_checkin <= ? AND data_checkout >= ?)
+      OR (data_checkin >= ? AND data_checkout <= ?)
+    )
+  `;
+
+  db.get(checkQuery, [quarto_id, data_checkin, data_checkin, data_checkout, data_checkout, data_checkin, data_checkout], (err, result) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao verificar disponibilidade' });
+    }
+
+    if (result.count > 0) {
+      return res.status(400).json({ error: 'Quarto não disponível nas datas selecionadas' });
+    }
+
+    // Calcular valor total
+    const checkin = new Date(data_checkin);
+    const checkout = new Date(data_checkout);
+    const diffTime = Math.abs(checkout - checkin);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    db.get('SELECT preco_diaria FROM quartos WHERE id = ?', [quarto_id], (err, quarto) => {
+      if (err || !quarto) {
+        return res.status(404).json({ error: 'Quarto não encontrado' });
+      }
+
+      const valor_total = diffDays * quarto.preco_diaria;
+
+      db.run(
+        'INSERT INTO reservas (usuario_id, quarto_id, data_checkin, data_checkout, valor_total) VALUES (?, ?, ?, ?, ?)',
+        [req.session.userId, quarto_id, data_checkin, data_checkout, valor_total],
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: 'Erro ao criar reserva' });
+          }
+          res.json({ success: true, id: this.lastID, valor_total });
+        }
+      );
+    });
+  });
+});
+
+app.delete('/api/reservas/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+
+  db.run(
+    'UPDATE reservas SET status = "cancelada" WHERE id = ? AND usuario_id = ?',
+    [id, req.session.userId],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Erro ao cancelar reserva' });
+      }
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Reserva não encontrada' });
+      }
+      res.json({ success: true });
+    }
+  );
+});
+
+// Rotas de reservas (gerente)
+app.get('/api/todas-reservas', requireAuth, requireGerente, (req, res) => {
+  const query = `
+    SELECT r.*, u.nome as hospede_nome, u.email as hospede_email, 
+           q.numero as quarto_numero, q.tipo as quarto_tipo
+    FROM reservas r
+    JOIN usuarios u ON r.usuario_id = u.id
+    JOIN quartos q ON r.quarto_id = q.id
+    ORDER BY r.criado_em DESC
+  `;
+
+  db.all(query, (err, reservas) => {
+    if (err) {
+      return res.status(500).json({ error: 'Erro ao buscar reservas' });
+    }
+    res.json({ reservas });
+  });
+});
+
+app.put('/api/reservas/:id/status', requireAuth, requireGerente, (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!['confirmada', 'recusada'].includes(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
+
+  db.run(
+    'UPDATE reservas SET status = ? WHERE id = ?',
+    [status, id],
+    function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Erro ao atualizar status' });
+      }
+      res.json({ success: true });
+    }
+  );
+});
+
+// Servir arquivos estáticos
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Acesse: http://localhost:${PORT}`);
+});
+``` === public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Paradise - Sistema de Reservas</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Tela de Login/Registro -->
+        <div id="auth-screen" class="auth-container">
+            <div class="auth-box">
+                <div class="logo">
+                    <i class="fas fa-hotel"></i>
+                    <h1>Hotel Paradise</h1>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="showTab('login')">Entrar</button>
+                    <button class="tab-btn" onclick="showTab('registro')">Criar Conta</button>
+                </div>
+
+                <form id="login-form" class="auth-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" id="login-email" required placeholder="seu@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Senha</label>
+                        <input type="password" id="login-senha" required placeholder="••••••">
+                    </div>
+                    <button type="submit" class="btn-primary">Entrar</button>
+                    <p class="demo-info">Demo Gerente: admin@hotel.com / admin123</p>
+                </form>
+
+                <form id="registro-form" class="auth-form hidden" onsubmit="handleRegistro(event)">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Nome Completo</label>
+                        <input type="text" id="reg-nome" required placeholder="Seu nome">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" id="reg-email" required placeholder="seu@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Senha</label>
+                        <input type="password" id="reg-senha" required placeholder="Mínimo 6 caracteres" minlength="6">
+                    </div>
+                    <button type="submit" class="btn-primary">Criar Conta</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Sistema Principal -->
+        <div id="main-screen" class="hidden">
+            <nav class="navbar">
+                <div class="nav-brand">
+                    <i class="fas fa-hotel"></i> Hotel Paradise
+                </div>
+                <div class="nav-user">
+                    <span id="user-name"></span>
+                    <button onclick="logout()" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+                </div>
+            </nav>
+
+            <!-- Área do Hóspede -->
+            <div id="hospede-area" class="container hidden">
+                <div class="menu-lateral">
+                    <button class="menu-btn active" onclick="showSection('buscar')">
+                        <i class="fas fa-search"></i> Buscar Quartos
+                    </button>
+                    <button class="menu-btn" onclick="showSection('minhas-reservas')">
+                        <i class="fas fa-calendar-check"></i> Minhas Reservas
+                    </button>
+                </div>
+
+                <div class="content-area">
+                    <!-- Busca de Quartos -->
+                    <div id="buscar-section" class="section">
+                        <h2><i class="fas fa-search"></i> Encontre seu quarto ideal</h2>
+                        <div class="search-box">
+                            <div class="date-inputs">
+                                <div class="form-group">
+                                    <label>Check-in</label>
+                                    <input type="date" id="checkin-date" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Check-out</label>
+                                    <input type="date" id="checkout-date" required>
+                                </div>
+                                <button onclick="buscarQuartos()" class="btn-search">
+                                    <i class="fas fa-search"></i> Buscar Disponíveis
+                                </button>
+                            </div>
+                        </div>
+                        <div id="quartos-result" class="quartos-grid"></div>
+                    </div>
+
+                    <!-- Minhas Reservas -->
+                    <div id="minhas-reservas-section" class="section hidden">
+                        <h2><i class="fas fa-calendar-check"></i> Minhas Reservas</h2>
+                        <div id="lista-reservas" class="reservas-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Área do Gerente -->
+            <div id="gerente-area" class="container hidden">
+                <div class="menu-lateral">
+                    <button class="menu-btn active" onclick="showGerenteSection('reservas')">
+                        <i class="fas fa-list"></i> Todas as Reservas
+                    </button>
+                    <button class="menu-btn" onclick="showGerenteSection('quartos')">
+                        <i class="fas fa-bed"></i> Gerenciar Quartos
+                    </button>
+                </div>
+
+                <div class="content-area">
+                    <!-- Todas as Reservas -->
+                    <div id="reservas-gerente-section" class="section">
+                        <h2><i class="fas fa-list"></i> Gerenciar Reservas</h2>
+                        <div id="todas-reservas" class="reservas-list"></div>
+                    </div>
+
+                    <!-- Gerenciar Quartos -->
+                    <div id="quartos-gerente-section" class="section hidden">
+                        <div class="section-header">
+                            <h2><i class="fas fa-bed"></i> Gerenciar Quartos</h2>
+                            <button onclick="abrirModalQuarto()" class="btn-primary">
+                                <i class="fas fa-plus"></i> Novo Quarto
+                            </button>
+                        </div>
+                        <div id="lista-quartos" class="quartos-admin"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Reserva -->
+        <div id="modal-reserva" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="fecharModal('modal-reserva')">&times;</span>
+                <h3>Confirmar Reserva</h3>
+                <div id="detalhes-reserva"></div>
+                <div class="modal-actions">
+                    <button onclick="fecharModal('modal-reserva')" class="btn-secondary">Cancelar</button>
+                    <button onclick="confirmarReserva()" class="btn-primary">Confirmar Reserva</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Quarto (Gerente) -->
+        <div id="modal-quarto" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="fecharModal('modal-quarto')">&times;</span>
+                <h3 id="modal-quarto-titulo">Novo Quarto</h3>
+                <form id="form-quarto" onsubmit="salvarQuarto(event)">
+                    <input type="hidden" id="quarto-id">
+                    <div class="form-group">
+                        <label>Número do Quarto</label>
+                        <input type="text" id="quarto-numero" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="quarto-tipo" required>
+                            <option value="Standard">Standard</option>
+                            <option value="Luxo">Luxo</option>
+                            <option value="Suíte">Suíte</option>
+                            <option value="Suíte Presidencial">Suíte Presidencial</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Descrição</label>
+                        <textarea id="quarto-descricao" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Capacidade (pessoas)</label>
+                            <input type="number" id="quarto-capacidade" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Preço da Diária (R$)</label>
+                            <input type="number" id="quarto-preco" step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="quarto-ativo" checked> Quarto ativo/disponível
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" onclick="fecharModal('modal-quarto')" class="btn-secondary">Cancelar</button>
+                        <button type="submit" class="btn-primary">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast de Notificação -->
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+``` === public/styles.css ===
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    color: #333;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Tela de Autenticação */
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.auth-box {
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    padding: 40px;
+    width: 100%;
+    max-width: 450px;
+}
+
+.logo {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #667eea;
+}
+
+.logo i {
+    font-size: 48px;
+    margin-bottom: 10px;
+}
+
+.logo h1 {
+    font-size: 28px;
+    font-weight: 300;
+}
+
+.tabs {
+    display: flex;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #eee;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 15px;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.3s;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+}
+
+.tab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    font-weight: 600;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+}
+
+.demo-info {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+    margin-top: 10px;
+}
+
+/* Sistema Principal */
+.navbar {
+    background: white;
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.nav-brand {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.btn-logout {
+    background: #ff4757;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.3s;
+}
+
+.btn-logout:hover {
+    background: #ff6b81;
+}
+
+.container {
+    display: flex;
+    min-height: calc(100vh - 70px);
+}
+
+.menu-lateral {
+    width: 250px;
+    background: rgba(255,255,255,0.95);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.menu-btn {
+    padding: 15px 20px;
+    background: none;
+    border: none;
+    text-align: left;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    color: #666;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.menu-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+    color: #667eea;
+}
+
+.menu-btn.active {
+    background: #667eea;
+    color: white;
+}
+
+.content-area {
+    flex: 1;
+    padding: 30px;
+    background: rgba(255,255,255,0.95);
+    margin: 20px;
+    border-radius: 15px;
+    overflow-y: auto;
+}
+
+.section h2 {
+    margin-bottom: 25px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Busca de Quartos */
+.search-box {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+}
+
+.date-inputs {
+    display: flex;
+    gap: 20px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.date-inputs .form-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.btn-search {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: fit-content;
+}
+
+.btn-search:hover {
+    background: #5568d3;
+}
+
+.quartos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 25px;
+}
+
+.quarto-card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+    transition: transform 0.3s;
+    border: 1px solid #eee;
+}
+
+.quarto-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 25px rgba(0,0,0,0.15);
+}
+
+.quarto-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.quarto-numero {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.quarto-tipo {
+    background: rgba(255,255,255,0.2);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 14px;
+}
+
+.quarto-body {
+    padding: 20px;
+}
+
+.quarto-descricao {
+    color: #666;
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.quarto-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    color: #555;
+    font-size: 14px;
+}
+
+.quarto-preco {
+    font-size: 24px;
+    color: #667eea;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.quarto-preco small {
+    font-size: 14px;
+    color: #999;
+    font-weight: normal;
+}
+
+.btn-reservar {
+    width: 100%;
+    padding: 12px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-reservar:hover {
+    background: #5568d3;
+}
+
+/* Reservas */
+.reservas-list {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.reserva-card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border-left: 4px solid #667eea;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.reserva-info h3 {
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.reserva-detalhes {
+    color: #666;
+    font-size: 14px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.reserva-status {
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.status-pendente {
+    background: #ffeaa7;
+    color: #d68910;
+}
+
+.status-confirmada {
+    background: #d5f4e6;
+    color: #27ae60;
+}
+
+.status-recusada {
+    background: #fadbd8;
+    color: #e74c3c;
+}
+
+.status-cancelada {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.reserva-acoes {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-small {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.btn-confirmar {
+    background: #27ae60;
+    color: white;
+}
+
+.btn-recusar {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-cancelar {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-small:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+/* Gerenciamento de Quartos */
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.quartos-admin {
+    display: grid;
+    gap: 15px;
+}
+
+.quarto-admin-card {
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.quarto-admin-info h3 {
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.quarto-admin-detalhes {
+    color: #666;
+    font-size: 14px;
+    display: flex;
+    gap: 15px;
+}
+
+.quarto-admin-acoes {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-editar {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn-excluir {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.close {
+    position: absolute;
+    right: 20px;
+    top: 15px;
+    font-size: 28px;
+    cursor: pointer;
+    color: #999;
+}
+
+.close:hover {
+    color: #333;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.btn-secondary {
+    background: #e0e0e0;
+    color: #333;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+/* Toast */
+.toast {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    padding: 15px 25px;
+    border-radius: 8px;
+    color: white;
+    font-weight: 600;
+    z-index: 2000;
+    animation: slideIn 0.3s ease;
+}
+
+.toast.success {
+    background: #27ae60;
+}
+
+.toast.error {
+    background: #e74c3c;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+    
+    .menu-lateral {
+        width: 100%;
+        flex-direction: row;
+        overflow-x: auto;
+    }
+    
+    .menu-btn {
+        white-space: nowrap;
+    }
+    
+    .date-inputs {
+        flex-direction: column;
+    }
+    
+    .reserva-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+``` === public/app.js ===
+let currentUser = null;
+let quartoSelecionado = null;
+
+// Inicialização
+document.addEventListener('DOMContentLoaded', () => {
+    checkAuth();
+    
+    // Definir data mínima como hoje
+    const hoje = new Date().toISOString().split('T')[0];
+    document.getElementById('checkin-date').min = hoje;
+    document.getElementById('checkout-date').min = hoje;
+});
+
+// Autenticação
+async function checkAuth() {
+    try {
+        const response = await fetch('/api/usuario');
+        if (response.ok) {
+            const data = await response.json();
+            currentUser = data.usuario;
+            showMainScreen();
+        }
+    } catch (error) {
+        console.log('Não autenticado');
+    }
+}
+
+async function handleLogin(e) {
+    e.preventDefault();
+    
+    const email = document.getElementById('login-email').value;
+    const senha = document.getElementById('login-senha').value;
+    
+    try {
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, senha })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            currentUser = data.usuario;
+            showToast('Login realizado com sucesso!', 'success');
+            showMainScreen();
+        } else {
+            showToast(data.error || 'Erro ao fazer login', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function handleRegistro(e) {
+    e.preventDefault();
+    
+    const nome = document.getElementById('reg-nome').value;
+    const email = document.getElementById('reg-email').value;
+    const senha = document.getElementById('reg-senha').value;
+    
+    try {
+        const response = await fetch('/api/registro', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nome, email, senha })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            currentUser = data.usuario;
+            showToast('Conta criada com sucesso!', 'success');
+            showMainScreen();
+        } else {
+            showToast(data.error || 'Erro ao criar conta', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function logout() {
+    try {
+        await fetch('/api/logout', { method: 'POST' });
+        currentUser = null;
+        document.getElementById('main-screen').classList.add('hidden');
+        document.getElementById('auth-screen').classList.remove('hidden');
+        showToast('Logout realizado', 'success');
+    } catch (error) {
+        showToast('Erro ao sair', 'error');
+    }
+}
+
+// Navegação
+function showTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    if (tab === 'login') {
+        document.getElementById('login-form').classList.remove('hidden');
+        document.getElementById('registro-form').classList.add('hidden');
+    } else {
+        document.getElementById('login-form').classList.add('hidden');
+        document.getElementById('registro-form').classList.remove('hidden');
+    }
+}
+
+function showMainScreen() {
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('main-screen').classList.remove('hidden');
+    document.getElementById('user-name').textContent = currentUser.nome;
+    
+    if (currentUser.tipo === 'gerente') {
+        document.getElementById('gerente-area').classList.remove('hidden');
+        document.getElementById('hospede-area').classList.add('hidden');
+        carregarTodasReservas();
+        carregarQuartos();
+    } else {
+        document.getElementById('hospede-area').classList.remove('hidden');
+        document.getElementById('gerente-area').classList.add('hidden');
+    }
+}
+
+function showSection(section) {
+    document.querySelectorAll('#hospede-area .menu-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    document.getElementById('buscar-section').classList.add('hidden');
+    document.getElementById('minhas-reservas-section').classList.add('hidden');
+    
+    if (section === 'buscar') {
+        document.getElementById('buscar-section').classList.remove('hidden');
+    } else {
+        document.getElementById('minhas-reservas-section').classList.remove('hidden');
+        carregarMinhasReservas();
+    }
+}
+
+function showGerenteSection(section) {
+    document.querySelectorAll('#gerente-area .menu-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    document.getElementById('reservas-gerente-section').classList.add('hidden');
+    document.getElementById('quartos-gerente-section').classList.add('hidden');
+    
+    if (section === 'reservas') {
+        document.getElementById('reservas-gerente-section').classList.remove('hidden');
+        carregarTodasReservas();
+    } else {
+        document.getElementById('quartos-gerente-section').classList.remove('hidden');
+        carregarQuartos();
+    }
+}
+
+// Funções do Hóspede
+async function buscarQuartos() {
+    const checkin = document.getElementById('checkin-date').value;
+    const checkout = document.getElementById('checkout-date').value;
+    
+    if (!checkin || !checkout) {
+        showToast('Selecione as datas de check-in e check-out', 'error');
+        return;
+    }
+    
+    if (checkin >= checkout) {
+        showToast('Data de check-out deve ser posterior ao check-in', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/quartos/disponiveis?checkin=${checkin}&checkout=${checkout}`);
+        const data = await response.json();
+        
+        const container = document.getElementById('quartos-result');
+        
+        if (data.quartos.length === 0) {
+            container.innerHTML = '<p class="no-results">Nenhum quarto disponível para estas datas.</p>';
+            return;
+        }
+        
+        container.innerHTML = data.quartos.map(quarto => `
+            <div class="quarto-card">
+                <div class="quarto-header">
+                    <span class="quarto-numero">Quarto ${quarto.numero}</span>
+                    <span class="quarto-tipo">${quarto.tipo}</span>
+                </div>
+                <div class="quarto-body">
+                    <p class="quarto-descricao">${quarto.descricao || 'Sem descrição'}</p>
+                    <div class="quarto-info">
+                        <span><i class="fas fa-user"></i> ${quarto.capacidade} pessoas</span>
+                    </div>
+                    <div class="quarto-preco">
+                        R$ ${quarto.preco_diaria.toFixed(2)} <small>/noite</small>
+                    </div>
+                    <button class="btn-reservar" onclick='abrirModalReserva(${JSON.stringify(quarto)})'>
+                        Reservar Agora
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        showToast('Erro ao buscar quartos', 'error');
+    }
+}
+
+function abrirModalReserva(quarto) {
+    const checkin = document.getElementById('checkin-date').value;
+    const checkout = document.getElementById('checkout-date').value;
+    
+    const checkinDate = new Date(checkin);
+    const checkoutDate = new Date(checkout);
+    const diffTime = Math.abs(checkoutDate - checkinDate);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const valorTotal = diffDays * quarto.preco_diaria;
+    
+    quartoSelecionado = {
+        ...quarto,
+        checkin,
+        checkout,
+        dias: diffDays,
+        valorTotal
+    };
+    
+    document.getElementById('detalhes-reserva').innerHTML = `
+        <p><strong>Quarto:</strong> ${quarto.numero} - ${quarto.tipo}</p>
+        <p><strong>Check-in:</strong> ${formatarData(checkin)}</p>
+        <p><strong>Check-out:</strong> ${formatarData(checkout)}</p>
+        <p><strong>Diárias:</strong> ${diffDays}</p>
+        <p><strong>Valor Total:</strong> R$ ${valorTotal.toFixed(2)}</p>
+    `;
+    
+    document.getElementById('modal-reserva').classList.remove('hidden');
+}
+
+async function confirmarReserva() {
+    if (!quartoSelecionado) return;
+    
+    try {
+        const response = await fetch('/api/reservas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                quarto_id: quartoSelecionado.id,
+                data_checkin: quartoSelecionado.checkin,
+                data_checkout: quartoSelecionado.checkout
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showToast('Reserva realizada com sucesso! Aguardando confirmação.', 'success');
+            fecharModal('modal-reserva');
+            document.getElementById('quartos-result').innerHTML = '';
+        } else {
+            showToast(data.error || 'Erro ao fazer reserva', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function carregarMinhasReservas() {
+    try {
+        const response = await fetch('/api/minhas-reservas');
+        const data = await response.json();
+        
+        const container = document.getElementById('lista-reservas');
+        
+        if (data.reservas.length === 0) {
+            container.innerHTML = '<p class="no-results">Você ainda não tem reservas.</p>';
+            return;
+        }
+        
+        container.innerHTML = data.reservas.map(reserva => `
+            <div class="reserva-card">
+                <div class="reserva-info">
+                    <h3>Quarto ${reserva.quarto_numero} - ${reserva.quarto_tipo}</h3>
+                    <div class="reserva-detalhes">
+                        <span><i class="fas fa-calendar"></i> ${formatarData(reserva.data_checkin)} a ${formatarData(reserva.data_checkout)}</span>
+                        <span><i class="fas fa-money-bill"></i> R$ ${reserva.valor_total.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div class="reserva-status status-${reserva.status}">
+                    ${reserva.status.charAt(0).toUpperCase() + reserva.status.slice(1)}
+                </div>
+                ${reserva.status === 'pendente' || reserva.status === 'confirmada' ? `
+                    <div class="reserva-acoes">
+                        <button class="btn-small btn-cancelar" onclick="cancelarReserva(${reserva.id})">
+                            Cancelar
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch (error) {
+        showToast('Erro ao carregar reservas', 'error');
+    }
+}
+
+async function cancelarReserva(id) {
+    if (!confirm('Tem certeza que deseja cancelar esta reserva?')) return;
+    
+    try {
+        const response = await fetch(`/api/reservas/${id}`, { method: 'DELETE' });
+        
+        if (response.ok) {
+            showToast('Reserva cancelada com sucesso', 'success');
+            carregarMinhasReservas();
+        } else {
+            showToast('Erro ao cancelar reserva', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+// Funções do Gerente
+async function carregarTodasReservas() {
+    try {
+        const response = await fetch('/api/todas-reservas');
+        const data = await response.json();
+        
+        const container = document.getElementById('todas-reservas');
+        
+        if (data.reservas.length === 0) {
+            container.innerHTML = '<p class="no-results">Nenhuma reserva encontrada.</p>';
+            return;
+        }
+        
+        container.innerHTML = data.reservas.map(reserva => `
+            <div class="reserva-card">
+                <div class="reserva-info">
+                    <h3>${reserva.hospede_nome} - Quarto ${reserva.quarto_numero}</h3>
+                    <div class="reserva-detalhes">
+                        <span><i class="fas fa-envelope"></i> ${reserva.hospede_email}</span>
+                        <span><i class="fas fa-calendar"></i> ${formatarData(reserva.data_checkin)} a ${formatarData(reserva.data_checkout)}</span>
+                        <span><i class="fas fa-money-bill"></i> R$ ${reserva.valor_total.toFixed(2)}</span>
+                    </div>
+                </div>
+                <div class="reserva-status status-${reserva.status}">
+                    ${reserva.status.charAt(0).toUpperCase() + reserva.status.slice(1)}
+                </div>
+                ${reserva.status === 'pendente' ? `
+                    <div class="reserva-acoes">
+                        <button class="btn-small btn-confirmar" onclick="atualizarStatusReserva(${reserva.id}, 'confirmada')">
+                            Confirmar
+                        </button>
+                        <button class="btn-small btn-recusar" onclick="atualizarStatusReserva(${reserva.id}, 'recusada')">
+                            Recusar
+                        </button>
+                    </div>
+                ` : ''}
+            </div>
+        `).join('');
+    } catch (error) {
+        showToast('Erro ao carregar reservas', 'error');
+    }
+}
+
+async function atualizarStatusReserva(id, status) {
+    try {
+        const response = await fetch(`/api/reservas/${id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        
+        if (response.ok) {
+            showToast(`Reserva ${status === 'confirmada' ? 'confirmada' : 'recusada'} com sucesso`, 'success');
+            carregarTodasReservas();
+        } else {
+            showToast('Erro ao atualizar status', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function carregarQuartos() {
+    try {
+        const response = await fetch('/api/quartos');
+        const data = await response.json();
+        
+        const container = document.getElementById('lista-quartos');
+        
+        container.innerHTML = data.quartos.map(quarto => `
+            <div class="quarto-admin-card">
+                <div class="quarto-admin-info">
+                    <h3>Quarto ${quarto.numero} - ${quarto.tipo}</h3>
+                    <div class="quarto-admin-detalhes">
+                        <span><i class="fas fa-user"></i> ${quarto.capacidade} pessoas</span>
+                        <span><i class="fas fa-money-bill"></i> R$ ${quarto.preco_diaria.toFixed(2)}/noite</span>
+                        <span class="status-${quarto.ativo ? 'confirmada' : 'cancelada'}">
+                            ${quarto.ativo ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </div>
+                    <p style="margin-top: 5px; color: #666; font-size: 14px;">${quarto.descricao || ''}</p>
+                </div>
+                <div class="quarto-admin-acoes">
+                    <button class="btn-editar" onclick='editarQuarto(${JSON.stringify(quarto)})'>
+                        <i class="fas fa-edit"></i> Editar
+                    </button>
+                    <button class="btn-excluir" onclick="excluirQuarto(${quarto.id})">
+                        <i class="fas fa-trash"></i> Excluir
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    } catch (error) {
+        showToast('Erro ao carregar quartos', 'error');
+    }
+}
+
+function abrirModalQuarto() {
+    document.getElementById('modal-quarto-titulo').textContent = 'Novo Quarto';
+    document.getElementById('form-quarto').reset();
+    document.getElementById('quarto-id').value = '';
+    document.getElementById('modal-quarto').classList.remove('hidden');
+}
+
+function editarQuarto(quarto) {
+    document.getElementById('modal-quarto-titulo').textContent = 'Editar Quarto';
+    document.getElementById('quarto-id').value = quarto.id;
+    document.getElementById('quarto-numero').value = quarto.numero;
+    document.getElementById('quarto-tipo').value = quarto.tipo;
+    document.getElementById('quarto-descricao').value = quarto.descricao;
+    document.getElementById('quarto-capacidade').value = quarto.capacidade;
+    document.getElementById('quarto-preco').value = quarto.preco_diaria;
+    document.getElementById('quarto-ativo').checked = quarto.ativo === 1;
+    document.getElementById('modal-quarto').classList.remove('hidden');
+}
+
+async function salvarQuarto(e) {
+    e.preventDefault();
+    
+    const id = document.getElementById('quarto-id').value;
+    const dados = {
+        numero: document.getElementById('quarto-numero').value,
+        tipo: document.getElementById('quarto-tipo').value,
+        descricao: document.getElementById('quarto-descricao').value,
+        capacidade: parseInt(document.getElementById('quarto-capacidade').value),
+        preco_diaria: parseFloat(document.getElementById('quarto-preco').value),
+        ativo: document.getElementById('quarto-ativo').checked ? 1 : 0
+    };
+    
+    try {
+        const url = id ? `/api/quartos/${id}` : '/api/quartos';
+        const method = id ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        
+        if (response.ok) {
+            showToast(`Quarto ${id ? 'atualizado' : 'criado'} com sucesso`, 'success');
+            fecharModal('modal-quarto');
+            carregarQuartos();
+        } else {
+            showToast('Erro ao salvar quarto', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+async function excluirQuarto(id) {
+    if (!confirm('Tem certeza que deseja excluir este quarto?')) return;
+    
+    try {
+        const response = await fetch(`/api/quartos/${id}`, { method: 'DELETE' });
+        
+        if (response.ok) {
+            showToast('Quarto excluído com sucesso', 'success');
+            carregarQuartos();
+        } else {
+            showToast('Erro ao excluir quarto', 'error');
+        }
+    } catch (error) {
+        showToast('Erro de conexão', 'error');
+    }
+}
+
+// Utilitários
+function fecharModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+function showToast(mensagem, tipo) {
+    const toast = document.getElementById('toast');
+    toast.textContent = mensagem;
+    toast.className = `toast ${tipo}`;
+    toast.classList.remove('hidden');
+    
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+}
+
+function formatarData(data) {
+    return new Date(data).toLocaleDateString('pt-BR');
+}
+
+// Fechar modal ao clicar fora
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.classList.add('hidden');
+    }
+}
+```

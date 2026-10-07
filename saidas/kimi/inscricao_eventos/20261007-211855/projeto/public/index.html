@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal de Eventos</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <h1 class="logo">🎫 Portal de Eventos</h1>
+      <div id="userArea" class="user-area"></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Mensagens -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- ============ TELA DE AUTENTICAÇÃO ============ -->
+    <section id="authSection" class="auth-grid hidden">
+      <div class="card">
+        <h2>Entrar</h2>
+        <form id="loginForm">
+          <label>E-mail
+            <input type="email" name="email" required placeholder="seu@email.com" />
+          </label>
+          <label>Senha
+            <input type="password" name="password" required placeholder="Sua senha" />
+          </label>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Criar conta</h2>
+        <form id="registerForm">
+          <label>Nome completo
+            <input type="text" name="name" required placeholder="Seu nome" />
+          </label>
+          <label>E-mail
+            <input type="email" name="email" required placeholder="seu@email.com" />
+          </label>
+          <label>Senha (mínimo 6 caracteres)
+            <input type="password" name="password" required minlength="6" placeholder="Crie uma senha" />
+          </label>
+          <button type="submit" class="btn btn-primary">Cadastrar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ ÁREA LOGADA ============ -->
+    <section id="appSection" class="hidden">
+      <nav class="tabs" id="tabsNav"></nav>
+      <div id="tabContent"></div>
+    </section>
+  </main>
+
+  <!-- ============ MODAL (formulário de evento / lista de inscritos) ============ -->
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle"></h3>
+        <button class="btn btn-icon" id="modalClose" title="Fechar">✕</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">Portal de Eventos — seus dados ficam salvos neste site.</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

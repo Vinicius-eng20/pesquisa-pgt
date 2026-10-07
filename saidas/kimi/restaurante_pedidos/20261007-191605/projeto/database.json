@@ -1,0 +1,142 @@
+{
+  "usuarios": [
+    {
+      "id": 1,
+      "nome": "Gerente",
+      "email": "gerente@restaurante.com",
+      "senha": "$2a$10$PdKBpiPcw.a6yJt.bctEhexFFmJ.aXyq8NsDIYxyjIhRcwq.AEOYC",
+      "papel": "gerente"
+    },
+    {
+      "id": 2,
+      "nome": "João Cliente",
+      "email": "joao@email.com",
+      "senha": "$2a$10$LLmvmHM7rXZFQlwMI7IdMukpqJf3wvz0TrFkddNVT3DRyRZyinhRK",
+      "papel": "cliente"
+    },
+    {
+      "id": 3,
+      "nome": "Maria",
+      "email": "voce@email.com",
+      "senha": "$2a$10$93YOtvba8RH.5hLUAQ1a5.kkaosSQ6yvBB0p7Z/8jog3FKRpYO9Km",
+      "papel": "cliente"
+    }
+  ],
+  "pratos": [
+    {
+      "id": 1,
+      "nome": "Pizza Margherita",
+      "descricao": "Molho de tomate, muçarela de búfala, manjericão fresco e azeite",
+      "preco": 42.9,
+      "categoria": "Pizzas",
+      "foto": "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 2,
+      "nome": "Lasanha à Bolonhesa",
+      "descricao": "Massa fresca em camadas com molho bolonhesa e queijo gratinado",
+      "preco": 38.5,
+      "categoria": "Massas",
+      "foto": "https://images.unsplash.com/photo-1619895092538-128341789043?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 3,
+      "nome": "Hambúrguer Artesanal",
+      "descricao": "Blend 180g, queijo cheddar, bacon, alface, tomate e pão brioche",
+      "preco": 32.9,
+      "categoria": "Lanches",
+      "foto": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 4,
+      "nome": "Salmão Grelhado",
+      "descricao": "Filé de salmão com legumes salteados e arroz de limão",
+      "preco": 54.9,
+      "categoria": "Pratos",
+      "foto": "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 5,
+      "nome": "Risoto de Cogumelos",
+      "descricao": "Arroz arbóreo cremoso com mix de cogumelos e parmesão",
+      "preco": 46,
+      "categoria": "Pratos",
+      "foto": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 6,
+      "nome": "Salada Caesar",
+      "descricao": "Alface romana, frango grelhado, croutons e molho caesar",
+      "preco": 28.9,
+      "categoria": "Saladas",
+      "foto": "https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 7,
+      "nome": "Brownie com Sorvete",
+      "descricao": "Brownie quente de chocolate com bola de sorvete de creme",
+      "preco": 19.9,
+      "categoria": "Sobremesas",
+      "foto": "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 8,
+      "nome": "Suco Natural de Laranja",
+      "descricao": "Suco de laranja fresquinho, feito na hora - 500ml",
+      "preco": 9.9,
+      "categoria": "Bebidas",
+      "foto": "https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 9,
+      "nome": "Refrigerante Lata",
+      "descricao": "Coca-Cola, Guaraná ou Fanta - lata 350ml gelada",
+      "preco": 6.5,
+      "categoria": "Bebidas",
+      "foto": "https://images.unsplash.com/photo-1581636625402-29b2a704ef13?w=600&q=80",
+      "ativo": true
+    },
+    {
+      "id": 10,
+      "nome": "Espaguete Carbonara",
+      "descricao": "Massa italiana com bacon, gema de ovo, parmesão e pimenta do reino",
+      "preco": 36.9,
+      "categoria": "Massas",
+      "foto": "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=600&q=80",
+      "ativo": true
+    }
+  ],
+  "pedidos": [
+    {
+      "id": 1,
+      "clienteId": 3,
+      "clienteNome": "Maria",
+      "clienteEmail": "voce@email.com",
+      "itens": [
+        {
+          "pratoId": 1,
+          "nome": "Pizza Margherita",
+          "preco": 42.9,
+          "quantidade": 1
+        }
+      ],
+      "total": 42.9,
+      "endereco": "Av Paulista, 1234",
+      "observacao": "",
+      "situacao": "Preparando",
+      "criadoEm": "2026-10-07T20:54:42.859Z",
+      "atualizadoEm": "2026-10-07T20:55:11.623Z"
+    }
+  ],
+  "proximoIdUsuario": 4,
+  "proximoIdPrato": 11,
+  "proximoIdPedido": 2
+}

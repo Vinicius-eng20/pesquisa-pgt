@@ -1,19 +1,17 @@
-from gerar_app import gerar_aplicacao, corrigir_aplicacao
+from gerar_app import gerar_aplicacao
+from time import sleep
+# Modelos: qwen, kimi, claude_sonnet, gpt5, gemini_flash, deepseek
+# Domínios:
+#   - loja_departamentos, restaurante_pedidos, despesas_pessoais
+#   - agendamento_serviços, cursos_online, reservas_hotel, biblioteca_digital
+#   - marketplace_freelance, inscricao_eventos, tarefas_equipe
 
-MODELO = "deepseek"
-DOMINIO = "loja_departamentos"
+MODELO = "kimi"
 
-gerar_aplicacao(MODELO, DOMINIO)
+DOMINIOS = ['despesas_pessoais', 'loja_departamentos', 'agendamento_servicos', 'cursos_online', 'reservas_hotel', 'biblioteca_digital', 'marketplace_freelance', 'inscricao_eventos', 'tarefas_equipe']
 
-# Rodada de reparo: comente a linha gerar_aplicacao acima, cole o erro do
-# terminal sem alterações e aponte para o resposta.txt da rodada anterior
-# (a geração original ou o reparo anterior).
-
-# ERRO = """
-# cole aqui o erro
-# """
-# corrigir_aplicacao(
-#     ERRO,
-#     MODELO,
-#     r"saidas\deepseek\loja_departamentos\20261006-165818\resposta.txt",
-# )
+for dominio in DOMINIOS:
+    print(f'Domínio: {dominio}')
+    gerar_aplicacao(MODELO, dominio)
+    sleep(3)
+    print('---')

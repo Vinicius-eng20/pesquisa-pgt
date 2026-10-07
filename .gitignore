@@ -1,5 +1,5 @@
 # Dependências
-/node_modules/
+node_modules/
 
 testes/
 # Arquivos de ambiente e segredos
@@ -33,3 +33,8 @@ build/
 # Sistema operacional
 .DS_Store
 Thumbs.db
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class

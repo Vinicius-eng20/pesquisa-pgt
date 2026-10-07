@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreelanceHub - Marketplace de Serviços</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub</div>
+      <nav>
+        <a href="#" onclick="showHome(); return false;">Início</a>
+        <span id="authLinks">
+          <a href="#" onclick="showLogin(); return false;">Entrar</a>
+          <a href="#" onclick="showRegister(); return false;">Cadastrar</a>
+        </span>
+        <span id="userLinks" class="hidden">
+          <a href="/dashboard">Dashboard</a>
+          <button onclick="logout()">Sair</button>
+        </span>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Home -->
+    <div id="homeSection">
+      <div class="hero">
+        <h1>Encontre os melhores freelancers</h1>
+        <p>Publique seus serviços ou contrate profissionais qualificados</p>
+      </div>
+
+      <h2>Serviços Disponíveis</h2>
+      <div id="servicesList" class="grid"></div>
+    </div>
+
+    <!-- Login -->
+    <div id="loginSection" class="hidden">
+      <h2 style="text-align: center; margin-bottom: 30px;">Entrar</h2>
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Entrar</button>
+        <p style="text-align: center; margin-top: 15px;">
+          Não tem conta? <a href="#" onclick="showRegister(); return false;">Cadastre-se</a>
+        </p>
+      </form>
+    </div>
+
+    <!-- Register -->
+    <div id="registerSection" class="hidden">
+      <h2 style="text-align: center; margin-bottom: 30px;">Criar Conta</h2>
+      <form onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label>Senha (mínimo 6 caracteres)</label>
+          <input type="password" name="password" minlength="6" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Cadastrar</button>
+        <p style="text-align: center; margin-top: 15px;">
+          Já tem conta? <a href="#" onclick="showLogin(); return false;">Entre aqui</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        document.getElementById('authLinks').classList.add('hidden');
+        document.getElementById('userLinks').classList.remove('hidden');
+      } catch (error) {
+        // Não autenticado
+      }
+      loadServices();
+    }
+
+    async function loadServices() {
+      try {
+        const services = await api('/api/services');
+        const container = document.getElementById('servicesList');
+        
+        if (services.length === 0) {
+          container.innerHTML = '<p style="text-align: center; grid-column: 1/-1;">Nenhum serviço disponível no momento.</p>';
+          return;
+        }
+
+        container.innerHTML = services.map(service => `
+          <div class="service-card">
+            <span class="category">${service.category}</span>
+            <h3>${service.title}</h3>
+            <p>${service.description}</p>
+            <div class="price">${formatPrice(service.price)}</div>
+            <p><small>Por: ${service.provider_name}</small></p>
+            ${currentUser ? `
+              <button class="btn" onclick="hireService(${service.id})" style="width: 100%; margin-top: 10px;">
+                Contratar
+              </button>
+            ` : `
+              <button class="btn" onclick="showLogin()" style="width: 100%; margin-top: 10px;">
+                Faça login para contratar
+              </button>
+            `}
+          </div>
+        `).join('');
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        email: form.email.value,
+        password: form.password.value
+      };
+
+      try {
+        const result = await api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+
+        if (result.user.isAdmin) {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/dashboard';
+        }
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        name: form.name.value,
+        email: form.email.value,
+        password: form.password.value
+      };
+
+      try {
+        await api('/api/auth/register', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        window.location.href = '/dashboard';
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.reload();
+    }
+
+    async function hireService(id) {
+      if (!confirm('Deseja contratar este serviço?')) return;
+
+      try {
+        await api(`/api/services/${id}/hire`, { method: 'POST' });
+        showSuccess('Serviço contratado com sucesso!');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showHome() {
+      document.getElementById('homeSection').classList.remove('hidden');
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('registerSection').classList.add('hidden');
+    }
+
+    function showLogin() {
+      document.getElementById('homeSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.remove('hidden');
+      document.getElementById('registerSection').classList.add('hidden');
+    }
+
+    function showRegister() {
+      document.getElementById('homeSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('registerSection').classList.remove('hidden');
+    }
+
+    init();
+  </script>
+</body>
+</html>

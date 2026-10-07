@@ -1,0 +1,1753 @@
+=== README.md ===
+# FreelanceHub - Marketplace de Serviços
+
+## Instalação
+```bash
+npm install
+```
+
+## Configuração
+Crie um arquivo `.env` na raiz:
+```bash
+PORT=3000
+SESSION_SECRET=mude-isto-para-uma-chave-secreta-longa
+DATABASE_PATH=./database.sqlite
+```
+
+## Execução
+```bash
+npm start
+```
+Acesse: http://localhost:3000
+
+## Conta Admin Padrão
+- Email: admin@freelancehub.com
+- Senha: admin123
+
+Altere a senha após o primeiro login!
+
+## Funcionalidades
+- Usuários: cadastro, login, publicar serviços, contratar serviços, ver contratos
+- Admin: aprovar/remover serviços, suspender usuários, ver tudo
+
+=== package.json ===
+{
+  "name": "freelancehub",
+  "version": "1.0.0",
+  "description": "Marketplace de serviços freelance completo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.2.2",
+    "bcryptjs": "^2.4.3",
+    "express-session": "^1.17.3",
+    "connect-sqlite3": "^0.9.13",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0"
+  }
+}
+
+=== .env.example ===
+PORT=3000
+SESSION_SECRET=sua-chave-secreta-muito-longa-e-aleatoria-aqui
+DATABASE_PATH=./database.sqlite
+
+=== server.js ===
+require('dotenv').config();
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const helmet = require('helmet');
+const path = require('path');
+const db = require('./database');
+
+const authRoutes = require('./routes/auth');
+const serviceRoutes = require('./routes/services');
+const contractRoutes = require('./routes/contracts');
+const adminRoutes = require('./routes/admin');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Segurança
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"]
+    }
+  }
+}));
+
+// Middlewares
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// Sessões
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.sqlite',
+    dir: './'
+  }),
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 dias
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production'
+  }
+}));
+
+// Rotas
+app.use('/api/auth', authRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/contracts', contractRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Servir HTML
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'index.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'admin.html'));
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Erro interno do servidor' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== database.js ===
+const Database = require('better-sqlite3');
+const path = require('path');
+const bcrypt = require('bcryptjs');
+
+const dbPath = process.env.DATABASE_PATH || './database.sqlite';
+const db = new Database(dbPath);
+
+// Habilitar foreign keys
+db.pragma('foreign_keys = ON');
+
+// Criar tabelas
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    is_admin INTEGER DEFAULT 0,
+    is_suspended INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    price REAL NOT NULL,
+    category TEXT NOT NULL,
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS contracts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_id INTEGER NOT NULL,
+    client_id INTEGER NOT NULL,
+    provider_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'completed', 'cancelled')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (provider_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_services_user ON services(user_id);
+  CREATE INDEX IF NOT EXISTS idx_services_status ON services(status);
+  CREATE INDEX IF NOT EXISTS idx_contracts_client ON contracts(client_id);
+  CREATE INDEX IF NOT EXISTS idx_contracts_provider ON contracts(provider_id);
+`);
+
+// Criar admin padrão se não existir
+const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@freelancehub.com');
+if (!adminExists) {
+  const hashedPassword = bcrypt.hashSync('admin123', 10);
+  db.prepare(`
+    INSERT INTO users (name, email, password, is_admin)
+    VALUES (?, ?, ?, 1)
+  `).run('Administrador', 'admin@freelancehub.com', hashedPassword);
+  console.log('✓ Conta admin criada: admin@freelancehub.com / admin123');
+}
+
+module.exports = db;
+
+=== middleware/auth.js ===
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.userId || !req.session.isAdmin) {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireAdmin };
+
+=== routes/auth.js ===
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const { body, validationResult } = require('express-validator');
+const db = require('../database');
+const router = express.Router();
+
+// Registro
+router.post('/register',
+  body('name').trim().isLength({ min: 2 }).escape(),
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, email, password } = req.body;
+
+    try {
+      const hashedPassword = bcrypt.hashSync(password, 10);
+      const result = db.prepare(
+        'INSERT INTO users (name, email, password) VALUES (?, ?, ?)'
+      ).run(name, email, hashedPassword);
+
+      req.session.userId = result.lastInsertRowid;
+      req.session.isAdmin = false;
+
+      res.json({ 
+        success: true, 
+        user: { id: result.lastInsertRowid, name, email, isAdmin: false } 
+      });
+    } catch (error) {
+      if (error.message.includes('UNIQUE')) {
+        return res.status(400).json({ error: 'Email já cadastrado' });
+      }
+      res.status(500).json({ error: 'Erro ao criar conta' });
+    }
+  }
+);
+
+// Login
+router.post('/login',
+  body('email').isEmail().normalizeEmail(),
+  body('password').exists(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
+    }
+
+    if (user.is_suspended) {
+      return res.status(403).json({ error: 'Conta suspensa' });
+    }
+
+    req.session.userId = user.id;
+    req.session.isAdmin = user.is_admin === 1;
+
+    res.json({ 
+      success: true, 
+      user: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        isAdmin: user.is_admin === 1 
+      } 
+    });
+  }
+);
+
+// Logout
+router.post('/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
+// Verificar sessão
+router.get('/me', (req, res) => {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+
+  const user = db.prepare('SELECT id, name, email, is_admin FROM users WHERE id = ?')
+    .get(req.session.userId);
+
+  if (!user) {
+    return res.status(404).json({ error: 'Usuário não encontrado' });
+  }
+
+  res.json({ 
+    user: { 
+      id: user.id, 
+      name: user.name, 
+      email: user.email, 
+      isAdmin: user.is_admin === 1 
+    } 
+  });
+});
+
+module.exports = router;
+
+=== routes/services.js ===
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const db = require('../database');
+const { requireAuth } = require('../middleware/auth');
+const router = express.Router();
+
+// Listar serviços aprovados (público)
+router.get('/', (req, res) => {
+  const services = db.prepare(`
+    SELECT s.*, u.name as provider_name 
+    FROM services s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.status = 'approved'
+    ORDER BY s.created_at DESC
+  `).all();
+  res.json(services);
+});
+
+// Meus serviços
+router.get('/my', requireAuth, (req, res) => {
+  const services = db.prepare(`
+    SELECT s.*, u.name as provider_name 
+    FROM services s
+    JOIN users u ON s.user_id = u.id
+    WHERE s.user_id = ?
+    ORDER BY s.created_at DESC
+  `).all(req.session.userId);
+  res.json(services);
+});
+
+// Criar serviço
+router.post('/', requireAuth,
+  body('title').trim().isLength({ min: 5 }).escape(),
+  body('description').trim().isLength({ min: 20 }).escape(),
+  body('price').isFloat({ min: 0 }),
+  body('category').trim().notEmpty().escape(),
+  (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { title, description, price, category } = req.body;
+
+    try {
+      const result = db.prepare(`
+        INSERT INTO services (user_id, title, description, price, category)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(req.session.userId, title, description, price, category);
+
+      res.json({ success: true, id: result.lastInsertRowid });
+    } catch (error) {
+      res.status(500).json({ error: 'Erro ao criar serviço' });
+    }
+  }
+);
+
+// Contratar serviço
+router.post('/:id/hire', requireAuth, (req, res) => {
+  const serviceId = req.params.id;
+
+  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
+
+  if (!service) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  if (service.status !== 'approved') {
+    return res.status(400).json({ error: 'Serviço não disponível' });
+  }
+
+  if (service.user_id === req.session.userId) {
+    return res.status(400).json({ error: 'Você não pode contratar seu próprio serviço' });
+  }
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO contracts (service_id, client_id, provider_id)
+      VALUES (?, ?, ?)
+    `).run(serviceId, req.session.userId, service.user_id);
+
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (error) {
+    res.status(500).json({ error: 'Erro ao contratar serviço' });
+  }
+});
+
+// Deletar serviço (apenas dono)
+router.delete('/:id', requireAuth, (req, res) => {
+  const service = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id);
+
+  if (!service) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  if (service.user_id !== req.session.userId) {
+    return res.status(403).json({ error: 'Sem permissão' });
+  }
+
+  db.prepare('DELETE FROM services WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+module.exports = router;
+
+=== routes/contracts.js ===
+const express = require('express');
+const db = require('../database');
+const { requireAuth } = require('../middleware/auth');
+const router = express.Router();
+
+// Meus contratos (como cliente ou fornecedor)
+router.get('/my', requireAuth, (req, res) => {
+  const contracts = db.prepare(`
+    SELECT 
+      c.*,
+      s.title as service_title,
+      s.price,
+      s.category,
+      client.name as client_name,
+      provider.name as provider_name
+    FROM contracts c
+    JOIN services s ON c.service_id = s.id
+    JOIN users client ON c.client_id = client.id
+    JOIN users provider ON c.provider_id = provider.id
+    WHERE c.client_id = ? OR c.provider_id = ?
+    ORDER BY c.created_at DESC
+  `).all(req.session.userId, req.session.userId);
+
+  res.json(contracts);
+});
+
+// Atualizar status do contrato
+router.patch('/:id', requireAuth, (req, res) => {
+  const { status } = req.body;
+  const contractId = req.params.id;
+
+  if (!['active', 'completed', 'cancelled'].includes(status)) {
+    return res.status(400).json({ error: 'Status inválido' });
+  }
+
+  const contract = db.prepare('SELECT * FROM contracts WHERE id = ?').get(contractId);
+
+  if (!contract) {
+    return res.status(404).json({ error: 'Contrato não encontrado' });
+  }
+
+  if (contract.client_id !== req.session.userId && contract.provider_id !== req.session.userId) {
+    return res.status(403).json({ error: 'Sem permissão' });
+  }
+
+  db.prepare('UPDATE contracts SET status = ? WHERE id = ?').run(status, contractId);
+  res.json({ success: true });
+});
+
+module.exports = router;
+
+=== routes/admin.js ===
+const express = require('express');
+const db = require('../database');
+const { requireAdmin } = require('../middleware/auth');
+const router = express.Router();
+
+// Todos os serviços
+router.get('/services', requireAdmin, (req, res) => {
+  const services = db.prepare(`
+    SELECT s.*, u.name as provider_name, u.email as provider_email
+    FROM services s
+    JOIN users u ON s.user_id = u.id
+    ORDER BY s.created_at DESC
+  `).all();
+  res.json(services);
+});
+
+// Aprovar serviço
+router.patch('/services/:id/approve', requireAdmin, (req, res) => {
+  db.prepare('UPDATE services SET status = ? WHERE id = ?').run('approved', req.params.id);
+  res.json({ success: true });
+});
+
+// Rejeitar serviço
+router.patch('/services/:id/reject', requireAdmin, (req, res) => {
+  db.prepare('UPDATE services SET status = ? WHERE id = ?').run('rejected', req.params.id);
+  res.json({ success: true });
+});
+
+// Deletar serviço
+router.delete('/services/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM services WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
+
+// Todos os usuários
+router.get('/users', requireAdmin, (req, res) => {
+  const users = db.prepare(`
+    SELECT id, name, email, is_admin, is_suspended, created_at
+    FROM users
+    ORDER BY created_at DESC
+  `).all();
+  res.json(users);
+});
+
+// Suspender/reativar usuário
+router.patch('/users/:id/toggle-suspend', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT is_suspended FROM users WHERE id = ?').get(req.params.id);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'Usuário não encontrado' });
+  }
+
+  const newStatus = user.is_suspended === 1 ? 0 : 1;
+  db.prepare('UPDATE users SET is_suspended = ? WHERE id = ?').run(newStatus, req.params.id);
+  
+  res.json({ success: true, suspended: newStatus === 1 });
+});
+
+// Todos os contratos
+router.get('/contracts', requireAdmin, (req, res) => {
+  const contracts = db.prepare(`
+    SELECT 
+      c.*,
+      s.title as service_title,
+      s.price,
+      client.name as client_name,
+      client.email as client_email,
+      provider.name as provider_name,
+      provider.email as provider_email
+    FROM contracts c
+    JOIN services s ON c.service_id = s.id
+    JOIN users client ON c.client_id = client.id
+    JOIN users provider ON c.provider_id = provider.id
+    ORDER BY c.created_at DESC
+  `).all();
+  res.json(contracts);
+});
+
+module.exports = router;
+
+=== public/js/main.js ===
+// Utilitários
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Erro na requisição');
+  }
+  
+  return response.json();
+}
+
+function showError(message) {
+  const alert = document.createElement('div');
+  alert.className = 'alert alert-error';
+  alert.textContent = message;
+  document.body.insertBefore(alert, document.body.firstChild);
+  setTimeout(() => alert.remove(), 5000);
+}
+
+function showSuccess(message) {
+  const alert = document.createElement('div');
+  alert.className = 'alert alert-success';
+  alert.textContent = message;
+  document.body.insertBefore(alert, document.body.firstChild);
+  setTimeout(() => alert.remove(), 5000);
+}
+
+function formatPrice(price) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(price);
+}
+
+function formatDate(date) {
+  return new Date(date).toLocaleDateString('pt-BR');
+}
+
+=== public/css/style.css ===
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #f5f7fa;
+  color: #333;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+header {
+  background: white;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  padding: 20px 0;
+  margin-bottom: 30px;
+}
+
+.header-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 24px;
+  font-weight: bold;
+  color: #2563eb;
+}
+
+nav {
+  display: flex;
+  gap: 20px;
+}
+
+nav a, nav button {
+  text-decoration: none;
+  color: #333;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+nav a:hover, nav button:hover {
+  background: #f3f4f6;
+}
+
+.btn {
+  background: #2563eb;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background 0.2s;
+}
+
+.btn:hover {
+  background: #1d4ed8;
+}
+
+.btn-secondary {
+  background: #6b7280;
+}
+
+.btn-secondary:hover {
+  background: #4b5563;
+}
+
+.btn-danger {
+  background: #dc2626;
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+}
+
+.btn-success {
+  background: #16a34a;
+}
+
+.btn-success:hover {
+  background: #15803d;
+}
+
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.card h3 {
+  margin-bottom: 10px;
+  color: #1f2937;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.badge-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge-approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge-active {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+form {
+  background: white;
+  padding: 30px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #374151;
+}
+
+input, textarea, select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 16px;
+  font-family: inherit;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 15px 20px;
+  border-radius: 6px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  z-index: 1000;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.alert-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border-left: 4px solid #dc2626;
+}
+
+.alert-success {
+  background: #d1fae5;
+  color: #065f46;
+  border-left: 4px solid #16a34a;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.service-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.service-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.service-card h3 {
+  color: #1f2937;
+  margin-bottom: 10px;
+}
+
+.service-card .price {
+  font-size: 24px;
+  font-weight: bold;
+  color: #2563eb;
+  margin: 10px 0;
+}
+
+.service-card .category {
+  display: inline-block;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.tab {
+  padding: 10px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 16px;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.tab.active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+th, td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+
+tr:hover {
+  background: #f9fafb;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.actions button {
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.hero {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 12px;
+  margin-bottom: 40px;
+}
+
+.hero h1 {
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.hero p {
+  font-size: 20px;
+  opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+  
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  
+  table {
+    font-size: 14px;
+  }
+  
+  th, td {
+    padding: 8px;
+  }
+}
+
+=== views/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreelanceHub - Marketplace de Serviços</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub</div>
+      <nav>
+        <a href="#" onclick="showHome(); return false;">Início</a>
+        <span id="authLinks">
+          <a href="#" onclick="showLogin(); return false;">Entrar</a>
+          <a href="#" onclick="showRegister(); return false;">Cadastrar</a>
+        </span>
+        <span id="userLinks" class="hidden">
+          <a href="/dashboard">Dashboard</a>
+          <button onclick="logout()">Sair</button>
+        </span>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- Home -->
+    <div id="homeSection">
+      <div class="hero">
+        <h1>Encontre os melhores freelancers</h1>
+        <p>Publique seus serviços ou contrate profissionais qualificados</p>
+      </div>
+
+      <h2>Serviços Disponíveis</h2>
+      <div id="servicesList" class="grid"></div>
+    </div>
+
+    <!-- Login -->
+    <div id="loginSection" class="hidden">
+      <h2 style="text-align: center; margin-bottom: 30px;">Entrar</h2>
+      <form onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" name="password" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Entrar</button>
+        <p style="text-align: center; margin-top: 15px;">
+          Não tem conta? <a href="#" onclick="showRegister(); return false;">Cadastre-se</a>
+        </p>
+      </form>
+    </div>
+
+    <!-- Register -->
+    <div id="registerSection" class="hidden">
+      <h2 style="text-align: center; margin-bottom: 30px;">Criar Conta</h2>
+      <form onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" name="email" required>
+        </div>
+        <div class="form-group">
+          <label>Senha (mínimo 6 caracteres)</label>
+          <input type="password" name="password" minlength="6" required>
+        </div>
+        <button type="submit" class="btn" style="width: 100%;">Cadastrar</button>
+        <p style="text-align: center; margin-top: 15px;">
+          Já tem conta? <a href="#" onclick="showLogin(); return false;">Entre aqui</a>
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        document.getElementById('authLinks').classList.add('hidden');
+        document.getElementById('userLinks').classList.remove('hidden');
+      } catch (error) {
+        // Não autenticado
+      }
+      loadServices();
+    }
+
+    async function loadServices() {
+      try {
+        const services = await api('/api/services');
+        const container = document.getElementById('servicesList');
+        
+        if (services.length === 0) {
+          container.innerHTML = '<p style="text-align: center; grid-column: 1/-1;">Nenhum serviço disponível no momento.</p>';
+          return;
+        }
+
+        container.innerHTML = services.map(service => `
+          <div class="service-card">
+            <span class="category">${service.category}</span>
+            <h3>${service.title}</h3>
+            <p>${service.description}</p>
+            <div class="price">${formatPrice(service.price)}</div>
+            <p><small>Por: ${service.provider_name}</small></p>
+            ${currentUser ? `
+              <button class="btn" onclick="hireService(${service.id})" style="width: 100%; margin-top: 10px;">
+                Contratar
+              </button>
+            ` : `
+              <button class="btn" onclick="showLogin()" style="width: 100%; margin-top: 10px;">
+                Faça login para contratar
+              </button>
+            `}
+          </div>
+        `).join('');
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        email: form.email.value,
+        password: form.password.value
+      };
+
+      try {
+        const result = await api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+
+        if (result.user.isAdmin) {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/dashboard';
+        }
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        name: form.name.value,
+        email: form.email.value,
+        password: form.password.value
+      };
+
+      try {
+        await api('/api/auth/register', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        window.location.href = '/dashboard';
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.reload();
+    }
+
+    async function hireService(id) {
+      if (!confirm('Deseja contratar este serviço?')) return;
+
+      try {
+        await api(`/api/services/${id}/hire`, { method: 'POST' });
+        showSuccess('Serviço contratado com sucesso!');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showHome() {
+      document.getElementById('homeSection').classList.remove('hidden');
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('registerSection').classList.add('hidden');
+    }
+
+    function showLogin() {
+      document.getElementById('homeSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.remove('hidden');
+      document.getElementById('registerSection').classList.add('hidden');
+    }
+
+    function showRegister() {
+      document.getElementById('homeSection').classList.add('hidden');
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('registerSection').classList.remove('hidden');
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
+=== views/dashboard.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - FreelanceHub</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub</div>
+      <nav>
+        <a href="/">Início</a>
+        <span id="userName"></span>
+        <button onclick="logout()">Sair</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('services')">Meus Serviços</button>
+      <button class="tab" onclick="showTab('contracts')">Meus Contratos</button>
+      <button class="tab" onclick="showTab('new')">Publicar Serviço</button>
+    </div>
+
+    <!-- Meus Serviços -->
+    <div id="servicesTab" class="tab-content active">
+      <h2>Meus Serviços</h2>
+      <div id="myServices"></div>
+    </div>
+
+    <!-- Meus Contratos -->
+    <div id="contractsTab" class="tab-content">
+      <h2>Meus Contratos</h2>
+      <div id="myContracts"></div>
+    </div>
+
+    <!-- Novo Serviço -->
+    <div id="newTab" class="tab-content">
+      <h2>Publicar Novo Serviço</h2>
+      <form onsubmit="handleNewService(event)">
+        <div class="form-group">
+          <label>Título do Serviço</label>
+          <input type="text" name="title" minlength="5" required placeholder="Ex: Design de Logo Profissional">
+        </div>
+        <div class="form-group">
+          <label>Descrição Detalhada</label>
+          <textarea name="description" minlength="20" required placeholder="Descreva o que você oferece..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Preço (R$)</label>
+          <input type="number" name="price" step="0.01" min="0" required placeholder="150.00">
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select name="category" required>
+            <option value="">Selecione...</option>
+            <option value="Design">Design</option>
+            <option value="Programação">Programação</option>
+            <option value="Marketing">Marketing</option>
+            <option value="Redação">Redação</option>
+            <option value="Tradução">Tradução</option>
+            <option value="Vídeo/Áudio">Vídeo/Áudio</option>
+            <option value="Consultoria">Consultoria</option>
+            <option value="Outros">Outros</option>
+          </select>
+        </div>
+        <button type="submit" class="btn">Publicar Serviço</button>
+        <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
+          * Seu serviço será analisado por um administrador antes de ficar visível.
+        </p>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        document.getElementById('userName').textContent = currentUser.name;
+        
+        if (currentUser.isAdmin) {
+          window.location.href = '/admin';
+          return;
+        }
+
+        loadMyServices();
+        loadMyContracts();
+      } catch (error) {
+        window.location.href = '/';
+      }
+    }
+
+    async function loadMyServices() {
+      try {
+        const services = await api('/api/services/my');
+        const container = document.getElementById('myServices');
+
+        if (services.length === 0) {
+          container.innerHTML = '<div class="card"><p>Você ainda não publicou nenhum serviço.</p></div>';
+          return;
+        }
+
+        container.innerHTML = services.map(service => `
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <span class="badge badge-${service.status}">${getStatusText(service.status)}</span>
+                <h3 style="margin-top: 10px;">${service.title}</h3>
+                <p>${service.description}</p>
+                <p style="margin-top: 10px;"><strong>Preço:</strong> ${formatPrice(service.price)}</p>
+                <p><strong>Categoria:</strong> ${service.category}</p>
+                <p><small>Publicado em: ${formatDate(service.created_at)}</small></p>
+              </div>
+              <button class="btn btn-danger" onclick="deleteService(${service.id})">Excluir</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function loadMyContracts() {
+      try {
+        const contracts = await api('/api/contracts/my');
+        const container = document.getElementById('myContracts');
+
+        if (contracts.length === 0) {
+          container.innerHTML = '<div class="card"><p>Você ainda não possui contratos.</p></div>';
+          return;
+        }
+
+        container.innerHTML = contracts.map(contract => {
+          const isClient = contract.client_id === currentUser.id;
+          const role = isClient ? 'Cliente' : 'Fornecedor';
+          const otherParty = isClient ? contract.provider_name : contract.client_name;
+
+          return `
+            <div class="card">
+              <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                  <span class="badge badge-${contract.status}">${getContractStatusText(contract.status)}</span>
+                  <span class="badge badge-active" style="margin-left: 10px;">${role}</span>
+                  <h3 style="margin-top: 10px;">${contract.service_title}</h3>
+                  <p><strong>${isClient ? 'Fornecedor' : 'Cliente'}:</strong> ${otherParty}</p>
+                  <p><strong>Valor:</strong> ${formatPrice(contract.price)}</p>
+                  <p><strong>Categoria:</strong> ${contract.category}</p>
+                  <p><small>Contratado em: ${formatDate(contract.created_at)}</small></p>
+                </div>
+                <div class="actions">
+                  ${contract.status === 'active' ? `
+                    <button class="btn btn-success" onclick="updateContractStatus(${contract.id}, 'completed')">
+                      Concluir
+                    </button>
+                    <button class="btn btn-danger" onclick="updateContractStatus(${contract.id}, 'cancelled')">
+                      Cancelar
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (error) {
+        showError('Erro ao carregar contratos');
+      }
+    }
+
+    async function handleNewService(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        title: form.title.value,
+        description: form.description.value,
+        price: parseFloat(form.price.value),
+        category: form.category.value
+      };
+
+      try {
+        await api('/api/services', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        showSuccess('Serviço publicado! Aguarde aprovação do administrador.');
+        form.reset();
+        showTab('services');
+        loadMyServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function deleteService(id) {
+      if (!confirm('Deseja realmente excluir este serviço?')) return;
+
+      try {
+        await api(`/api/services/${id}`, { method: 'DELETE' });
+        showSuccess('Serviço excluído com sucesso');
+        loadMyServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function updateContractStatus(id, status) {
+      const statusText = status === 'completed' ? 'concluir' : 'cancelar';
+      if (!confirm(`Deseja realmente ${statusText} este contrato?`)) return;
+
+      try {
+        await api(`/api/contracts/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status })
+        });
+        showSuccess('Status do contrato atualizado');
+        loadMyContracts();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+    }
+
+    function getStatusText(status) {
+      const texts = {
+        pending: 'Aguardando Aprovação',
+        approved: 'Aprovado',
+        rejected: 'Rejeitado'
+      };
+      return texts[status] || status;
+    }
+
+    function getContractStatusText(status) {
+      const texts = {
+        active: 'Ativo',
+        completed: 'Concluído',
+        cancelled: 'Cancelado'
+      };
+      return texts[status] || status;
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
+=== views/admin.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - FreelanceHub</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <div class="logo">FreelanceHub - Admin</div>
+      <nav>
+        <a href="/">Ver Site</a>
+        <span id="userName"></span>
+        <button onclick="logout()">Sair</button>
+      </nav>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('services')">Serviços</button>
+      <button class="tab" onclick="showTab('users')">Usuários</button>
+      <button class="tab" onclick="showTab('contracts')">Contratos</button>
+    </div>
+
+    <!-- Serviços -->
+    <div id="servicesTab" class="tab-content active">
+      <h2>Gerenciar Serviços</h2>
+      <div id="adminServices"></div>
+    </div>
+
+    <!-- Usuários -->
+    <div id="usersTab" class="tab-content">
+      <h2>Gerenciar Usuários</h2>
+      <div id="adminUsers"></div>
+    </div>
+
+    <!-- Contratos -->
+    <div id="contractsTab" class="tab-content">
+      <h2>Todos os Contratos</h2>
+      <div id="adminContracts"></div>
+    </div>
+  </div>
+
+  <script src="/js/main.js"></script>
+  <script>
+    let currentUser = null;
+
+    async function init() {
+      try {
+        const data = await api('/api/auth/me');
+        currentUser = data.user;
+        
+        if (!currentUser.isAdmin) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
+        document.getElementById('userName').textContent = currentUser.name;
+        loadServices();
+        loadUsers();
+        loadContracts();
+      } catch (error) {
+        window.location.href = '/';
+      }
+    }
+
+    async function loadServices() {
+      try {
+        const services = await api('/api/admin/services');
+        const container = document.getElementById('adminServices');
+
+        if (services.length === 0) {
+          container.innerHTML = '<div class="card"><p>Nenhum serviço cadastrado.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Título</th>
+                <th>Prestador</th>
+                <th>Categoria</th>
+                <th>Preço</th>
+                <th>Status</th>
+                <th>Data</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${services.map(service => `
+                <tr>
+                  <td>${service.title}</td>
+                  <td>${service.provider_name}<br><small>${service.provider_email}</small></td>
+                  <td>${service.category}</td>
+                  <td>${formatPrice(service.price)}</td>
+                  <td><span class="badge badge-${service.status}">${getStatusText(service.status)}</span></td>
+                  <td>${formatDate(service.created_at)}</td>
+                  <td>
+                    <div class="actions">
+                      ${service.status === 'pending' ? `
+                        <button class="btn btn-success" onclick="approveService(${service.id})">Aprovar</button>
+                        <button class="btn btn-secondary" onclick="rejectService(${service.id})">Rejeitar</button>
+                      ` : ''}
+                      <button class="btn btn-danger" onclick="deleteService(${service.id})">Excluir</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar serviços');
+      }
+    }
+
+    async function loadUsers() {
+      try {
+        const users = await api('/api/admin/users');
+        const container = document.getElementById('adminUsers');
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Email</th>
+                <th>Tipo</th>
+                <th>Status</th>
+                <th>Cadastro</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${users.map(user => `
+                <tr>
+                  <td>${user.name}</td>
+                  <td>${user.email}</td>
+                  <td>${user.is_admin ? '<span class="badge badge-active">Admin</span>' : 'Usuário'}</td>
+                  <td>${user.is_suspended ? '<span class="badge badge-rejected">Suspenso</span>' : '<span class="badge badge-approved">Ativo</span>'}</td>
+                  <td>${formatDate(user.created_at)}</td>
+                  <td>
+                    ${!user.is_admin ? `
+                      <button class="btn ${user.is_suspended ? 'btn-success' : 'btn-danger'}" 
+                              onclick="toggleSuspend(${user.id})">
+                        ${user.is_suspended ? 'Reativar' : 'Suspender'}
+                      </button>
+                    ` : '<em>Admin</em>'}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar usuários');
+      }
+    }
+
+    async function loadContracts() {
+      try {
+        const contracts = await api('/api/admin/contracts');
+        const container = document.getElementById('adminContracts');
+
+        if (contracts.length === 0) {
+          container.innerHTML = '<div class="card"><p>Nenhum contrato registrado.</p></div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Serviço</th>
+                <th>Cliente</th>
+                <th>Prestador</th>
+                <th>Valor</th>
+                <th>Status</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${contracts.map(contract => `
+                <tr>
+                  <td>${contract.service_title}</td>
+                  <td>${contract.client_name}<br><small>${contract.client_email}</small></td>
+                  <td>${contract.provider_name}<br><small>${contract.provider_email}</small></td>
+                  <td>${formatPrice(contract.price)}</td>
+                  <td><span class="badge badge-${contract.status}">${getContractStatusText(contract.status)}</span></td>
+                  <td>${formatDate(contract.created_at)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        showError('Erro ao carregar contratos');
+      }
+    }
+
+    async function approveService(id) {
+      try {
+        await api(`/api/admin/services/${id}/approve`, { method: 'PATCH' });
+        showSuccess('Serviço aprovado');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function rejectService(id) {
+      try {
+        await api(`/api/admin/services/${id}/reject`, { method: 'PATCH' });
+        showSuccess('Serviço rejeitado');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function deleteService(id) {
+      if (!confirm('Deseja realmente excluir este serviço?')) return;
+
+      try {
+        await api(`/api/admin/services/${id}`, { method: 'DELETE' });
+        showSuccess('Serviço excluído');
+        loadServices();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    async function toggleSuspend(id) {
+      try {
+        const result = await api(`/api/admin/users/${id}/toggle-suspend`, { method: 'PATCH' });
+        showSuccess(result.suspended ? 'Usuário suspenso' : 'Usuário reativado');
+        loadUsers();
+      } catch (error) {
+        showError(error.message);
+      }
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tab + 'Tab').classList.add('active');
+    }
+
+    function getStatusText(status) {
+      const texts = {
+        pending: 'Pendente',
+        approved: 'Aprovado',
+        rejected: 'Rejeitado'
+      };
+      return texts[status] || status;
+    }
+
+    function getContractStatusText(status) {
+      const texts = {
+        active: 'Ativo',
+        completed: 'Concluído',
+        cancelled: 'Cancelado'
+      };
+      return texts[status] || status;
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/';
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
+=== .gitignore ===
+node_modules/
+*.sqlite
+.env
+.DS_Store

@@ -1,0 +1,163 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --primary: #4a6fa5;
+  --primary-dark: #3a5a8a;
+  --bg: #f4f1ea;
+  --card: #ffffff;
+  --text: #2b2b2b;
+  --muted: #777;
+  --danger: #c0392b;
+  --success: #27ae60;
+  --warning: #e67e22;
+  --border: #ddd6c8;
+}
+
+body {
+  font-family: 'Segoe UI', Georgia, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+/* ---------- Autenticação ---------- */
+#auth-screen {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 20px;
+  background: linear-gradient(135deg, #4a6fa5 0%, #2c3e50 100%);
+}
+.auth-box {
+  background: var(--card); border-radius: 12px; padding: 36px;
+  width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,.3);
+}
+.auth-box h1 { text-align: center; font-size: 1.7rem; margin-bottom: 6px; }
+.subtitle { text-align: center; color: var(--muted); margin-bottom: 22px; font-size: .95rem; }
+
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab {
+  flex: 1; padding: 10px; border: 1px solid var(--border); background: #f8f6f1;
+  border-radius: 8px; cursor: pointer; font-size: .95rem;
+}
+.tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+form label { display: block; margin: 12px 0 4px; font-size: .9rem; font-weight: 600; }
+form input, form select, form textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 1rem; background: #fffdf9;
+}
+form input:focus, form select:focus, form textarea:focus {
+  outline: 2px solid var(--primary); border-color: var(--primary);
+}
+
+.btn {
+  padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer;
+  font-size: .95rem; background: #e8e4da; color: var(--text);
+  transition: filter .15s;
+}
+.btn:hover { filter: brightness(.93); }
+.btn.primary { background: var(--primary); color: #fff; }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.success { background: var(--success); color: #fff; }
+.btn.warning { background: var(--warning); color: #fff; }
+.btn.full { width: 100%; margin-top: 18px; padding: 12px; font-size: 1.05rem; }
+.btn.small { padding: 6px 12px; font-size: .85rem; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.hint { margin-top: 14px; font-size: .82rem; color: var(--muted); text-align: center; }
+.msg { margin-top: 14px; text-align: center; min-height: 20px; font-weight: 600; }
+.msg.error { color: var(--danger); }
+.msg.ok { color: var(--success); }
+
+/* ---------- Topo ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: #2c3e50; color: #fff; padding: 12px 20px;
+}
+.topbar .logo { font-size: 1.2rem; font-weight: 700; margin-right: auto; }
+#user-info { font-size: .95rem; opacity: .9; }
+
+.menu {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  background: #3d5266; padding: 8px 20px;
+}
+.menu button {
+  background: transparent; color: #cfd8e3; border: none; padding: 8px 16px;
+  border-radius: 6px; cursor: pointer; font-size: .95rem;
+}
+.menu button:hover { background: rgba(255,255,255,.12); color: #fff; }
+.menu button.active { background: var(--primary); color: #fff; }
+
+/* ---------- Conteúdo ---------- */
+main { max-width: 1100px; margin: 24px auto; padding: 0 16px 40px; }
+
+.search-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.search-bar input, .search-bar select {
+  flex: 1; min-width: 200px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 8px; font-size: 1rem;
+}
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px; display: flex; flex-direction: column; gap: 8px;
+}
+.card h3 { font-size: 1.1rem; }
+.card .meta { color: var(--muted); font-size: .88rem; }
+.card .desc { font-size: .9rem; color: #555; flex: 1; }
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: .78rem; font-weight: 700;
+}
+.badge.green { background: #d5f5e3; color: #1e8449; }
+.badge.red { background: #fadbd8; color: #c0392b; }
+.badge.orange { background: #fdebd0; color: #ca6f1e; }
+.badge.blue { background: #d6eaf8; color: #2471a3; }
+.badge.gray { background: #e5e8e8; color: #5d6d7e; }
+
+/* ---------- Tabelas ---------- */
+table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 10px; overflow: hidden; }
+th, td { padding: 11px 13px; text-align: left; border-bottom: 1px solid var(--border); font-size: .92rem; }
+th { background: #efe9dc; font-weight: 700; }
+tr:last-child td { border-bottom: none; }
+tr.overdue-row { background: #fdf1ef; }
+
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+
+.section-title { font-size: 1.35rem; margin-bottom: 14px; }
+.empty { text-align: center; color: var(--muted); padding: 40px 10px; font-size: 1rem; }
+
+/* ---------- Modal ---------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50;
+}
+.modal-box {
+  background: var(--card); border-radius: 12px; padding: 28px;
+  width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; position: relative;
+}
+.modal-close {
+  position: absolute; top: 10px; right: 12px; background: none; border: none;
+  font-size: 1.2rem; cursor: pointer; color: var(--muted);
+}
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #2c3e50; color: #fff; padding: 13px 26px; border-radius: 30px;
+  font-size: .95rem; z-index: 100; box-shadow: 0 6px 20px rgba(0,0,0,.3);
+  max-width: 90vw; text-align: center;
+}
+.toast.error { background: var(--danger); }
+.toast.ok { background: var(--success); }
+
+.alert-box {
+  background: #fdebd0; border: 1px solid var(--warning); border-radius: 10px;
+  padding: 14px 18px; margin-bottom: 18px; color: #7e5109;
+}
+
+@media (max-width: 600px) {
+  .topbar { gap: 8px; }
+  th, td { padding: 8px; font-size: .85rem; }
+}

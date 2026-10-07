@@ -1,0 +1,1616 @@
+=== README.md ===
+# 🍽️ Sabor & Arte - Sistema de Pedidos para Restaurante
+
+Este é um sistema completo de pedidos para restaurante, pronto para funcionar na internet. Ele já vem com tudo dentro do próprio site: não precisa contratar banco de dados, nem conectar outros serviços.
+
+## ✅ O que este sistema faz
+
+### 👤 Para os clientes
+- Criar conta e entrar com login e senha
+- Ver o cardápio com fotos, descrições e preços
+- Adicionar pratos ao carrinho e finalizar pedidos
+- Acompanhar a situação dos seus pedidos (Recebido → Preparando → A caminho → Entregue)
+- Ver o histórico de todos os pedidos já feitos
+- Cancelar pedidos que ainda não começaram a ser preparados
+
+### 👔 Para o gerente
+- Cadastrar, editar e remover pratos do cardápio
+- Ver todos os pedidos de todos os clientes
+- Mudar a situação dos pedidos (ex.: marcar como "Preparando", "Saiu para entrega", etc.)
+- Ver estatísticas do dia (faturamento, total de pedidos)
+
+## 🔐 Contas já criadas (você pode criar outras)
+
+| Tipo | E-mail | Senha |
+|------|--------|-------|
+| Gerente | `gerente@restaurante.com` | `admin123` |
+| Cliente (teste) | `joao@email.com` | `123456` |
+
+> 💡 **Dica:** depois de entrar como gerente, você pode editar o cardápio à vontade. Qualquer pessoa pode criar uma conta de cliente na tela inicial.
+
+## 🚀 Como colocar no ar (funcionando de verdade na internet)
+
+O jeito mais fácil é usar o **Render** (gratuito). Você não precisa instalar nada no seu computador, só precisa de uma conta no GitHub e no Render.
+
+### Passo 1: Colocar os arquivos no GitHub
+1. Crie uma conta gratuita em [github.com](https://github.com) (se não tiver)
+2. Clique em **"New repository"** (Novo repositório)
+3. Dê um nome, por exemplo: `meu-restaurante`
+4. Deixe como **Public** e clique em **"Create repository"**
+5. Na página que abrir, clique em **"uploading an existing file"**
+6. Arraste todos os arquivos deste projeto (`server.js`, `package.json`, `README.md` e a pasta `public` inteira) para a página
+7. Clique no botão verde **"Commit changes"** no final da página
+
+### Passo 2: Colocar no ar com o Render (gratuito)
+1. Crie uma conta gratuita em [render.com](https://render.com) (pode entrar com a conta do GitHub)
+2. No painel, clique em **"New +"** → **"Web Service"**
+3. Escolha **"Build and deploy from a Git repository"** e clique em **Next**
+4. Conecte sua conta do GitHub e selecione o repositório `meu-restaurante`
+5. Preencha assim:
+   - **Name:** `meu-restaurante` (será o endereço do site)
+   - **Region:** deixe o padrão
+   - **Branch:** `main`
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+   - **Instance Type:** selecione **Free**
+6. Clique em **"Create Web Service"**
+7. Aguarde 2 a 5 minutos. Quando aparecer **"Live"**, seu site está no ar! 🎉
+8. O endereço será algo como: `https://meu-restaurante.onrender.com` — é só mandar esse link para os clientes!
+
+### ⚠️ Importante sobre os dados
+Os dados ficam salvos em um arquivo chamado `database.json` dentro do servidor. No plano gratuito do Render, se o servidor for reiniciado do zero (raro), os dados voltam ao padrão. Para uso profissional intenso, considere o plano pago do Render com "Disco Persistente" (USD ~7/mês) — aí os dados ficam 100% garantidos para sempre.
+
+## 💻 Como testar no seu próprio computador (opcional)
+
+Se você quiser testar antes de colocar no ar:
+
+1. Instale o **Node.js** no seu computador: baixe em [nodejs.org](https://nodejs.org) (versão LTS, clique em Next, Next, Finish)
+2. Baixe os arquivos deste projeto em uma pasta, por exemplo `C:\meu-restaurante`
+3. Abra o **Prompt de Comando** (Windows) ou **Terminal** (Mac/Linux) dentro dessa pasta
+4. Digite os comandos abaixo, um de cada vez:
+
+```bash
+npm install
+npm start
+```
+
+5. Abra o navegador e acesse: **http://localhost:3000**
+
+## 🛠️ Como usar depois de no ar
+
+1. **Primeiro acesso:** entre como gerente (`gerente@restaurante.com` / `admin123`) e personalize o cardápio com os pratos do seu restaurante (você pode colocar link de fotos ou deixar sem foto)
+2. **Clientes:** eles acessam o link do site, clicam em "Criar conta" e já podem pedir
+3. **Pedidos:** quando um cliente fizer um pedido, ele aparece na aba "Pedidos" do gerente na hora (atualiza sozinho a cada 10 segundos)
+4. **Situação:** o gerente clica nos botões para avançar o pedido: Recebido → Preparando → Pronto / A caminho → Entregue
+
+## 📁 Arquivos do projeto
+- `server.js` — o "cérebro" do site (servidor, contas, pedidos, cardápio)
+- `package.json` — lista de componentes necessários
+- `public/index.html` — a página que os usuários veem (visual do site)
+
+Qualquer dúvida, basta seguir os passos acima com calma. Bom apetite e boas vendas! 🍕
+
+=== package.json ===
+{
+  "name": "restaurante-pedidos",
+  "version": "1.0.0",
+  "description": "Sistema completo de pedidos para restaurante - tudo em um so site",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3"
+  }
+}
+
+=== server.js ===
+// ============================================================
+// 🍽️ SABOR & ARTE - Sistema de Pedidos para Restaurante
+// Servidor completo: contas, cardápio, pedidos e painel do gerente
+// Tudo salvo em arquivo local (database.json) - sem serviços externos
+// ============================================================
+
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DB_FILE = path.join(__dirname, 'database.json');
+
+// ------------------------------------------------------------
+// 📦 BANCO DE DADOS EM ARQUIVO (tudo fica salvo aqui)
+// ------------------------------------------------------------
+
+function criarBancoInicial() {
+  const senhaGerente = bcrypt.hashSync('admin123', 10);
+  const senhaCliente = bcrypt.hashSync('123456', 10);
+  return {
+    usuarios: [
+      { id: 1, nome: 'Gerente', email: 'gerente@restaurante.com', senha: senhaGerente, papel: 'gerente' },
+      { id: 2, nome: 'João Cliente', email: 'joao@email.com', senha: senhaCliente, papel: 'cliente' }
+    ],
+    pratos: [
+      { id: 1, nome: 'Pizza Margherita', descricao: 'Molho de tomate, muçarela de búfala, manjericão fresco e azeite', preco: 42.90, categoria: 'Pizzas', foto: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=600&q=80', ativo: true },
+      { id: 2, nome: 'Lasanha à Bolonhesa', descricao: 'Massa fresca em camadas com molho bolonhesa e queijo gratinado', preco: 38.50, categoria: 'Massas', foto: 'https://images.unsplash.com/photo-1619895092538-128341789043?w=600&q=80', ativo: true },
+      { id: 3, nome: 'Hambúrguer Artesanal', descricao: 'Blend 180g, queijo cheddar, bacon, alface, tomate e pão brioche', preco: 32.90, categoria: 'Lanches', foto: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80', ativo: true },
+      { id: 4, nome: 'Salmão Grelhado', descricao: 'Filé de salmão com legumes salteados e arroz de limão', preco: 54.90, categoria: 'Pratos', foto: 'https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600&q=80', ativo: true },
+      { id: 5, nome: 'Risoto de Cogumelos', descricao: 'Arroz arbóreo cremoso com mix de cogumelos e parmesão', preco: 46.00, categoria: 'Pratos', foto: 'https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=600&q=80', ativo: true },
+      { id: 6, nome: 'Salada Caesar', descricao: 'Alface romana, frango grelhado, croutons e molho caesar', preco: 28.90, categoria: 'Saladas', foto: 'https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=600&q=80', ativo: true },
+      { id: 7, nome: 'Brownie com Sorvete', descricao: 'Brownie quente de chocolate com bola de sorvete de creme', preco: 19.90, categoria: 'Sobremesas', foto: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=600&q=80', ativo: true },
+      { id: 8, nome: 'Suco Natural de Laranja', descricao: 'Suco de laranja fresquinho, feito na hora - 500ml', preco: 9.90, categoria: 'Bebidas', foto: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=600&q=80', ativo: true },
+      { id: 9, nome: 'Refrigerante Lata', descricao: 'Coca-Cola, Guaraná ou Fanta - lata 350ml gelada', preco: 6.50, categoria: 'Bebidas', foto: 'https://images.unsplash.com/photo-1581636625402-29b2a704ef13?w=600&q=80', ativo: true },
+      { id: 10, nome: 'Espaguete Carbonara', descricao: 'Massa italiana com bacon, gema de ovo, parmesão e pimenta do reino', preco: 36.90, categoria: 'Massas', foto: 'https://images.unsplash.com/photo-1612874742237-6526221588e3?w=600&q=80', ativo: true }
+    ],
+    pedidos: [],
+    proximoIdUsuario: 3,
+    proximoIdPrato: 11,
+    proximoIdPedido: 1
+  };
+}
+
+function carregarBanco() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const dados = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      // Garante que todas as chaves existem (proteção contra arquivo corrompido)
+      const inicial = criarBancoInicial();
+      return {
+        usuarios: dados.usuarios || inicial.usuarios,
+        pratos: dados.pratos || inicial.pratos,
+        pedidos: dados.pedidos || inicial.pedidos,
+        proximoIdUsuario: dados.proximoIdUsuario || inicial.proximoIdUsuario,
+        proximoIdPrato: dados.proximoIdPrato || inicial.proximoIdPrato,
+        proximoIdPedido: dados.proximoIdPedido || inicial.proximoIdPedido
+      };
+    }
+  } catch (erro) {
+    console.log('⚠️ Erro ao ler banco de dados, criando novo:', erro.message);
+  }
+  const novo = criarBancoInicial();
+  salvarBanco(novo);
+  return novo;
+}
+
+let dbCarregado = null;
+let salvamentoPendente = false;
+
+function db() {
+  if (!dbCarregado) dbCarregado = carregarBanco();
+  return dbCarregado;
+}
+
+function salvarBanco(dados) {
+  if (dados) dbCarregado = dados;
+  if (salvamentoPendente) return;
+  salvamentoPendente = true;
+  setImmediate(() => {
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(dbCarregado, null, 2));
+    } catch (erro) {
+      console.log('⚠️ Erro ao salvar banco:', erro.message);
+    }
+    salvamentoPendente = false;
+  });
+}
+
+// ------------------------------------------------------------
+// ⚙️ CONFIGURAÇÃO DO SERVIDOR
+// ------------------------------------------------------------
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'sabor-e-arte-chave-secreta-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 7 * 24 * 60 * 60 * 1000, // sessão dura 7 dias
+    httpOnly: true,
+    secure: false, // Render já cuida do HTTPS na entrada
+    sameSite: 'lax'
+  }
+}));
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ------------------------------------------------------------
+// 🛡️ FUNÇÕES DE PROTEÇÃO
+// ------------------------------------------------------------
+
+function exigirLogin(req, res, next) {
+  if (!req.session.usuarioId) {
+    return res.status(401).json({ erro: 'Você precisa entrar na sua conta primeiro.' });
+  }
+  next();
+}
+
+function exigirGerente(req, res, next) {
+  if (!req.session.usuarioId) {
+    return res.status(401).json({ erro: 'Você precisa entrar na sua conta primeiro.' });
+  }
+  const usuario = db().usuarios.find(u => u.id === req.session.usuarioId);
+  if (!usuario || usuario.papel !== 'gerente') {
+    return res.status(403).json({ erro: 'Somente o gerente pode fazer isso.' });
+  }
+  next();
+}
+
+function usuarioAtual(req) {
+  return db().usuarios.find(u => u.id === req.session.usuarioId);
+}
+
+function limparTexto(texto, tamanhoMax = 500) {
+  if (typeof texto !== 'string') return '';
+  return texto.trim().slice(0, tamanhoMax);
+}
+
+// ------------------------------------------------------------
+// 👤 ROTAS DE CONTA (cadastro, entrar, sair)
+// ------------------------------------------------------------
+
+app.post('/api/cadastro', (req, res) => {
+  const nome = limparTexto(req.body.nome, 100);
+  const email = limparTexto(req.body.email, 150).toLowerCase();
+  const senha = String(req.body.senha || '');
+
+  if (!nome || nome.length < 2) {
+    return res.status(400).json({ erro: 'Informe seu nome completo.' });
+  }
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    return res.status(400).json({ erro: 'Informe um e-mail válido.' });
+  }
+  if (senha.length < 6) {
+    return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
+  }
+  if (db().usuarios.find(u => u.email === email)) {
+    return res.status(400).json({ erro: 'Este e-mail já está cadastrado. Tente entrar.' });
+  }
+
+  const novoUsuario = {
+    id: db().proximoIdUsuario++,
+    nome,
+    email,
+    senha: bcrypt.hashSync(senha, 10),
+    papel: 'cliente'
+  };
+  db().usuarios.push(novoUsuario);
+  salvarBanco();
+
+  req.session.usuarioId = novoUsuario.id;
+  res.json({ ok: true, usuario: { id: novoUsuario.id, nome, email, papel: 'cliente' } });
+});
+
+app.post('/api/entrar', (req, res) => {
+  const email = limparTexto(req.body.email, 150).toLowerCase();
+  const senha = String(req.body.senha || '');
+
+  const usuario = db().usuarios.find(u => u.email === email);
+  if (!usuario || !bcrypt.compareSync(senha, usuario.senha)) {
+    return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+  }
+
+  req.session.usuarioId = usuario.id;
+  res.json({ ok: true, usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, papel: usuario.papel } });
+});
+
+app.post('/api/sair', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
+app.get('/api/eu', (req, res) => {
+  if (!req.session.usuarioId) return res.json({ usuario: null });
+  const usuario = usuarioAtual(req);
+  if (!usuario) return res.json({ usuario: null });
+  res.json({ usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, papel: usuario.papel } });
+});
+
+// ------------------------------------------------------------
+// 🍕 ROTAS DO CARDÁPIO
+// ------------------------------------------------------------
+
+app.get('/api/cardapio', (req, res) => {
+  const pratos = db().pratos.filter(p => p.ativo);
+  res.json({ pratos });
+});
+
+app.get('/api/cardapio/todos', exigirGerente, (req, res) => {
+  res.json({ pratos: db().pratos });
+});
+
+app.post('/api/pratos', exigirGerente, (req, res) => {
+  const nome = limparTexto(req.body.nome, 100);
+  const descricao = limparTexto(req.body.descricao, 300);
+  const preco = parseFloat(req.body.preco);
+  const categoria = limparTexto(req.body.categoria, 50) || 'Geral';
+  const foto = limparTexto(req.body.foto, 500);
+
+  if (!nome) return res.status(400).json({ erro: 'Informe o nome do prato.' });
+  if (isNaN(preco) || preco <= 0) return res.status(400).json({ erro: 'Informe um preço válido (maior que zero).' });
+
+  const novoPrato = {
+    id: db().proximoIdPrato++,
+    nome, descricao, preco: Math.round(preco * 100) / 100,
+    categoria, foto, ativo: true
+  };
+  db().pratos.push(novoPrato);
+  salvarBanco();
+  res.json({ ok: true, prato: novoPrato });
+});
+
+app.put('/api/pratos/:id', exigirGerente, (req, res) => {
+  const prato = db().pratos.find(p => p.id === parseInt(req.params.id));
+  if (!prato) return res.status(404).json({ erro: 'Prato não encontrado.' });
+
+  const nome = limparTexto(req.body.nome, 100);
+  const descricao = limparTexto(req.body.descricao, 300);
+  const preco = parseFloat(req.body.preco);
+  const categoria = limparTexto(req.body.categoria, 50);
+  const foto = limparTexto(req.body.foto, 500);
+
+  if (!nome) return res.status(400).json({ erro: 'Informe o nome do prato.' });
+  if (isNaN(preco) || preco <= 0) return res.status(400).json({ erro: 'Informe um preço válido.' });
+
+  prato.nome = nome;
+  prato.descricao = descricao;
+  prato.preco = Math.round(preco * 100) / 100;
+  prato.categoria = categoria || 'Geral';
+  prato.foto = foto;
+  if (typeof req.body.ativo === 'boolean') prato.ativo = req.body.ativo;
+
+  salvarBanco();
+  res.json({ ok: true, prato });
+});
+
+app.delete('/api/pratos/:id', exigirGerente, (req, res) => {
+  const indice = db().pratos.findIndex(p => p.id === parseInt(req.params.id));
+  if (indice === -1) return res.status(404).json({ erro: 'Prato não encontrado.' });
+  db().pratos.splice(indice, 1);
+  salvarBanco();
+  res.json({ ok: true });
+});
+
+// ------------------------------------------------------------
+// 🧾 ROTAS DE PEDIDOS
+// ------------------------------------------------------------
+
+const SITUACOES = ['Recebido', 'Preparando', 'Pronto', 'A caminho', 'Entregue', 'Cancelado'];
+
+app.post('/api/pedidos', exigirLogin, (req, res) => {
+  const usuario = usuarioAtual(req);
+  if (!usuario) return res.status(401).json({ erro: 'Faça login novamente.' });
+
+  const itens = Array.isArray(req.body.itens) ? req.body.itens : [];
+  const endereco = limparTexto(req.body.endereco, 300);
+  const observacao = limparTexto(req.body.observacao, 300);
+
+  if (itens.length === 0) {
+    return res.status(400).json({ erro: 'Seu carrinho está vazio.' });
+  }
+  if (!endereco) {
+    return res.status(400).json({ erro: 'Informe o endereço de entrega.' });
+  }
+  if (itens.length > 50) {
+    return res.status(400).json({ erro: 'Pedido muito grande. Divida em dois pedidos.' });
+  }
+
+  let total = 0;
+  const itensValidados = [];
+  for (const item of itens) {
+    const prato = db().pratos.find(p => p.id === parseInt(item.pratoId) && p.ativo);
+    const quantidade = parseInt(item.quantidade);
+    if (!prato) {
+      return res.status(400).json({ erro: 'Um dos pratos não está mais disponível no cardápio.' });
+    }
+    if (isNaN(quantidade) || quantidade < 1 || quantidade > 99) {
+      return res.status(400).json({ erro: 'Quantidade inválida em um dos itens.' });
+    }
+    total += prato.preco * quantidade;
+    itensValidados.push({
+      pratoId: prato.id,
+      nome: prato.nome,
+      preco: prato.preco,
+      quantidade
+    });
+  }
+
+  const novoPedido = {
+    id: db().proximoIdPedido++,
+    clienteId: usuario.id,
+    clienteNome: usuario.nome,
+    clienteEmail: usuario.email,
+    itens: itensValidados,
+    total: Math.round(total * 100) / 100,
+    endereco,
+    observacao,
+    situacao: 'Recebido',
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString()
+  };
+
+  db().pedidos.push(novoPedido);
+  salvarBanco();
+  res.json({ ok: true, pedido: novoPedido });
+});
+
+app.get('/api/meus-pedidos', exigirLogin, (req, res) => {
+  const meus = db().pedidos
+    .filter(p => p.clienteId === req.session.usuarioId)
+    .sort((a, b) => b.id - a.id);
+  res.json({ pedidos: meus });
+});
+
+app.get('/api/pedidos', exigirGerente, (req, res) => {
+  const todos = [...db().pedidos].sort((a, b) => b.id - a.id);
+  res.json({ pedidos: todos });
+});
+
+app.put('/api/pedidos/:id/situacao', exigirGerente, (req, res) => {
+  const pedido = db().pedidos.find(p => p.id === parseInt(req.params.id));
+  if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
+
+  const novaSituacao = limparTexto(req.body.situacao, 30);
+  if (!SITUACOES.includes(novaSituacao)) {
+    return res.status(400).json({ erro: 'Situação inválida.' });
+  }
+
+  pedido.situacao = novaSituacao;
+  pedido.atualizadoEm = new Date().toISOString();
+  salvarBanco();
+  res.json({ ok: true, pedido });
+});
+
+app.put('/api/pedidos/:id/cancelar', exigirLogin, (req, res) => {
+  const pedido = db().pedidos.find(p => p.id === parseInt(req.params.id));
+  if (!pedido) return res.status(404).json({ erro: 'Pedido não encontrado.' });
+
+  const ehDono = pedido.clienteId === req.session.usuarioId;
+  const usuario = usuarioAtual(req);
+  const ehGerente = usuario && usuario.papel === 'gerente';
+
+  if (!ehDono && !ehGerente) {
+    return res.status(403).json({ erro: 'Você não pode cancelar este pedido.' });
+  }
+  if (pedido.situacao !== 'Recebido') {
+    return res.status(400).json({ erro: 'Este pedido já está sendo preparado e não pode ser cancelado.' });
+  }
+
+  pedido.situacao = 'Cancelado';
+  pedido.atualizadoEm = new Date().toISOString();
+  salvarBanco();
+  res.json({ ok: true, pedido });
+});
+
+// ------------------------------------------------------------
+// 📊 ESTATÍSTICAS (só gerente)
+// ------------------------------------------------------------
+
+app.get('/api/estatisticas', exigirGerente, (req, res) => {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const pedidosHoje = db().pedidos.filter(p => p.criadoEm.slice(0, 10) === hoje && p.situacao !== 'Cancelado');
+  const faturamentoHoje = pedidosHoje.reduce((soma, p) => soma + p.total, 0);
+  const pendentes = db().pedidos.filter(p => ['Recebido', 'Preparando', 'Pronto', 'A caminho'].includes(p.situacao)).length;
+
+  res.json({
+    pedidosHoje: pedidosHoje.length,
+    faturamentoHoje: Math.round(faturamentoHoje * 100) / 100,
+    pendentes,
+    totalPedidos: db().pedidos.length,
+    totalPratos: db().pratos.filter(p => p.ativo).length
+  });
+});
+
+// ------------------------------------------------------------
+// ▶️ INICIAR O SERVIDOR
+// ------------------------------------------------------------
+
+db(); // carrega o banco ao iniciar
+
+app.listen(PORT, () => {
+  console.log('');
+  console.log('🍽️ ================================================');
+  console.log('   SABOR & ARTE - Sistema de Pedidos');
+  console.log('   Servidor funcionando!');
+  console.log(`   👉 Acesse: http://localhost:${PORT}`);
+  console.log('🍽️ ================================================');
+  console.log('');
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sabor & Arte — Restaurante</title>
+<style>
+  :root {
+    --laranja: #e8622a;
+    --laranja-escuro: #c94e1d;
+    --creme: #fdf8f3;
+    --marrom: #3d2b1f;
+    --verde: #2e9e5b;
+    --amarelo: #f0a832;
+    --azul: #3a7bd5;
+    --cinza: #8a7f76;
+    --sombra: 0 4px 20px rgba(61, 43, 31, 0.10);
+    --raio: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--creme);
+    color: var(--marrom);
+    min-height: 100vh;
+  }
+
+  /* ---------- CABEÇALHO ---------- */
+  header {
+    background: linear-gradient(135deg, var(--laranja), var(--laranja-escuro));
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    box-shadow: var(--sombra);
+  }
+  .logo { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px; display: flex; align-items: center; gap: 8px; }
+  .logo span { font-size: 1.7rem; }
+  .acoes-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ola-usuario { font-size: 0.9rem; opacity: 0.95; }
+
+  /* ---------- BOTÕES ---------- */
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+  }
+  button:active { transform: scale(0.97); }
+  .btn {
+    padding: 10px 18px;
+    background: var(--laranja);
+    color: #fff;
+    font-size: 0.95rem;
+  }
+  .btn:hover { background: var(--laranja-escuro); }
+  .btn-claro { background: #fff; color: var(--laranja-escuro); }
+  .btn-claro:hover { background: #ffe8dc; }
+  .btn-contorno {
+    background: transparent;
+    color: #fff;
+    border: 2px solid rgba(255,255,255,0.8);
+  }
+  .btn-contorno:hover { background: rgba(255,255,255,0.15); }
+  .btn-cinza { background: #ece5de; color: var(--marrom); }
+  .btn-cinza:hover { background: #ddd3c9; }
+  .btn-perigo { background: #e05a5a; color: #fff; padding: 7px 12px; font-size: 0.82rem; }
+  .btn-perigo:hover { background: #c94545; }
+  .btn-editar { background: var(--azul); color: #fff; padding: 7px 12px; font-size: 0.82rem; }
+  .btn-editar:hover { background: #2d63b0; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---------- TELA DE LOGIN ---------- */
+  .tela-auth {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(232,98,42,0.12), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(240,168,50,0.15), transparent 40%),
+      var(--creme);
+  }
+  .caixa-auth {
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: var(--sombra);
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+  }
+  .caixa-auth h1 { font-size: 2rem; margin-bottom: 4px; }
+  .caixa-auth .sub { color: var(--cinza); margin-bottom: 26px; font-size: 0.95rem; }
+  .campo { margin-bottom: 14px; text-align: left; }
+  .campo label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 5px; color: var(--marrom); }
+  .campo input, .campo select, .campo textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 2px solid #e8ddd2;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-family: inherit;
+    background: #fdfcfa;
+    transition: border-color 0.15s;
+  }
+  .campo input:focus, .campo select:focus, .campo textarea:focus {
+    outline: none;
+    border-color: var(--laranja);
+    background: #fff;
+  }
+  .caixa-auth .btn { width: 100%; padding: 13px; font-size: 1.05rem; margin-top: 8px; }
+  .trocar-auth { margin-top: 18px; font-size: 0.9rem; color: var(--cinza); }
+  .trocar-auth a { color: var(--laranja); font-weight: 700; cursor: pointer; text-decoration: none; }
+  .trocar-auth a:hover { text-decoration: underline; }
+  .erro-msg {
+    background: #fdeaea;
+    color: #b33333;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.88rem;
+    margin-bottom: 14px;
+    display: none;
+  }
+  .dica-contas {
+    margin-top: 20px;
+    background: #fdf3e7;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.8rem;
+    color: #8a6d3b;
+    text-align: left;
+    line-height: 1.6;
+  }
+
+  /* ---------- ABAS ---------- */
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  .abas { display: flex; gap: 8px; margin: 18px 0 24px; flex-wrap: wrap; }
+  .aba {
+    padding: 11px 22px;
+    border-radius: 30px;
+    background: #fff;
+    color: var(--marrom);
+    font-size: 0.95rem;
+    box-shadow: 0 2px 8px rgba(61,43,31,0.08);
+  }
+  .aba.ativa { background: var(--laranja); color: #fff; }
+  .aba:hover { box-shadow: 0 4px 14px rgba(61,43,31,0.15); }
+
+  /* ---------- CARDÁPIO ---------- */
+  .categoria-titulo {
+    font-size: 1.3rem;
+    font-weight: 800;
+    margin: 28px 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 3px solid var(--laranja);
+    display: inline-block;
+  }
+  .grade-pratos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 18px;
+  }
+  .cartao-prato {
+    background: #fff;
+    border-radius: var(--raio);
+    overflow: hidden;
+    box-shadow: var(--sombra);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.15s;
+  }
+  .cartao-prato:hover { transform: translateY(-4px); }
+  .foto-prato {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    background: linear-gradient(135deg, #f5e6d8, #ecd9c5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+  }
+  .foto-prato img { width: 100%; height: 100%; object-fit: cover; }
+  .info-prato { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; }
+  .info-prato h3 { font-size: 1.05rem; margin-bottom: 4px; }
+  .info-prato p { font-size: 0.85rem; color: var(--cinza); flex: 1; line-height: 1.4; }
+  .rodape-prato {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+    gap: 8px;
+  }
+  .preco { font-size: 1.15rem; font-weight: 800; color: var(--laranja-escuro); }
+  .btn-add {
+    background: var(--laranja);
+    color: #fff;
+    padding: 8px 16px;
+    font-size: 0.88rem;
+  }
+  .btn-add:hover { background: var(--laranja-escuro); }
+
+  /* ---------- CARRINHO FLUTUANTE ---------- */
+  .btn-carrinho {
+    position: relative;
+    background: #fff;
+    color: var(--laranja-escuro);
+    padding: 10px 18px;
+    font-size: 0.95rem;
+  }
+  .qtd-carrinho {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    background: var(--marrom);
+    color: #fff;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+  }
+
+  /* ---------- PEDIDOS ---------- */
+  .cartao-pedido {
+    background: #fff;
+    border-radius: var(--raio);
+    box-shadow: var(--sombra);
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .topo-pedido {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .num-pedido { font-weight: 800; font-size: 1.05rem; }
+  .data-pedido { font-size: 0.82rem; color: var(--cinza); }
+  .selo {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #fff;
+  }
+  .selo-Recebido { background: var(--amarelo); }
+  .selo-Preparando { background: var(--azul); }
+  .selo-Pronto { background: #8e44ad; }
+  .selo-A.caminho, .selo-acaminho { background: #e67e22; }
+  .selo-Entregue { background: var(--verde); }
+  .selo-Cancelado { background: #b33333; }
+  .itens-pedido { font-size: 0.9rem; line-height: 1.8; margin-bottom: 8px; }
+  .rodape-pedido {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    border-top: 1px dashed #e8ddd2;
+    padding-top: 12px;
+    margin-top: 8px;
+  }
+  .total-pedido { font-weight: 800; font-size: 1.05rem; color: var(--laranja-escuro); }
+  .endereco-pedido { font-size: 0.82rem; color: var(--cinza); }
+
+  /* barra de progresso do pedido */
+  .progresso { display: flex; align-items: center; margin: 14px 0 6px; }
+  .passo { flex: 1; text-align: center; position: relative; }
+  .passo::before {
+    content: '';
+    display: block;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #e8ddd2;
+    margin: 0 auto 5px;
+    border: 3px solid #e8ddd2;
+  }
+  .passo.feito::before { background: var(--verde); border-color: var(--verde); }
+  .passo.atual::before { background: var(--laranja); border-color: var(--laranja); animation: pulsar 1.4s infinite; }
+  @keyframes pulsar { 50% { box-shadow: 0 0 0 6px rgba(232,98,42,0.25); } }
+  .passo small { font-size: 0.68rem; color: var(--cinza); }
+  .linha-passo { height: 3px; background: #e8ddd2; flex: 1; margin-bottom: 20px; }
+  .linha-passo.feita { background: var(--verde); }
+
+  /* ---------- PAINEL GERENTE ---------- */
+  .estatisticas {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .estat {
+    background: #fff;
+    border-radius: var(--raio);
+    box-shadow: var(--sombra);
+    padding: 18px;
+    text-align: center;
+  }
+  .estat .numero { font-size: 1.7rem; font-weight: 800; color: var(--laranja); }
+  .estat .rotulo { font-size: 0.82rem; color: var(--cinza); margin-top: 4px; }
+  .acoes-situacao { display: flex; gap: 6px; flex-wrap: wrap; }
+  .acoes-situacao button { padding: 6px 12px; font-size: 0.78rem; }
+  .b-avancar { background: var(--verde); color: #fff; }
+  .b-avancar:hover { background: #247e47; }
+  .b-cancelar-ped { background: #e05a5a; color: #fff; }
+  .b-cancelar-ped:hover { background: #c94545; }
+
+  table.tabela-pratos { width: 100%; border-collapse: collapse; background: #fff; border-radius: var(--raio); overflow: hidden; box-shadow: var(--sombra); }
+  .tabela-pratos th { background: var(--marrom); color: #fff; padding: 12px 14px; text-align: left; font-size: 0.85rem; }
+  .tabela-pratos td { padding: 12px 14px; border-top: 1px solid #f0e8e0; font-size: 0.9rem; vertical-align: middle; }
+  .tabela-pratos tr:hover td { background: #fdf8f3; }
+  .mini-foto { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: #f0e8e0; }
+  .prato-inativo { opacity: 0.45; }
+
+  /* ---------- MODAL ---------- */
+  .fundo-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(61,43,31,0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 16px;
+  }
+  .fundo-modal.aberto { display: flex; }
+  .modal {
+    background: #fff;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 28px 26px;
+    animation: subir 0.25s ease;
+  }
+  @keyframes subir { from { transform: translateY(30px); opacity: 0; } }
+  .modal h2 { margin-bottom: 18px; font-size: 1.3rem; }
+  .modal .rodape-modal { display: flex; gap: 10px; margin-top: 18px; }
+  .modal .rodape-modal .btn { flex: 1; padding: 12px; }
+
+  .item-carrinho {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px dashed #e8ddd2;
+  }
+  .item-carrinho .nome-item { flex: 1; font-weight: 600; font-size: 0.95rem; }
+  .controle-qtd { display: flex; align-items: center; gap: 8px; }
+  .controle-qtd button {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: #ece5de;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--marrom);
+  }
+  .controle-qtd button:hover { background: var(--laranja); color: #fff; }
+  .subtotal-item { font-weight: 700; width: 80px; text-align: right; font-size: 0.9rem; }
+  .total-carrinho {
+    display: flex;
+    justify-content: space-between;
+    font-size: 1.2rem;
+    font-weight: 800;
+    padding: 16px 0 4px;
+    color: var(--laranja-escuro);
+  }
+
+  /* ---------- AVISO FLUTUANTE ---------- */
+  .aviso {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--marrom);
+    color: #fff;
+    padding: 13px 26px;
+    border-radius: 30px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    z-index: 200;
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+    max-width: 90vw;
+    text-align: center;
+  }
+  .aviso.visivel { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .aviso.sucesso { background: var(--verde); }
+  .aviso.erro { background: #b33333; }
+
+  .vazio {
+    text-align: center;
+    padding: 50px 20px;
+    color: var(--cinza);
+  }
+  .vazio .grande { font-size: 3rem; margin-bottom: 10px; }
+
+  @media (max-width: 600px) {
+    .grade-pratos { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+    .foto-prato { height: 120px; }
+    header { padding: 12px 14px; }
+    .logo { font-size: 1.2rem; }
+    .passo small { font-size: 0.58rem; }
+    .tabela-pratos th:nth-child(4), .tabela-pratos td:nth-child(4) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ TELA DE LOGIN / CADASTRO ============ -->
+<div id="telaAuth" class="tela-auth" style="display:none;">
+  <div class="caixa-auth">
+    <h1>🍽️ Sabor & Arte</h1>
+    <p class="sub">Faça seu pedido sem sair de casa</p>
+
+    <div id="erroAuth" class="erro-msg"></div>
+
+    <div id="campoNome" class="campo" style="display:none;">
+      <label>Seu nome completo</label>
+      <input type="text" id="authNome" placeholder="Ex.: Maria Silva" maxlength="100">
+    </div>
+    <div class="campo">
+      <label>E-mail</label>
+      <input type="email" id="authEmail" placeholder="voce@email.com" maxlength="150">
+    </div>
+    <div class="campo">
+      <label>Senha</label>
+      <input type="password" id="authSenha" placeholder="Mínimo 6 caracteres" maxlength="100">
+    </div>
+
+    <button class="btn" id="btnAuth" onclick="enviarAuth()">Entrar</button>
+
+    <p class="trocar-auth">
+      <span id="textoTroca">Ainda não tem conta?</span>
+      <a id="linkTroca" onclick="alternarAuth()">Criar conta grátis</a>
+    </p>
+
+    <div class="dica-contas">
+      <strong>🔑 Acesso do gerente (teste):</strong><br>
+      E-mail: gerente@restaurante.com<br>
+      Senha: admin123
+    </div>
+  </div>
+</div>
+
+<!-- ============ SISTEMA PRINCIPAL ============ -->
+<div id="telaPrincipal" style="display:none;">
+  <header>
+    <div class="logo"><span>🍽️</span> Sabor & Arte</div>
+    <div class="acoes-header">
+      <span class="ola-usuario" id="olaUsuario"></span>
+      <button class="btn btn-carrinho" id="btnCarrinhoHeader" onclick="abrirCarrinho()" style="display:none;">
+        🛒 Carrinho <span class="qtd-carrinho" id="qtdCarrinho" style="display:none;">0</span>
+      </button>
+      <button class="btn btn-contorno" onclick="sair()">Sair</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <!-- ABAS CLIENTE -->
+    <div class="abas" id="abasCliente" style="display:none;">
+      <button class="aba ativa" data-aba="cardapio" onclick="mostrarAba('cardapio')">🍕 Cardápio</button>
+      <button class="aba" data-aba="meusPedidos" onclick="mostrarAba('meusPedidos')">🧾 Meus Pedidos</button>
+    </div>
+
+    <!-- ABAS GERENTE -->
+    <div class="abas" id="abasGerente" style="display:none;">
+      <button class="aba ativa" data-aba="pedidosGerente" onclick="mostrarAba('pedidosGerente')">📋 Pedidos</button>
+      <button class="aba" data-aba="cardapioGerente" onclick="mostrarAba('cardapioGerente')">🍕 Gerenciar Cardápio</button>
+    </div>
+
+    <!-- ===== CLIENTE: CARDÁPIO ===== -->
+    <div id="aba-cardapio" class="conteudo-aba"></div>
+
+    <!-- ===== CLIENTE: MEUS PEDIDOS ===== -->
+    <div id="aba-meusPedidos" class="conteudo-aba" style="display:none;"></div>
+
+    <!-- ===== GERENTE: PEDIDOS ===== -->
+    <div id="aba-pedidosGerente" class="conteudo-aba" style="display:none;"></div>
+
+    <!-- ===== GERENTE: CARDÁPIO ===== -->
+    <div id="aba-cardapioGerente" class="conteudo-aba" style="display:none;">
+      <button class="btn" onclick="abrirModalPrato()" style="margin-bottom:18px;">➕ Cadastrar novo prato</button>
+      <div id="listaPratosGerente"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL CARRINHO ============ -->
+<div class="fundo-modal" id="modalCarrinho">
+  <div class="modal">
+    <h2>🛒 Seu Carrinho</h2>
+    <div id="itensCarrinho"></div>
+    <div id="rodapeCarrinho"></div>
+    <div class="rodape-modal">
+      <button class="btn btn-cinza" onclick="fecharModal('modalCarrinho')">Continuar comprando</button>
+      <button class="btn" id="btnFinalizar" onclick="finalizarPedido()">Finalizar Pedido</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL PRATO (gerente) ============ -->
+<div class="fundo-modal" id="modalPrato">
+  <div class="modal">
+    <h2 id="tituloModalPrato">Cadastrar Prato</h2>
+    <div id="erroPrato" class="erro-msg"></div>
+    <input type="hidden" id="pratoId">
+    <div class="campo"><label>Nome do prato *</label><input type="text" id="pratoNome" maxlength="100" placeholder="Ex.: Pizza Calabresa"></div>
+    <div class="campo"><label>Descrição</label><textarea id="pratoDescricao" rows="2" maxlength="300" placeholder="Ingredientes e detalhes"></textarea></div>
+    <div class="campo"><label>Preço (R$) *</label><input type="number" id="pratoPreco" step="0.01" min="0.01" placeholder="Ex.: 39.90"></div>
+    <div class="campo"><label>Categoria</label><input type="text" id="pratoCategoria" maxlength="50" placeholder="Ex.: Pizzas, Lanches, Bebidas"></div>
+    <div class="campo"><label>Link da foto (opcional)</label><input type="url" id="pratoFoto" maxlength="500" placeholder="https://..."></div>
+    <div class="campo">
+      <label><input type="checkbox" id="pratoAtivo" checked style="width:auto;"> Disponível no cardápio</label>
+    </div>
+    <div class="rodape-modal">
+      <button class="btn btn-cinza" onclick="fecharModal('modalPrato')">Cancelar</button>
+      <button class="btn" onclick="salvarPrato()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="aviso" id="aviso"></div>
+
+<script>
+// ============================================================
+// ESTADO DO APLICATIVO (na memória do navegador)
+// ============================================================
+let usuario = null;
+let carrinho = [];
+let modoCadastro = false;
+let intervaloAtualizacao = null;
+
+// ============================================================
+// FUNÇÕES AUXILIARES
+// ============================================================
+function formatarPreco(valor) {
+  return 'R$ ' + Number(valor).toFixed(2).replace('.', ',');
+}
+
+function formatarData(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR') + ' às ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapar(texto) {
+  const div = document.createElement('div');
+  div.textContent = texto == null ? '' : String(texto);
+  return div.innerHTML;
+}
+
+async function api(caminho, opcoes = {}) {
+  try {
+    const resposta = await fetch('/api' + caminho, {
+      headers: { 'Content-Type': 'application/json' },
+      ...opcoes,
+      body: opcoes.body ? JSON.stringify(opcoes.body) : undefined
+    });
+    const dados = await resposta.json();
+    if (!resposta.ok) throw new Error(dados.erro || 'Erro inesperado. Tente novamente.');
+    return dados;
+  } catch (erro) {
+    if (erro.message === 'Failed to fetch') throw new Error('Sem conexão com o servidor. Verifique sua internet.');
+    throw erro;
+  }
+}
+
+let avisoTimer = null;
+function mostrarAviso(msg, tipo = '') {
+  const el = document.getElementById('aviso');
+  el.textContent = msg;
+  el.className = 'aviso visivel ' + tipo;
+  clearTimeout(avisoTimer);
+  avisoTimer = setTimeout(() => { el.className = 'aviso'; }, 3200);
+}
+
+function fecharModal(id) {
+  document.getElementById(id).classList.remove('aberto');
+}
+
+// ============================================================
+// AUTENTICAÇÃO
+// ============================================================
+function alternarAuth() {
+  modoCadastro = !modoCadastro;
+  document.getElementById('campoNome').style.display = modoCadastro ? 'block' : 'none';
+  document.getElementById('btnAuth').textContent = modoCadastro ? 'Criar minha conta' : 'Entrar';
+  document.getElementById('textoTroca').textContent = modoCadastro ? 'Já tem uma conta?' : 'Ainda não tem conta?';
+  document.getElementById('linkTroca').textContent = modoCadastro ? 'Entrar' : 'Criar conta grátis';
+  document.getElementById('erroAuth').style.display = 'none';
+}
+
+async function enviarAuth() {
+  const nome = document.getElementById('authNome').value.trim();
+  const email = document.getElementById('authEmail').value.trim();
+  const senha = document.getElementById('authSenha').value;
+  const erroEl = document.getElementById('erroAuth');
+  erroEl.style.display = 'none';
+
+  try {
+    const dados = modoCadastro
+      ? await api('/cadastro', { method: 'POST', body: { nome, email, senha } })
+      : await api('/entrar', { method: 'POST', body: { email, senha } });
+    usuario = dados.usuario;
+    entrarNoSistema();
+    mostrarAviso(modoCadastro ? 'Conta criada! Bem-vindo(a), ' + usuario.nome + ' 🎉' : 'Bem-vindo(a) de volta, ' + usuario.nome + '!', 'sucesso');
+  } catch (erro) {
+    erroEl.textContent = erro.message;
+    erroEl.style.display = 'block';
+  }
+}
+
+async function sair() {
+  try { await api('/sair', { method: 'POST' }); } catch (e) {}
+  usuario = null;
+  carrinho = [];
+  clearInterval(intervaloAtualizacao);
+  location.reload();
+}
+
+// ============================================================
+// ENTRADA NO SISTEMA
+// ============================================================
+async function verificarSessao() {
+  try {
+    const dados = await api('/eu');
+    if (dados.usuario) {
+      usuario = dados.usuario;
+      entrarNoSistema();
+      return;
+    }
+  } catch (e) {}
+  document.getElementById('telaAuth').style.display = 'flex';
+}
+
+function entrarNoSistema() {
+  document.getElementById('telaAuth').style.display = 'none';
+  document.getElementById('telaPrincipal').style.display = 'block';
+
+  const ehGerente = usuario.papel === 'gerente';
+  document.getElementById('olaUsuario').textContent = (ehGerente ? '👔 ' : '👤 ') + usuario.nome;
+  document.getElementById('abasCliente').style.display = ehGerente ? 'none' : 'flex';
+  document.getElementById('abasGerente').style.display = ehGerente ? 'flex' : 'none';
+  document.getElementById('btnCarrinhoHeader').style.display = ehGerente ? 'none' : 'inline-block';
+
+  document.querySelectorAll('.conteudo-aba').forEach(el => el.style.display = 'none');
+
+  if (ehGerente) {
+    mostrarAba('pedidosGerente');
+  } else {
+    mostrarAba('cardapio');
+  }
+
+  // Atualização automática a cada 10 segundos
+  clearInterval(intervaloAtualizacao);
+  intervaloAtualizacao = setInterval(() => {
+    const abaVisivel = document.querySelector('.conteudo-aba:not([style*="none"])');
+    if (!abaVisivel) return;
+    const id = abaVisivel.id;
+    if (id === 'aba-meusPedidos') carregarMeusPedidos(true);
+    if (id === 'aba-pedidosGerente') carregarPedidosGerente(true);
+  }, 10000);
+}
+
+function mostrarAba(nome) {
+  document.querySelectorAll('.conteudo-aba').forEach(el => el.style.display = 'none');
+  document.getElementById('aba-' + nome).style.display = 'block';
+  document.querySelectorAll('.aba').forEach(a => a.classList.toggle('ativa', a.dataset.aba === nome));
+
+  if (nome === 'cardapio') carregarCardapio();
+  if (nome === 'meusPedidos') carregarMeusPedidos();
+  if (nome === 'pedidosGerente') carregarPedidosGerente();
+  if (nome === 'cardapioGerente') carregarCardapioGerente();
+}
+
+// ============================================================
+// CLIENTE: CARDÁPIO E CARRINHO
+// ============================================================
+async function carregarCardapio() {
+  const container = document.getElementById('aba-cardapio');
+  container.innerHTML = '<div class="vazio"><div class="grande">⏳</div>Carregando cardápio...</div>';
+  try {
+    const { pratos } = await api('/cardapio');
+    if (pratos.length === 0) {
+      container.innerHTML = '<div class="vazio"><div class="grande">🍽️</div>O cardápio está sendo preparado.<br>Volte em instantes!</div>';
+      return;
+    }
+
+    // Agrupa por categoria mantendo a ordem
+    const categorias = {};
+    pratos.forEach(p => {
+      if (!categorias[p.categoria]) categorias[p.categoria] = [];
+      categorias[p.categoria].push(p);
+    });
+
+    let html = '';
+    for (const [categoria, itens] of Object.entries(categorias)) {
+      html += `<h2 class="categoria-titulo">${escapar(categoria)}</h2><div class="grade-pratos">`;
+      itens.forEach(p => {
+        const foto = p.foto
+          ? `<img src="${escapar(p.foto)}" alt="${escapar(p.nome)}" onerror="this.parentElement.innerHTML='🍽️'">`
+          : '🍽️';
+        html += `
+          <div class="cartao-prato">
+            <div class="foto-prato">${foto}</div>
+            <div class="info-prato">
+              <h3>${escapar(p.nome)}</h3>
+              <p>${escapar(p.descricao)}</p>
+              <div class="rodape-prato">
+                <span class="preco">${formatarPreco(p.preco)}</span>
+                <button class="btn-add" onclick="adicionarAoCarrinho(${p.id}, '${escapar(p.nome).replace(/'/g, "\\'")}', ${p.preco})">+ Adicionar</button>
+              </div>
+            </div>
+          </div>`;
+      });
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  } catch (erro) {
+    container.innerHTML = '<div class="vazio"><div class="grande">😕</div>' + escapar(erro.message) + '</div>';
+  }
+}
+
+function adicionarAoCarrinho(id, nome, preco) {
+  const existente = carrinho.find(i => i.pratoId === id);
+  if (existente) existente.quantidade++;
+  else carrinho.push({ pratoId: id, nome, preco, quantidade: 1 });
+  atualizarIconeCarrinho();
+  mostrarAviso(nome + ' adicionado ao carrinho ✓', 'sucesso');
+}
+
+function atualizarIconeCarrinho() {
+  const total = carrinho.reduce((s, i) => s + i.quantidade, 0);
+  const selo = document.getElementById('qtdCarrinho');
+  selo.textContent = total;
+  selo.style.display = total > 0 ? 'flex' : 'none';
+}
+
+function mudarQtd(id, delta) {
+  const item = carrinho.find(i => i.pratoId === id);
+  if (!item) return;
+  item.quantidade += delta;
+  if (item.quantidade <= 0) carrinho = carrinho.filter(i => i.pratoId !== id);
+  renderizarCarrinho();
+  atualizarIconeCarrinho();
+}
+
+function abrirCarrinho() {
+  renderizarCarrinho();
+  document.getElementById('modalCarrinho').classList.add('aberto');
+}
+
+function renderizarCarrinho() {
+  const itensEl = document.getElementById('itensCarrinho');
+  const rodapeEl = document.getElementById('rodapeCarrinho');
+  const btnFinalizar = document.getElementById('btnFinalizar');
+
+  if (carrinho.length === 0) {
+    itensEl.innerHTML = '<div class="vazio"><div class="grande">🛒</div>Seu carrinho está vazio.</div>';
+    rodapeEl.innerHTML = '';
+    btnFinalizar.style.display = 'none';
+    return;
+  }
+
+  let html = '';
+  carrinho.forEach(i => {
+    html += `
+      <div class="item-carrinho">
+        <span class="nome-item">${escapar(i.nome)}</span>
+        <div class="controle-qtd">
+          <button onclick="mudarQtd(${i.pratoId}, -1)">−</button>
+          <strong>${i.quantidade}</strong>
+          <button onclick="mudarQtd(${i.pratoId}, 1)">+</button>
+        </div>
+        <span class="subtotal-item">${formatarPreco(i.preco * i.quantidade)}</span>
+      </div>`;
+  });
+  itensEl.innerHTML = html;
+
+  const total = carrinho.reduce((s, i) => s + i.preco * i.quantidade, 0);
+  rodapeEl.innerHTML = `
+    <div class="campo" style="margin-top:16px;">
+      <label>Endereço de entrega *</label>
+      <input type="text" id="enderecoEntrega" maxlength="300" placeholder="Rua, número, bairro, complemento">
+    </div>
+    <div class="campo">
+      <label>Observações (opcional)</label>
+      <input type="text" id="obsPedido" maxlength="300" placeholder="Ex.: sem cebola, ponto da carne...">
+    </div>
+    <div class="total-carrinho"><span>Total:</span><span>${formatarPreco(total)}</span></div>`;
+  btnFinalizar.style.display = 'inline-block';
+}
+
+async function finalizarPedido() {
+  const endereco = (document.getElementById('enderecoEntrega') || {}).value || '';
+  const observacao = (document.getElementById('obsPedido') || {}).value || '';
+  try {
+    await api('/pedidos', {
+      method: 'POST',
+      body: { itens: carrinho, endereco, observacao }
+    });
+    carrinho = [];
+    atualizarIconeCarrinho();
+    fecharModal('modalCarrinho');
+    mostrarAviso('Pedido enviado com sucesso! 🎉 Acompanhe em "Meus Pedidos".', 'sucesso');
+    mostrarAba('meusPedidos');
+  } catch (erro) {
+    mostrarAviso(erro.message, 'erro');
+  }
+}
+
+// ============================================================
+// CLIENTE: MEUS PEDIDOS
+// ============================================================
+const ETAPAS = ['Recebido', 'Preparando', 'A caminho', 'Entregue'];
+
+function barraProgresso(situacao) {
+  if (situacao === 'Cancelado') return '';
+  let etapas = ETAPAS;
+  // "Pronto" conta como etapa extra antes de "A caminho" em pedidos sem entrega
+  let indiceAtual = etapas.indexOf(situacao);
+  if (situacao === 'Pronto') indiceAtual = 2; // trata "Pronto" visualmente
+
+  let html = '<div class="progresso">';
+  etapas.forEach((etapa, i) => {
+    const classe = i < indiceAtual ? 'feito' : (i === indiceAtual ? (situacao === 'Entregue' ? 'feito' : 'atual') : '');
+    html += `<div class="passo ${classe}"><small>${etapa}</small></div>`;
+    if (i < etapas.length - 1) html += `<div class="linha-passo ${i < indiceAtual ? 'feita' : ''}"></div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+function classeSelo(situacao) {
+  return 'selo-' + situacao.replace(' ', '');
+}
+
+async function carregarMeusPedidos(silencioso = false) {
+  const container = document.getElementById('aba-meusPedidos');
+  if (!silencioso) container.innerHTML = '<div class="vazio"><div class="grande">⏳</div>Carregando seus pedidos...</div>';
+  try {
+    const { pedidos } = await api('/meus-pedidos');
+    if (pedidos.length === 0) {
+      container.innerHTML = '<div class="vazio"><div class="grande">🧾</div>Você ainda não fez nenhum pedido.<br>Que tal dar uma olhada no cardápio? 😋</div>';
+      return;
+    }
+    container.innerHTML = pedidos.map(p => `
+      <div class="cartao-pedido">
+        <div class="topo-pedido">
+          <div>
+            <div class="num-pedido">Pedido #${p.id}</div>
+            <div class="data-pedido">${formatarData(p.criadoEm)}</div>
+          </div>
+          <span class="selo ${classeSelo(p.situacao)}">${escapar(p.situacao)}</span>
+        </div>
+        ${barraProgresso(p.situacao)}
+        <div class="itens-pedido">
+          ${p.itens.map(i => `${i.quantidade}× ${escapar(i.nome)} — ${formatarPreco(i.preco * i.quantidade)}`).join('<br>')}
+        </div>
+        ${p.observacao ? `<div class="endereco-pedido">📝 ${escapar(p.observacao)}</div>` : ''}
+        <div class="rodape-pedido">
+          <span class="endereco-pedido">📍 ${escapar(p.endereco)}</span>
+          <span class="total-pedido">${formatarPreco(p.total)}</span>
+        </div>
+        ${p.situacao === 'Recebido' ? `<div style="margin-top:10px;"><button class="btn-perigo" onclick="cancelarPedido(${p.id})">Cancelar pedido</button></div>` : ''}
+      </div>`).join('');
+  } catch (erro) {
+    if (!silencioso) container.innerHTML = '<div class="vazio"><div class="grande">😕</div>' + escapar(erro.message) + '</div>';
+  }
+}
+
+async function cancelarPedido(id) {
+  if (!confirm('Tem certeza que deseja cancelar o pedido #' + id + '?')) return;
+  try {
+    await api('/pedidos/' + id + '/cancelar', { method: 'PUT' });
+    mostrarAviso('Pedido cancelado.', 'sucesso');
+    carregarMeusPedidos();
+  } catch (erro) {
+    mostrarAviso(erro.message, 'erro');
+  }
+}
+
+// ============================================================
+// GERENTE: PEDIDOS
+// ============================================================
+const PROXIMA_SITUACAO = {
+  'Recebido': 'Preparando',
+  'Preparando': 'Pronto',
+  'Pronto': 'A caminho',
+  'A caminho': 'Entregue'
+};
+
+async function carregarPedidosGerente(silencioso = false) {
+  const container = document.getElementById('aba-pedidosGerente');
+  if (!silencioso) container.innerHTML = '<div class="vazio"><div class="grande">⏳</div>Carregando pedidos...</div>';
+  try {
+    const [{ pedidos }, stats] = await Promise.all([api('/pedidos'), api('/estatisticas')]);
+
+    let html = `
+      <div class="estatisticas">
+        <div class="estat"><div class="numero">${stats.pedidosHoje}</div><div class="rotulo">Pedidos hoje</div></div>
+        <div class="estat"><div class="numero">${formatarPreco(stats.faturamentoHoje)}</div><div class="rotulo">Faturamento hoje</div></div>
+        <div class="estat"><div class="numero">${stats.pendentes}</div><div class="rotulo">Pedidos em andamento</div></div>
+        <div class="estat"><div class="numero">${stats.totalPedidos}</div><div class="rotulo">Total de pedidos</div></div>
+      </div>`;
+
+    if (pedidos.length === 0) {
+      html += '<div class="vazio"><div class="grande">📋</div>Nenhum pedido ainda.<br>Quando um cliente pedir, aparecerá aqui automaticamente.</div>';
+      container.innerHTML = html;
+      return;
+    }
+
+    html += pedidos.map(p => {
+      const proxima = PROXIMA_SITUACAO[p.situacao];
+      const emAndamento = ['Recebido', 'Preparando', 'Pronto', 'A caminho'].includes(p.situacao);
+      return `
+      <div class="cartao-pedido">
+        <div class="topo-pedido">
+          <div>
+            <div class="num-pedido">Pedido #${p.id} — ${escapar(p.clienteNome)}</div>
+            <div class="data-pedido">${formatarData(p.criadoEm)} · ${escapar(p.clienteEmail)}</div>
+          </div>
+          <span class="selo ${classeSelo(p.situacao)}">${escapar(p.situacao)}</span>
+        </div>
+        <div class="itens-pedido">
+          ${p.itens.map(i => `${i.quantidade}× ${escapar(i.nome)} — ${formatarPreco(i.preco * i.quantidade)}`).join('<br>')}
+        </div>
+        ${p.observacao ? `<div class="endereco-pedido">📝 ${escapar(p.observacao)}</div>` : ''}
+        <div class="rodape-pedido">
+          <span class="endereco-pedido">📍 ${escapar(p.endereco)}</span>
+          <span class="total-pedido">${formatarPreco(p.total)}</span>
+        </div>
+        ${emAndamento ? `
+        <div class="acoes-situacao" style="margin-top:12px;">
+          ${proxima ? `<button class="b-avancar" onclick="mudarSituacao(${p.id}, '${proxima}')">✔ Marcar como "${proxima}"</button>` : ''}
+          ${p.situacao === 'Pronto' ? `<button class="b-avancar" style="background:#8e44ad;" onclick="mudarSituacao(${p.id}, 'Entregue')">✔ Entregue no balcão</button>` : ''}
+          <button class="b-cancelar-ped" onclick="cancelarPedidoGerente(${p.id})">Cancelar</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+
+    container.innerHTML = html;
+  } catch (erro) {
+    if (!silencioso) container.innerHTML = '<div class="vazio"><div class="grande">😕</div>' + escapar(erro.message) + '</div>';
+  }
+}
+
+async function mudarSituacao(id, situacao) {
+  try {
+    await api('/pedidos/' + id + '/situacao', { method: 'PUT', body: { situacao } });
+    mostrarAviso(`Pedido #${id} atualizado para "${situacao}" ✓`, 'sucesso');
+    carregarPedidosGerente(true);
+  } catch (erro) {
+    mostrarAviso(erro.message, 'erro');
+  }
+}
+
+async function cancelarPedidoGerente(id) {
+  if (!confirm('Cancelar o pedido #' + id + '?')) return;
+  try {
+    await api('/pedidos/' + id + '/cancelar', { method: 'PUT' });
+    mostrarAviso('Pedido cancelado.', 'sucesso');
+    carregarPedidosGerente(true);
+  } catch (erro) {
+    mostrarAviso(erro.message, 'erro');
+  }
+}
+
+// ============================================================
+// GERENTE: CARDÁPIO
+// ============================================================
+async function carregarCardapioGerente() {
+  const container = document.getElementById('listaPratosGerente');
+  container.innerHTML = '<div class="vazio"><div class="grande">⏳</div>Carregando...</div>';
+  try {
+    const { pratos } = await api('/cardapio/todos');
+    if (pratos.length === 0) {
+      container.innerHTML = '<div class="vazio"><div class="grande">🍕</div>Nenhum prato cadastrado. Clique em "Cadastrar novo prato".</div>';
+      return;
+    }
+    let html = `<table class="tabela-pratos">
+      <tr><th>Foto</th><th>Prato</th><th>Preço</th><th>Categoria</th><th>Status</th><th>Ações</th></tr>`;
+    pratos.forEach(p => {
+      const foto = p.foto
+        ? `<img class="mini-foto" src="${escapar(p.foto)}" onerror="this.outerHTML='🍽️'">`
+        : '🍽️';
+      html += `
+        <tr class="${p.ativo ? '' : 'prato-inativo'}">
+          <td>${foto}</td>
+          <td><strong>${escapar(p.nome)}</strong><br><small style="color:var(--cinza);">${escapar(p.descricao || '')}</small></td>
+          <td>${formatarPreco(p.preco)}</td>
+          <td>${escapar(p.categoria)}</td>
+          <td>${p.ativo ? '✅ Disponível' : '⏸️ Pausado'}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn-editar" onclick='abrirModalPrato(${JSON.stringify(p).replace(/'/g, "&#39;")})'>✏️ Editar</button>
+            <button class="btn-perigo" onclick="removerPrato(${p.id}, '${escapar(p.nome).replace(/'/g, "\\'")}')">🗑️</button>
+          </td>
+        </tr>`;
+    });
+    html += '</table>';
+    container.innerHTML = html;
+  } catch (erro) {
+    container.innerHTML = '<div class="vazio"><div class="grande">😕</div>' + escapar(erro.message) + '</div>';
+  }
+}
+
+function abrirModalPrato(prato = null) {
+  document.getElementById('erroPrato').style.display = 'none';
+  document.getElementById('tituloModalPrato').textContent = prato ? 'Editar Prato' : 'Cadastrar Prato';
+  document.getElementById('pratoId').value = prato ? prato.id : '';
+  document.getElementById('pratoNome').value = prato ? prato.nome : '';
+  document.getElementById('pratoDescricao').value = prato ? (prato.descricao || '') : '';
+  document.getElementById('pratoPreco').value = prato ? prato.preco : '';
+  document.getElementById('pratoCategoria').value = prato ? prato.categoria : '';
+  document.getElementById('pratoFoto').value = prato ? (prato.foto || '') : '';
+  document.getElementById('pratoAtivo').checked = prato ? prato.ativo : true;
+  document.getElementById('modalPrato').classList.add('aberto');
+}
+
+async function salvarPrato() {
+  const id = document.getElementById('pratoId').value;
+  const corpo = {
+    nome: document.getElementById('pratoNome').value,
+    descricao: document.getElementById('pratoDescricao').value,
+    preco: document.getElementById('pratoPreco').value,
+    categoria: document.getElementById('pratoCategoria').value,
+    foto: document.getElementById('pratoFoto').value,
+    ativo: document.getElementById('pratoAtivo').checked
+  };
+  const erroEl = document.getElementById('erroPrato');
+  erroEl.style.display = 'none';
+  try {
+    if (id) await api('/pratos/' + id, { method: 'PUT', body: corpo });
+    else await api('/pratos', { method: 'POST', body: corpo });
+    fecharModal('modalPrato');
+    mostrarAviso(id ? 'Prato atualizado! ✓' : 'Prato cadastrado! ✓', 'sucesso');
+    carregarCardapioGerente();
+  } catch (erro) {
+    erroEl.textContent = erro.message;
+    erroEl.style.display = 'block';
+  }
+}
+
+async function removerPrato(id, nome) {
+  if (!confirm(`Remover "${nome}" do cardápio? Esta ação não pode ser desfeita.`)) return;
+  try {
+    await api('/pratos/' + id, { method: 'DELETE' });
+    mostrarAviso('Prato removido.', 'sucesso');
+    carregarCardapioGerente();
+  } catch (erro) {
+    mostrarAviso(erro.message, 'erro');
+  }
+}
+
+// ============================================================
+// INICIALIZAÇÃO
+// ============================================================
+document.getElementById('authSenha').addEventListener('keydown', e => {
+  if (e.key === 'Enter') enviarAuth();
+});
+document.getElementById('authEmail').addEventListener('keydown', e => {
+  if (e.key === 'Enter') enviarAuth();
+});
+
+verificarSessao();
+</script>
+</body>
+</html>

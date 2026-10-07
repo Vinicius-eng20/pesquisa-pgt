@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📚 Biblioteca Digital</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ TELA DE LOGIN ============ -->
+<div id="auth-screen" class="screen">
+  <div class="auth-box">
+    <h1>📚 Biblioteca Digital</h1>
+    <p class="subtitle">Entre com sua conta ou cadastre-se como leitor</p>
+
+    <div class="tabs">
+      <button id="tab-login" class="tab active" onclick="showTab('login')">Entrar</button>
+      <button id="tab-register" class="tab" onclick="showTab('register')">Criar conta de leitor</button>
+    </div>
+
+    <form id="form-login" onsubmit="return doLogin(event)">
+      <label>Usuário</label>
+      <input type="text" id="login-username" required autocomplete="username">
+      <label>Senha</label>
+      <input type="password" id="login-password" required autocomplete="current-password">
+      <button type="submit" class="btn primary full">Entrar</button>
+      <p class="hint">Bibliotecário padrão: <b>admin</b> / senha: <b>admin123</b></p>
+    </form>
+
+    <form id="form-register" class="hidden" onsubmit="return doRegister(event)">
+      <label>Seu nome completo</label>
+      <input type="text" id="reg-name" required>
+      <label>Escolha um nome de usuário</label>
+      <input type="text" id="reg-username" required autocomplete="username">
+      <label>Escolha uma senha</label>
+      <input type="password" id="reg-password" required autocomplete="new-password">
+      <button type="submit" class="btn primary full">Criar minha conta</button>
+    </form>
+
+    <p id="auth-msg" class="msg"></p>
+  </div>
+</div>
+
+<!-- ============ TELA PRINCIPAL ============ -->
+<div id="main-screen" class="screen hidden">
+  <header class="topbar">
+    <span class="logo">📚 Biblioteca Digital</span>
+    <span id="user-info"></span>
+    <button class="btn small" onclick="openChangePassword()">Trocar senha</button>
+    <button class="btn small danger" onclick="doLogout()">Sair</button>
+  </header>
+
+  <nav class="menu" id="menu"></nav>
+
+  <main id="content"></main>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div id="modal" class="modal hidden">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

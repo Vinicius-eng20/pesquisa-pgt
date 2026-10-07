@@ -1,0 +1,1448 @@
+=== README.md ===
+# 💰 Controle de Despesas Pessoais
+
+## 📋 O que é
+Um site para controlar gastos pessoais. Cada pessoa tem sua conta, registra gastos e vê o total mensal. O administrador gerencia categorias, usuários e vê relatórios.
+
+## 🔑 Acesso do Administrador
+- **Email:** admin@admin.com
+- **Senha:** admin123
+
+## ▶️ Como rodar
+
+```bash
+npm install
+npm start
+```
+
+Abra: **http://localhost:3000**
+
+## 🚀 Colocar na internet (Render.com - grátis)
+
+1. Crie conta em https://render.com
+2. Suba esses arquivos no GitHub
+3. No Render: **New > Web Service** > conecte o GitHub
+4. Build Command: `npm install`
+5. Start Command: `npm start`
+6. Clique em **Deploy**
+
+## 📦 Tecnologias
+- Node.js + Express + SQLite
+- HTML + CSS + JavaScript
+- JWT + bcrypt para autenticação
+=== package.json ===
+```json
+{
+  "name": "controle-despesas",
+  "version": "1.0.0",
+  "description": "Controle de Despesas Pessoais",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
+```
+=== server.js ===
+```javascript
+const express = require('express');
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const path = require('path');
+
+const app = express();
+const db = new Database('despesas.db');
+const SECRET = 'chave-secreta-controle-despesas-2024';
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== CRIAR TABELAS =====
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    tipo TEXT DEFAULT 'usuario',
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS categorias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT UNIQUE NOT NULL,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS despesas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    categoria_id INTEGER NOT NULL,
+    descricao TEXT NOT NULL,
+    valor REAL NOT NULL,
+    data TEXT NOT NULL,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+  )
+`);
+
+// ===== CRIAR ADMIN PADRÃO =====
+const adminExists = db.prepare('SELECT id FROM usuarios WHERE email = ?').get('admin@admin.com');
+if (!adminExists) {
+  const senhaHash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)').run('Administrador', 'admin@admin.com', senhaHash, 'admin');
+}
+
+// ===== CATEGORIAS PADRÃO =====
+const categoriasPadrao = ['Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Educação', 'Lazer', 'Outros'];
+const insertCat = db.prepare('INSERT OR IGNORE INTO categorias (nome) VALUES (?)');
+categoriasPadrao.forEach(c => insertCat.run(c));
+
+// ===== MIDDLEWARE DE AUTENTICAÇÃO =====
+function autenticar(req, res, next) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ erro: 'Não autorizado' });
+
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    const usuario = db.prepare('SELECT id, nome, email, tipo, ativo FROM usuarios WHERE id = ?').get(decoded.id);
+    if (!usuario || !usuario.ativo) return res.status(401).json({ erro: 'Conta desativada ou não encontrada' });
+    req.usuario = usuario;
+    next();
+  } catch (e) {
+    return res.status(401).json({ erro: 'Token inválido' });
+  }
+}
+
+function apenasAdmin(req, res, next) {
+  if (req.usuario.tipo !== 'admin') return res.status(403).json({ erro: 'Acesso negado' });
+  next();
+}
+
+// ===== ROTAS DE AUTENTICAÇÃO =====
+app.post('/api/cadastro', (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  if (senha.length < 4) return res.status(400).json({ erro: 'Senha deve ter no mínimo 4 caracteres' });
+
+  const existe = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(email);
+  if (existe) return res.status(400).json({ erro: 'Email já cadastrado' });
+
+  const senhaHash = bcrypt.hashSync(senha, 10);
+  const result = db.prepare('INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)').run(nome, email, senhaHash);
+  const token = jwt.sign({ id: result.lastInsertRowid }, SECRET);
+  res.json({ token, usuario: { id: result.lastInsertRowid, nome, email, tipo: 'usuario' } });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  if (!email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
+  if (!usuario) return res.status(400).json({ erro: 'Email não encontrado' });
+  if (!usuario.ativo) return res.status(400).json({ erro: 'Conta desativada. Fale com o administrador.' });
+  if (!bcrypt.compareSync(senha, usuario.senha)) return res.status(400).json({ erro: 'Senha incorreta' });
+
+  const token = jwt.sign({ id: usuario.id }, SECRET);
+  res.json({ token, usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, tipo: usuario.tipo } });
+});
+
+// ===== ROTAS DE CATEGORIAS =====
+app.get('/api/categorias', autenticar, (req, res) => {
+  const categorias = db.prepare('SELECT * FROM categorias ORDER BY nome').all();
+  res.json(categorias);
+});
+
+app.post('/api/categorias', autenticar, apenasAdmin, (req, res) => {
+  const { nome } = req.body;
+  if (!nome) return res.status(400).json({ erro: 'Informe o nome da categoria' });
+
+  const existe = db.prepare('SELECT id FROM categorias WHERE nome = ?').get(nome);
+  if (existe) return res.status(400).json({ erro: 'Categoria já existe' });
+
+  const result = db.prepare('INSERT INTO categorias (nome) VALUES (?)').run(nome);
+  res.json({ id: result.lastInsertRowid, nome });
+});
+
+app.delete('/api/categorias/:id', autenticar, apenasAdmin, (req, res) => {
+  const despesas = db.prepare('SELECT COUNT(*) as total FROM despesas WHERE categoria_id = ?').get(req.params.id);
+  if (despesas.total > 0) return res.status(400).json({ erro: 'Categoria possui despesas vinculadas e não pode ser excluída' });
+
+  db.prepare('DELETE FROM categorias WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ===== ROTAS DE DESPESAS =====
+app.get('/api/despesas', autenticar, (req, res) => {
+  const { mes, ano } = req.query;
+  let query = `
+    SELECT d.*, c.nome as categoria_nome
+    FROM despesas d
+    JOIN categorias c ON d.categoria_id = c.id
+    WHERE d.usuario_id = ?
+  `;
+  const params = [req.usuario.id];
+
+  if (mes && ano) {
+    query += ` AND strftime('%m', d.data) = ? AND strftime('%Y', d.data) = ?`;
+    params.push(mes.padStart(2, '0'), ano);
+  }
+
+  query += ' ORDER BY d.data DESC';
+  const despesas = db.prepare(query).all(...params);
+  res.json(despesas);
+});
+
+app.post('/api/despesas', autenticar, (req, res) => {
+  const { descricao, valor, categoria_id, data } = req.body;
+  if (!descricao || !valor || !categoria_id || !data) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  if (valor <= 0) return res.status(400).json({ erro: 'Valor deve ser maior que zero' });
+
+  const result = db.prepare('INSERT INTO despesas (usuario_id, categoria_id, descricao, valor, data) VALUES (?, ?, ?, ?, ?)').run(req.usuario.id, categoria_id, descricao, valor, data);
+  res.json({ id: result.lastInsertRowid });
+});
+
+app.delete('/api/despesas/:id', autenticar, (req, res) => {
+  const despesa = db.prepare('SELECT * FROM despesas WHERE id = ? AND usuario_id = ?').get(req.params.id, req.usuario.id);
+  if (!despesa) return res.status(404).json({ erro: 'Despesa não encontrada' });
+
+  db.prepare('DELETE FROM despesas WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ===== RESUMO MENSAL =====
+app.get('/api/resumo', autenticar, (req, res) => {
+  const { mes, ano } = req.query;
+  const m = mes || new Date().getMonth() + 1;
+  const a = ano || new Date().getFullYear();
+
+  const total = db.prepare(`
+    SELECT COALESCE(SUM(valor), 0) as total
+    FROM despesas
+    WHERE usuario_id = ? AND strftime('%m', data) = ? AND strftime('%Y', data) = ?
+  `).get(req.usuario.id, String(m).padStart(2, '0'), String(a));
+
+  const porCategoria = db.prepare(`
+    SELECT c.nome, COALESCE(SUM(d.valor), 0) as total
+    FROM despesas d
+    JOIN categorias c ON d.categoria_id = c.id
+    WHERE d.usuario_id = ? AND strftime('%m', d.data) = ? AND strftime('%Y', d.data) = ?
+    GROUP BY c.nome
+    ORDER BY total DESC
+  `).all(req.usuario.id, String(m).padStart(2, '0'), String(a));
+
+  res.json({ total: total.total, porCategoria });
+});
+
+// ===== ROTAS DE ADMINISTRAÇÃO =====
+app.get('/api/admin/usuarios', autenticar, apenasAdmin, (req, res) => {
+  const usuarios = db.prepare(`
+    SELECT u.id, u.nome, u.email, u.tipo, u.ativo, u.criado_em,
+      COALESCE(SUM(d.valor), 0) as total_gasto
+    FROM usuarios u
+    LEFT JOIN despesas d ON d.usuario_id = u.id
+    GROUP BY u.id
+    ORDER BY u.nome
+  `).all();
+  res.json(usuarios);
+});
+
+app.put('/api/admin/usuarios/:id/toggle', autenticar, apenasAdmin, (req, res) => {
+  const usuario = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.params.id);
+  if (!usuario) return res.status(404).json({ erro: 'Usuário não encontrado' });
+  if (usuario.tipo === 'admin') return res.status(400).json({ erro: 'Não é possível desativar um administrador' });
+
+  const novoStatus = usuario.ativo ? 0 : 1;
+  db.prepare('UPDATE usuarios SET ativo = ? WHERE id = ?').run(novoStatus, req.params.id);
+  res.json({ ativo: novoStatus });
+});
+
+app.get('/api/admin/relatorio', autenticar, apenasAdmin, (req, res) => {
+  const { mes, ano } = req.query;
+  const m = mes || new Date().getMonth() + 1;
+  const a = ano || new Date().getFullYear();
+
+  const totalGeral = db.prepare(`
+    SELECT COALESCE(SUM(valor), 0) as total
+    FROM despesas
+    WHERE strftime('%m', data) = ? AND strftime('%Y', data) = ?
+  `).get(String(m).padStart(2, '0'), String(a));
+
+  const porUsuario = db.prepare(`
+    SELECT u.nome, u.email, COALESCE(SUM(d.valor), 0) as total, COUNT(d.id) as qtd_despesas
+    FROM usuarios u
+    LEFT JOIN despesas d ON d.usuario_id = u.id AND strftime('%m', d.data) = ? AND strftime('%Y', d.data) = ?
+    WHERE u.tipo != 'admin'
+    GROUP BY u.id
+    ORDER BY total DESC
+  `).all(String(m).padStart(2, '0'), String(a));
+
+  const porCategoria = db.prepare(`
+    SELECT c.nome, COALESCE(SUM(d.valor), 0) as total
+    FROM despesas d
+    JOIN categorias c ON d.categoria_id = c.id
+    WHERE strftime('%m', d.data) = ? AND strftime('%Y', d.data) = ?
+    GROUP BY c.nome
+    ORDER BY total DESC
+  `).all(String(m).padStart(2, '0'), String(a));
+
+  res.json({ totalGeral: totalGeral.total, porUsuario, porCategoria });
+});
+
+// ===== INICIAR SERVIDOR =====
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Servidor rodando em http://localhost:${PORT}`);
+});
+=== public/index.html ===
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>💰 Controle de Despesas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== TELA DE LOGIN / CADASTRO ===== -->
+  <div id="tela-auth" class="tela">
+    <div class="auth-box">
+      <h1>💰 Controle de Despesas</h1>
+
+      <div class="auth-tabs">
+        <button class="tab-btn ativo" id="tab-login" onclick="mostrarTab('login')">Entrar</button>
+        <button class="tab-btn" id="tab-cadastro" onclick="mostrarTab('cadastro')">Cadastrar</button>
+      </div>
+
+      <!-- Login -->
+      <div id="form-login" class="auth-form">
+        <input type="email" id="login-email" placeholder="Email">
+        <input type="password" id="login-senha" placeholder="Senha">
+        <button class="btn btn-primario" onclick="fazerLogin()">Entrar</button>
+        <p class="erro-msg" id="login-erro"></p>
+      </div>
+
+      <!-- Cadastro -->
+      <div id="form-cadastro" class="auth-form" style="display:none">
+        <input type="text" id="cad-nome" placeholder="Nome completo">
+        <input type="email" id="cad-email" placeholder="Email">
+        <input type="password" id="cad-senha" placeholder="Senha (mínimo 4 caracteres)">
+        <button class="btn btn-primario" onclick="fazerCadastro()">Cadastrar</button>
+        <p class="erro-msg" id="cad-erro"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TELA DO USUÁRIO ===== -->
+  <div id="tela-usuario" class="tela" style="display:none">
+    <nav class="navbar">
+      <span class="nav-logo">💰 Despesas</span>
+      <span class="nav-usuario" id="nav-usuario-nome"></span>
+      <button class="btn btn-sair" onclick="sair()">Sair</button>
+    </nav>
+
+    <div class="container">
+      <!-- Resumo do mês -->
+      <div class="card resumo-card">
+        <div class="resumo-header">
+          <h2>📊 Resumo do Mês</h2>
+          <div class="filtro-mes">
+            <select id="filtro-mes" onchange="carregarDados()">
+              <option value="1">Janeiro</option>
+              <option value="2">Fevereiro</option>
+              <option value="3">Março</option>
+              <option value="4">Abril</option>
+              <option value="5">Maio</option>
+              <option value="6">Junho</option>
+              <option value="7">Julho</option>
+              <option value="8">Agosto</option>
+              <option value="9">Setembro</option>
+              <option value="10">Outubro</option>
+              <option value="11">Novembro</option>
+              <option value="12">Dezembro</option>
+            </select>
+            <select id="filtro-ano" onchange="carregarDados()"></select>
+          </div>
+        </div>
+        <div class="total-gasto" id="total-gasto">R$ 0,00</div>
+        <div class="por-categoria" id="por-categoria"></div>
+      </div>
+
+      <!-- Nova despesa -->
+      <div class="card">
+        <h2>➕ Nova Despesa</h2>
+        <div class="form-despesa">
+          <input type="text" id="desp-descricao" placeholder="Descrição (ex: Almoço)">
+          <input type="number" id="desp-valor" placeholder="Valor (R$)" step="0.01" min="0.01">
+          <select id="desp-categoria"></select>
+          <input type="date" id="desp-data">
+          <button class="btn btn-primario" onclick="adicionarDespesa()">Adicionar</button>
+        </div>
+        <p class="erro-msg" id="desp-erro"></p>
+      </div>
+
+      <!-- Lista de despesas -->
+      <div class="card">
+        <h2>📋 Minhas Despesas</h2>
+        <div class="lista-despesas" id="lista-despesas"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TELA DO ADMINISTRADOR ===== -->
+  <div id="tela-admin" class="tela" style="display:none">
+    <nav class="navbar navbar-admin">
+      <span class="nav-logo">⚙️ Painel Admin</span>
+      <span class="nav-usuario" id="nav-admin-nome"></span>
+      <button class="btn btn-sair" onclick="sair()">Sair</button>
+    </nav>
+
+    <div class="container">
+      <div class="admin-tabs">
+        <button class="tab-btn ativo" onclick="mostrarAdminTab('relatorio', this)">📊 Relatório</button>
+        <button class="tab-btn" onclick="mostrarAdminTab('categorias', this)">🏷️ Categorias</button>
+        <button class="tab-btn" onclick="mostrarAdminTab('usuarios', this)">👥 Usuários</button>
+      </div>
+
+      <!-- Relatório -->
+      <div id="admin-relatorio" class="admin-secao">
+        <div class="card">
+          <div class="resumo-header">
+            <h2>Total de Gastos de Todos os Usuários</h2>
+            <div class="filtro-mes">
+              <select id="admin-filtro-mes" onchange="carregarRelatorio()">
+                <option value="1">Janeiro</option>
+                <option value="2">Fevereiro</option>
+                <option value="3">Março</option>
+                <option value="4">Abril</option>
+                <option value="5">Maio</option>
+                <option value="6">Junho</option>
+                <option value="7">Julho</option>
+                <option value="8">Agosto</option>
+                <option value="9">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+              <select id="admin-filtro-ano" onchange="carregarRelatorio()"></select>
+            </div>
+          </div>
+          <div class="total-gasto" id="admin-total-geral">R$ 0,00</div>
+        </div>
+
+        <div class="card">
+          <h3>Por Usuário</h3>
+          <div id="admin-por-usuario"></div>
+        </div>
+
+        <div class="card">
+          <h3>Por Categoria</h3>
+          <div id="admin-por-categoria"></div>
+        </div>
+      </div>
+
+      <!-- Categorias -->
+      <div id="admin-categorias" class="admin-secao" style="display:none">
+        <div class="card">
+          <h2>🏷️ Gerenciar Categorias</h2>
+          <div class="form-inline">
+            <input type="text" id="nova-categoria" placeholder="Nome da nova categoria">
+            <button class="btn btn-primario" onclick="adicionarCategoria()">Adicionar</button>
+          </div>
+          <p class="erro-msg" id="cat-erro"></p>
+          <div class="lista-categorias" id="lista-categorias"></div>
+        </div>
+      </div>
+
+      <!-- Usuários -->
+      <div id="admin-usuarios" class="admin-secao" style="display:none">
+        <div class="card">
+          <h2>👥 Gerenciar Usuários</h2>
+          <div class="lista-usuarios" id="lista-usuarios"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+```
+=== public/style.css ===
+```css
+/* ===== RESET E BASE ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f2f5;
+  color: #333;
+  min-height: 100vh;
+}
+
+/* ===== TELAS ===== */
+.tela {
+  min-height: 100vh;
+}
+
+/* ===== AUTENTICAÇÃO ===== */
+#tela-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.auth-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.auth-box h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 1.6em;
+  color: #333;
+}
+
+.auth-tabs {
+  display: flex;
+  margin-bottom: 24px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #e0e0e0;
+}
+
+.auth-tabs .tab-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: #888;
+  transition: all 0.3s;
+}
+
+.auth-tabs .tab-btn.ativo {
+  background: #667eea;
+  color: #fff;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 15px;
+  transition: border-color 0.3s;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+/* ===== NAVBAR ===== */
+.navbar {
+  background: #667eea;
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+.navbar-admin {
+  background: #2d3748;
+}
+
+.nav-logo {
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+.nav-usuario {
+  font-size: 0.95em;
+  opacity: 0.9;
+}
+
+/* ===== CONTAINER ===== */
+.container {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+/* ===== CARDS ===== */
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+  font-size: 1.15em;
+  margin-bottom: 16px;
+  color: #444;
+}
+
+.card h3 {
+  font-size: 1em;
+  margin-bottom: 12px;
+  color: #555;
+}
+
+/* ===== RESUMO ===== */
+.resumo-card {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+.resumo-card h2 {
+  color: #fff;
+}
+
+.resumo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filtro-mes select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  margin-left: 6px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.total-gasto {
+  font-size: 2.4em;
+  font-weight: 800;
+  margin: 16px 0;
+}
+
+.por-categoria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cat-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.9em;
+}
+
+.cat-badge strong {
+  margin-left: 4px;
+}
+
+/* ===== FORMULÁRIO DESPESA ===== */
+.form-despesa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-despesa input,
+.form-despesa select {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.form-despesa input:focus,
+.form-despesa select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.form-despesa input[type="text"] {
+  flex: 2;
+}
+
+.form-inline {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.form-inline input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* ===== BOTÕES ===== */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-primario {
+  background: #667eea;
+  color: #fff;
+  width: 100%;
+}
+
+.btn-primario:hover {
+  background: #5a6fd6;
+}
+
+.btn-sair {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.btn-sair:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-excluir {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.btn-excluir:hover {
+  background: #fecaca;
+}
+
+.btn-toggle {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.btn-ativar {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.btn-desativar {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ===== LISTA DE DESPESAS ===== */
+.lista-despesas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.despesa-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+
+.despesa-info {
+  flex: 1;
+}
+
+.despesa-desc {
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.despesa-meta {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 2px;
+}
+
+.despesa-valor {
+  font-weight: 700;
+  color: #dc2626;
+  font-size: 1.05em;
+  margin-right: 10px;
+}
+
+/* ===== CATEGORIAS ADMIN ===== */
+.lista-categorias {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.categoria-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+/* ===== USUÁRIOS ADMIN ===== */
+.lista-usuarios {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.usuario-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.usuario-info {
+  flex: 1;
+}
+
+.usuario-nome {
+  font-weight: 600;
+}
+
+.usuario-email {
+  font-size: 0.85em;
+  color: #888;
+}
+
+.usuario-status {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-ativo {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-inativo {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.usuario-gasto {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 0.9em;
+}
+
+/* ===== ADMIN TABS ===== */
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.admin-tabs .tab-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  background: #e2e8f0;
+  color: #4a5568;
+  transition: all 0.3s;
+}
+
+.admin-tabs .tab-btn.ativo {
+  background: #2d3748;
+  color: #fff;
+}
+
+/* ===== RELATÓRIO ===== */
+.relatorio-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.relatorio-nome {
+  font-weight: 600;
+}
+
+.relatorio-email {
+  font-size: 0.8em;
+  color: #888;
+}
+
+.relatorio-valor {
+  font-weight: 700;
+  color: #667eea;
+}
+
+.relatorio-qtd {
+  font-size: 0.8em;
+  color: #888;
+  margin-left: 8px;
+}
+
+/* ===== MENSAGENS ===== */
+.erro-msg {
+  color: #dc2626;
+  font-size: 0.85em;
+  margin-top: 10px;
+  text-align: center;
+  min-height: 20px;
+}
+
+.vazio {
+  text-align: center;
+  color: #aaa;
+  padding: 30px;
+  font-size: 0.95em;
+}
+
+/* ===== RESPONSIVO ===== */
+@media (max-width: 600px) {
+  .auth-box {
+    padding: 24px;
+  }
+
+  .total-gasto {
+    font-size: 1.8em;
+  }
+
+  .form-despesa {
+    flex-direction: column;
+  }
+
+  .form-despesa input,
+  .form-despesa select {
+    width: 100%;
+  }
+
+  .resumo-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .despesa-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .navbar {
+    padding: 12px 16px;
+  }
+
+  .nav-logo {
+    font-size: 1em;
+  }
+
+  .admin-tabs {
+    flex-wrap: wrap;
+  }
+}
+```
+=== public/app.js ===
+```javascript
+// ===== ESTADO GLOBAL =====
+let token = localStorage.getItem('token');
+let usuario = JSON.parse(localStorage.getItem('usuario') || 'null');
+
+// ===== INICIALIZAÇÃO =====
+document.addEventListener('DOMContentLoaded', () => {
+  preencherAnos();
+  preencherAnosAdmin();
+
+  if (token && usuario) {
+    if (usuario.tipo === 'admin') {
+      mostrarTelaAdmin();
+    } else {
+      mostrarTelaUsuario();
+    }
+  }
+});
+
+function preencherAnos() {
+  const select = document.getElementById('filtro-ano');
+  const anoAtual = new Date().getFullYear();
+  for (let a = anoAtual; a >= anoAtual - 5; a--) {
+    select.innerHTML += `<option value="${a}">${a}</option>`;
+  }
+  document.getElementById('filtro-mes').value = new Date().getMonth() + 1;
+  document.getElementById('desp-data').valueAsDate = new Date();
+}
+
+function preencherAnosAdmin() {
+  const select = document.getElementById('admin-filtro-ano');
+  const anoAtual = new Date().getFullYear();
+  for (let a = anoAtual; a >= anoAtual - 5; a--) {
+    select.innerHTML += `<option value="${a}">${a}</option>`;
+  }
+  document.getElementById('admin-filtro-mes').value = new Date().getMonth() + 1;
+}
+
+// ===== HELPERS =====
+function headers() {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`
+  };
+}
+
+function formatarMoeda(valor) {
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatarData(dataStr) {
+  const [ano, mes, dia] = dataStr.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
+
+// ===== AUTENTICAÇÃO =====
+function mostrarTab(tab) {
+  document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('form-cadastro').style.display = tab === 'cadastro' ? 'block' : 'none';
+  document.getElementById('tab-login').className = tab === 'login' ? 'tab-btn ativo' : 'tab-btn';
+  document.getElementById('tab-cadastro').className = tab === 'cadastro' ? 'tab-btn ativo' : 'tab-btn';
+}
+
+async function fazerLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const erroEl = document.getElementById('login-erro');
+  erroEl.textContent = '';
+
+  if (!email || !senha) {
+    erroEl.textContent = 'Preencha email e senha';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, senha })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      erroEl.textContent = data.erro;
+      return;
+    }
+
+    salvarSessao(data);
+  } catch (e) {
+    erroEl.textContent = 'Erro de conexão. Tente novamente.';
+  }
+}
+
+async function fazerCadastro() {
+  const nome = document.getElementById('cad-nome').value.trim();
+  const email = document.getElementById('cad-email').value.trim();
+  const senha = document.getElementById('cad-senha').value;
+  const erroEl = document.getElementById('cad-erro');
+  erroEl.textContent = '';
+
+  if (!nome || !email || !senha) {
+    erroEl.textContent = 'Preencha todos os campos';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/cadastro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, email, senha })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      erroEl.textContent = data.erro;
+      return;
+    }
+
+    salvarSessao(data);
+  } catch (e) {
+    erroEl.textContent = 'Erro de conexão. Tente novamente.';
+  }
+}
+
+function salvarSessao(data) {
+  token = data.token;
+  usuario = data.usuario;
+  localStorage.setItem('token', token);
+  localStorage.setItem('usuario', JSON.stringify(usuario));
+
+  if (usuario.tipo === 'admin') {
+    mostrarTelaAdmin();
+  } else {
+    mostrarTelaUsuario();
+  }
+}
+
+function sair() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('usuario');
+  token = null;
+  usuario = null;
+  document.getElementById('tela-auth').style.display = 'flex';
+  document.getElementById('tela-usuario').style.display = 'none';
+  document.getElementById('tela-admin').style.display = 'none';
+}
+
+// ===== TELA DO USUÁRIO =====
+function mostrarTelaUsuario() {
+  document.getElementById('tela-auth').style.display = 'none';
+  document.getElementById('tela-usuario').style.display = 'block';
+  document.getElementById('tela-admin').style.display = 'none';
+  document.getElementById('nav-usuario-nome').textContent = usuario.nome;
+  carregarDados();
+}
+
+async function carregarDados() {
+  const mes = document.getElementById('filtro-mes').value;
+  const ano = document.getElementById('filtro-ano').value;
+
+  await carregarCategorias();
+  await carregarResumo(mes, ano);
+  await carregarDespesas(mes, ano);
+}
+
+async function carregarCategorias() {
+  try {
+    const res = await fetch('/api/categorias', { headers: headers() });
+    const categorias = await res.json();
+    const select = document.getElementById('desp-categoria');
+    select.innerHTML = categorias.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+  } catch (e) {
+    console.error('Erro ao carregar categorias:', e);
+  }
+}
+
+async function carregarResumo(mes, ano) {
+  try {
+    const res = await fetch(`/api/resumo?mes=${mes}&ano=${ano}`, { headers: headers() });
+    const data = await res.json();
+
+    document.getElementById('total-gasto').textContent = formatarMoeda(data.total);
+
+    const container = document.getElementById('por-categoria');
+    if (data.porCategoria.length === 0) {
+      container.innerHTML = '<span style="opacity:0.7">Nenhum gasto neste mês</span>';
+    } else {
+      container.innerHTML = data.porCategoria.map(c =>
+        `<span class="cat-badge">${c.nome}: <strong>${formatarMoeda(c.total)}</strong></span>`
+      ).join('');
+    }
+  } catch (e) {
+    console.error('Erro ao carregar resumo:', e);
+  }
+}
+
+async function carregarDespesas(mes, ano) {
+  try {
+    const res = await fetch(`/api/despesas?mes=${mes}&ano=${ano}`, { headers: headers() });
+    const despesas = await res.json();
+
+    const container = document.getElementById('lista-despesas');
+    if (despesas.length === 0) {
+      container.innerHTML = '<div class="vazio">Nenhuma despesa registrada neste mês 📝</div>';
+      return;
+    }
+
+    container.innerHTML = despesas.map(d => `
+      <div class="despesa-item">
+        <div class="despesa-info">
+          <div class="despesa-desc">${d.descricao}</div>
+          <div class="despesa-meta">${d.categoria_nome} • ${formatarData(d.data)}</div>
+        </div>
+        <span class="despesa-valor">${formatarMoeda(d.valor)}</span>
+        <button class="btn btn-excluir" onclick="excluirDespesa(${d.id})">✕</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Erro ao carregar despesas:', e);
+  }
+}
+
+async function adicionarDespesa() {
+  const descricao = document.getElementById('desp-descricao').value.trim();
+  const valor = parseFloat(document.getElementById('desp-valor').value);
+  const categoria_id = document.getElementById('desp-categoria').value;
+  const data = document.getElementById('desp-data').value;
+  const erroEl = document.getElementById('desp-erro');
+  erroEl.textContent = '';
+
+  if (!descricao || !valor || !categoria_id || !data) {
+    erroEl.textContent = 'Preencha todos os campos';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/despesas', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ descricao, valor, categoria_id: parseInt(categoria_id), data })
+    });
+    const result = await res.json();
+
+    if (!res.ok) {
+      erroEl.textContent = result.erro;
+      return;
+    }
+
+    document.getElementById('desp-descricao').value = '';
+    document.getElementById('desp-valor').value = '';
+    carregarDados();
+  } catch (e) {
+    erroEl.textContent = 'Erro ao salvar. Tente novamente.';
+  }
+}
+
+async function excluirDespesa(id) {
+  if (!confirm('Deseja excluir esta despesa?')) return;
+
+  try {
+    await fetch(`/api/despesas/${id}`, { method: 'DELETE', headers: headers() });
+    carregarDados();
+  } catch (e) {
+    alert('Erro ao excluir despesa');
+  }
+}
+
+// ===== TELA DO ADMIN =====
+function mostrarTelaAdmin() {
+  document.getElementById('tela-auth').style.display = 'none';
+  document.getElementById('tela-usuario').style.display = 'none';
+  document.getElementById('tela-admin').style.display = 'block';
+  document.getElementById('nav-admin-nome').textContent = usuario.nome;
+  carregarRelatorio();
+}
+
+function mostrarAdminTab(tab, btn) {
+  document.querySelectorAll('.admin-secao').forEach(s => s.style.display = 'none');
+  document.querySelectorAll('.admin-tabs .tab-btn').forEach(b => b.classList.remove('ativo'));
+  document.getElementById('admin-' + tab).style.display = 'block';
+  btn.classList.add('ativo');
+
+  if (tab === 'categorias') carregarCategoriasAdmin();
+  if (tab === 'usuarios') carregarUsuarios();
+  if (tab === 'relatorio') carregarRelatorio();
+}
+
+// --- Relatório ---
+async function carregarRelatorio() {
+  const mes = document.getElementById('admin-filtro-mes').value;
+  const ano = document.getElementById('admin-filtro-ano').value;
+
+  try {
+    const res = await fetch(`/api/admin/relatorio?mes=${mes}&ano=${ano}`, { headers: headers() });
+    const data = await res.json();
+
+    document.getElementById('admin-total-geral').textContent = formatarMoeda(data.totalGeral);
+
+    // Por usuário
+    const userContainer = document.getElementById('admin-por-usuario');
+    if (data.porUsuario.length === 0) {
+      userContainer.innerHTML = '<div class="vazio">Nenhum usuário cadastrado</div>';
+    } else {
+      userContainer.innerHTML = data.porUsuario.map(u => `
+        <div class="relatorio-item">
+          <div>
+            <div class="relatorio-nome">${u.nome}</div>
+            <div class="relatorio-email">${u.email}</div>
+          </div>
+          <div>
+            <span class="relatorio-valor">${formatarMoeda(u.total)}</span>
+            <span class="relatorio-qtd">(${u.qtd_despesas} despesas)</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Por categoria
+    const catContainer = document.getElementById('admin-por-categoria');
+    if (data.porCategoria.length === 0) {
+      catContainer.innerHTML = '<div class="vazio">Nenhum gasto neste mês</div>';
+    } else {
+      catContainer.innerHTML = data.porCategoria.map(c => `
+        <div class="relatorio-item">
+          <span class="relatorio-nome">${c.nome}</span>
+          <span class="relatorio-valor">${formatarMoeda(c.total)}</span>
+        </div>
+      `).join('');
+    }
+  } catch (e) {
+    console.error('Erro ao carregar relatório:', e);
+  }
+}
+
+// --- Categorias ---
+async function carregarCategoriasAdmin() {
+  try {
+    const res = await fetch('/api/categorias', { headers: headers() });
+    const categorias = await res.json();
+
+    const container = document.getElementById('lista-categorias');
+    if (categorias.length === 0) {
+      container.innerHTML = '<div class="vazio">Nenhuma categoria cadastrada</div>';
+      return;
+    }
+
+    container.innerHTML = categorias.map(c => `
+      <div class="categoria-item">
+        <span>🏷️ ${c.nome}</span>
+        <button class="btn btn-excluir" onclick="excluirCategoria(${c.id})">Excluir</button>
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Erro ao carregar categorias:', e);
+  }
+}
+
+async function adicionarCategoria() {
+  const nome = document.getElementById('nova-categoria').value.trim();
+  const erroEl = document.getElementById('cat-erro');
+  erroEl.textContent = '';
+
+  if (!nome) {
+    erroEl.textContent = 'Informe o nome da categoria';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/categorias', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ nome })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      erroEl.textContent = data.erro;
+      return;
+    }
+
+    document.getElementById('nova-categoria').value = '';
+    carregarCategoriasAdmin();
+  } catch (e) {
+    erroEl.textContent = 'Erro ao adicionar categoria';
+  }
+}
+
+async function excluirCategoria(id) {
+  if (!confirm('Deseja excluir esta categoria?')) return;
+
+  try {
+    const res = await fetch(`/api/categorias/${id}`, { method: 'DELETE', headers: headers() });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.erro);
+      return;
+    }
+
+    carregarCategoriasAdmin();
+  } catch (e) {
+    alert('Erro ao excluir categoria');
+  }
+}
+
+// --- Usuários ---
+async function carregarUsuarios() {
+  try {
+    const res = await fetch('/api/admin/usuarios', { headers: headers() });
+    const usuarios = await res.json();
+
+    const container = document.getElementById('lista-usuarios');
+    container.innerHTML = usuarios.map(u => `
+      <div class="usuario-item">
+        <div class="usuario-info">
+          <div class="usuario-nome">${u.nome} ${u.tipo === 'admin' ? '👑' : ''}</div>
+          <div class="usuario-email">${u.email}</div>
+        </div>
+        <span class="usuario-gasto">Total gasto: ${formatarMoeda(u.total_gasto)}</span>
+        <span class="usuario-status ${u.ativo ? 'status-ativo' : 'status-inativo'}">
+          ${u.ativo ? '✅ Ativo' : '❌ Inativo'}
+        </span>
+        ${u.tipo !== 'admin' ? `
+          <button class="btn btn-toggle ${u.ativo ? 'btn-desativar' : 'btn-ativar'}"
+                  onclick="toggleUsuario(${u.id})">
+            ${u.ativo ? 'Desativar' : 'Ativar'}
+          </button>
+        ` : ''}
+      </div>
+    `).join('');
+  } catch (e) {
+    console.error('Erro ao carregar usuários:', e);
+  }
+}
+
+async function toggleUsuario(id) {
+  try {
+    const res = await fetch(`/api/admin/usuarios/${id}/toggle`, { method: 'PUT', headers: headers() });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.erro);
+      return;
+    }
+
+    carregarUsuarios();
+  } catch (e) {
+    alert('Erro ao alterar status do usuário');
+  }
+}
+```

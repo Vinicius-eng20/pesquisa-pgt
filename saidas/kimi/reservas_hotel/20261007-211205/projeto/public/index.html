@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hotel Paradise - Sistema de Reservas</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Tela de Login/Registro -->
+        <div id="auth-screen" class="auth-container">
+            <div class="auth-box">
+                <div class="logo">
+                    <i class="fas fa-hotel"></i>
+                    <h1>Hotel Paradise</h1>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="showTab('login')">Entrar</button>
+                    <button class="tab-btn" onclick="showTab('registro')">Criar Conta</button>
+                </div>
+
+                <form id="login-form" class="auth-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" id="login-email" required placeholder="seu@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Senha</label>
+                        <input type="password" id="login-senha" required placeholder="••••••">
+                    </div>
+                    <button type="submit" class="btn-primary">Entrar</button>
+                    <p class="demo-info">Demo Gerente: admin@hotel.com / admin123</p>
+                </form>
+
+                <form id="registro-form" class="auth-form hidden" onsubmit="handleRegistro(event)">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Nome Completo</label>
+                        <input type="text" id="reg-nome" required placeholder="Seu nome">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" id="reg-email" required placeholder="seu@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Senha</label>
+                        <input type="password" id="reg-senha" required placeholder="Mínimo 6 caracteres" minlength="6">
+                    </div>
+                    <button type="submit" class="btn-primary">Criar Conta</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Sistema Principal -->
+        <div id="main-screen" class="hidden">
+            <nav class="navbar">
+                <div class="nav-brand">
+                    <i class="fas fa-hotel"></i> Hotel Paradise
+                </div>
+                <div class="nav-user">
+                    <span id="user-name"></span>
+                    <button onclick="logout()" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Sair</button>
+                </div>
+            </nav>
+
+            <!-- Área do Hóspede -->
+            <div id="hospede-area" class="container hidden">
+                <div class="menu-lateral">
+                    <button class="menu-btn active" onclick="showSection('buscar')">
+                        <i class="fas fa-search"></i> Buscar Quartos
+                    </button>
+                    <button class="menu-btn" onclick="showSection('minhas-reservas')">
+                        <i class="fas fa-calendar-check"></i> Minhas Reservas
+                    </button>
+                </div>
+
+                <div class="content-area">
+                    <!-- Busca de Quartos -->
+                    <div id="buscar-section" class="section">
+                        <h2><i class="fas fa-search"></i> Encontre seu quarto ideal</h2>
+                        <div class="search-box">
+                            <div class="date-inputs">
+                                <div class="form-group">
+                                    <label>Check-in</label>
+                                    <input type="date" id="checkin-date" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Check-out</label>
+                                    <input type="date" id="checkout-date" required>
+                                </div>
+                                <button onclick="buscarQuartos()" class="btn-search">
+                                    <i class="fas fa-search"></i> Buscar Disponíveis
+                                </button>
+                            </div>
+                        </div>
+                        <div id="quartos-result" class="quartos-grid"></div>
+                    </div>
+
+                    <!-- Minhas Reservas -->
+                    <div id="minhas-reservas-section" class="section hidden">
+                        <h2><i class="fas fa-calendar-check"></i> Minhas Reservas</h2>
+                        <div id="lista-reservas" class="reservas-list"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Área do Gerente -->
+            <div id="gerente-area" class="container hidden">
+                <div class="menu-lateral">
+                    <button class="menu-btn active" onclick="showGerenteSection('reservas')">
+                        <i class="fas fa-list"></i> Todas as Reservas
+                    </button>
+                    <button class="menu-btn" onclick="showGerenteSection('quartos')">
+                        <i class="fas fa-bed"></i> Gerenciar Quartos
+                    </button>
+                </div>
+
+                <div class="content-area">
+                    <!-- Todas as Reservas -->
+                    <div id="reservas-gerente-section" class="section">
+                        <h2><i class="fas fa-list"></i> Gerenciar Reservas</h2>
+                        <div id="todas-reservas" class="reservas-list"></div>
+                    </div>
+
+                    <!-- Gerenciar Quartos -->
+                    <div id="quartos-gerente-section" class="section hidden">
+                        <div class="section-header">
+                            <h2><i class="fas fa-bed"></i> Gerenciar Quartos</h2>
+                            <button onclick="abrirModalQuarto()" class="btn-primary">
+                                <i class="fas fa-plus"></i> Novo Quarto
+                            </button>
+                        </div>
+                        <div id="lista-quartos" class="quartos-admin"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Reserva -->
+        <div id="modal-reserva" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="fecharModal('modal-reserva')">&times;</span>
+                <h3>Confirmar Reserva</h3>
+                <div id="detalhes-reserva"></div>
+                <div class="modal-actions">
+                    <button onclick="fecharModal('modal-reserva')" class="btn-secondary">Cancelar</button>
+                    <button onclick="confirmarReserva()" class="btn-primary">Confirmar Reserva</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Quarto (Gerente) -->
+        <div id="modal-quarto" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="fecharModal('modal-quarto')">&times;</span>
+                <h3 id="modal-quarto-titulo">Novo Quarto</h3>
+                <form id="form-quarto" onsubmit="salvarQuarto(event)">
+                    <input type="hidden" id="quarto-id">
+                    <div class="form-group">
+                        <label>Número do Quarto</label>
+                        <input type="text" id="quarto-numero" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo</label>
+                        <select id="quarto-tipo" required>
+                            <option value="Standard">Standard</option>
+                            <option value="Luxo">Luxo</option>
+                            <option value="Suíte">Suíte</option>
+                            <option value="Suíte Presidencial">Suíte Presidencial</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Descrição</label>
+                        <textarea id="quarto-descricao" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Capacidade (pessoas)</label>
+                            <input type="number" id="quarto-capacidade" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Preço da Diária (R$)</label>
+                            <input type="number" id="quarto-preco" step="0.01" min="0" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="quarto-ativo" checked> Quarto ativo/disponível
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" onclick="fecharModal('modal-quarto')" class="btn-secondary">Cancelar</button>
+                        <button type="submit" class="btn-primary">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Toast de Notificação -->
+        <div id="toast" class="toast hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

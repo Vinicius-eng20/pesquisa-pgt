@@ -1,0 +1,1421 @@
+=== README.md ===
+
+# Sistema de Gestão de Tarefas de Equipe
+
+Um sistema completo e autônomo de gestão de tarefas. Funciona 100% online, salva os dados de verdade e não precisa de nenhum serviço externo.
+
+## O que você precisa ter instalado
+
+Você só precisa de uma coisa: o **Node.js**.
+
+1. Acesse [https://nodejs.org](https://nodejs.org)
+2. Baixe a versão "LTS" (recomendada) e instale (apenas clique em "Avançar" até o fim).
+3. Para confirmar que deu certo, abra o terminal (ou Prompt de Comando) e digite:
+   ```
+   node -v
+   ```
+   Se aparecer um número de versão (ex: `v20.11.0`), está tudo certo.
+
+## Como executar o projeto no seu computador
+
+1. Crie uma pasta no seu computador (ex: `gestao-tarefas`).
+2. Coloque todos os arquivos deste projeto dentro dela.
+3. Abra o terminal (ou Prompt de Comando) dentro dessa pasta.
+4. Digite o comando abaixo e aperte Enter:
+   ```
+   npm install
+   ```
+5. Depois, digite este comando e aperte Enter:
+   ```
+   npm start
+   ```
+6. Pronto! Abra seu navegador e acesse:
+   ```
+   http://localhost:3000
+   ```
+
+**Importante:** Para parar o sistema, volte ao terminal e aperte `Ctrl + C`.
+
+## Como colocar na internet (para a equipe usar de qualquer lugar)
+
+Para o site funcionar 24h na internet, você precisa de um servidor. A forma mais fácil para quem não programa:
+
+1. Crie uma conta no **Render.com** (é gratuito).
+2. Crie um novo "Web Service" e conecte a este projeto.
+3. Nas configurações, use:
+   - **Build Command:** `npm install`
+   - **Start Command:** `npm start`
+4. O Render vai te dar um link (ex: `https://minha-equipe.onrender.com`) para você compartilhar com a equipe.
+
+## Como usar pela primeira vez
+
+1. Acesse o site e clique em **"Criar nova conta"**.
+2. A primeira pessoa a se cadastrar deve escolher o perfil **"Gerente de Equipe"**.
+3. Os outros membros se cadastram como **"Membro da Equipe"**.
+4. O Gerente cria e distribui as tarefas. Os Membros veem e atualizam.
+
+**Onde os dados ficam salvos?**
+Tudo é salvo automaticamente em um arquivo chamado `banco-de-dados.json` dentro da pasta do projeto. Mesmo se você fechar e abrir o site, ou reiniciar o computador, os dados continuam lá.
+
+---
+
+=== package.json ===
+
+```json
+{
+  "name": "gestao-tarefas-equipe",
+  "version": "1.0.0",
+  "description": "Sistema completo de gestão de tarefas de equipe com autenticação e persistência de dados.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "uuid": "^9.0.0"
+  }
+}
+```
+
+=== server.js ===
+
+```javascript
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_FILE = path.join(__dirname, 'banco-de-dados.json');
+
+// Configuração do servidor
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// Configuração da sessão (mantém o usuário logado)
+app.use(session({
+  secret: 'chave-secreta-muito-segura-mude-isso-em-producao',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 horas
+}));
+
+// --- FUNÇÕES DO BANCO DE DADOS (Arquivo JSON) ---
+
+// Inicializa o banco de dados se não existir
+function initDatabase() {
+  if (!fs.existsSync(DATA_FILE)) {
+    const initialData = {
+      users: [],
+      tasks: []
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2));
+    console.log('Banco de dados criado: ' + DATA_FILE);
+  }
+}
+
+// Lê os dados do arquivo
+function readDatabase() {
+  try {
+    const data = fs.readFileSync(DATA_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Erro ao ler banco de dados:', err);
+    return { users: [], tasks: [] };
+  }
+}
+
+// Salva os dados no arquivo
+function writeDatabase(data) {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('Erro ao salvar banco de dados:', err);
+  }
+}
+
+// Inicializa o banco na inicialização do servidor
+initDatabase();
+
+// --- MIDDLEWARE DE AUTENTICAÇÃO ---
+
+// Verifica se o usuário está logado
+function requireAuth(req, res, next) {
+  if (req.session.userId) {
+    next();
+  } else {
+    res.status(401).json({ error: 'Não autorizado. Faça login.' });
+  }
+}
+
+// Verifica se o usuário é gerente
+function requireManager(req, res, next) {
+  const db = readDatabase();
+  const user = db.users.find(u => u.id === req.session.userId);
+  
+  if (user && user.role === 'manager') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Acesso negado. Apenas gerentes.' });
+  }
+}
+
+// --- ROTAS DE AUTENTICAÇÃO ---
+
+// Registro de novo usuário
+app.post('/api/register', async (req, res) => {
+  const { name, email, password, role } = req.body;
+  
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+  }
+  
+  const db = readDatabase();
+  
+  // Verifica se o email já existe
+  if (db.users.some(u => u.email === email)) {
+    return res.status(400).json({ error: 'Este email já está cadastrado.' });
+  }
+  
+  // Criptografa a senha
+  const hashedPassword = await bcrypt.hash(password, 10);
+  
+  const newUser = {
+    id: uuidv4(),
+    name,
+    email,
+    password: hashedPassword,
+    role: role === 'manager' ? 'manager' : 'member', // 'manager' ou 'member'
+    createdAt: new Date().toISOString()
+  };
+  
+  db.users.push(newUser);
+  writeDatabase(db);
+  
+  // Faz login automático
+  req.session.userId = newUser.id;
+  
+  res.json({ 
+    message: 'Conta criada com sucesso!', 
+    user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role } 
+  });
+});
+
+// Login
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+  
+  const db = readDatabase();
+  const user = db.users.find(u => u.email === email);
+  
+  if (!user) {
+    return res.status(400).json({ error: 'Email ou senha incorretos.' });
+  }
+  
+  const validPassword = await bcrypt.compare(password, user.password);
+  
+  if (!validPassword) {
+    return res.status(400).json({ error: 'Email ou senha incorretos.' });
+  }
+  
+  req.session.userId = user.id;
+  
+  res.json({ 
+    message: 'Login realizado com sucesso!', 
+    user: { id: user.id, name: user.name, email: user.email, role: user.role } 
+  });
+});
+
+// Logout
+app.post('/api/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ message: 'Logout realizado com sucesso!' });
+});
+
+// Verifica quem está logado
+app.get('/api/me', requireAuth, (req, res) => {
+  const db = readDatabase();
+  const user = db.users.find(u => u.id === req.session.userId);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'Usuário não encontrado.' });
+  }
+  
+  res.json({ 
+    user: { id: user.id, name: user.name, email: user.email, role: user.role } 
+  });
+});
+
+// Lista todos os usuários (apenas gerente)
+app.get('/api/users', requireAuth, requireManager, (req, res) => {
+  const db = readDatabase();
+  // Remove as senhas antes de enviar
+  const safeUsers = db.users.map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role
+  }));
+  res.json({ users: safeUsers });
+});
+
+// --- ROTAS DE TAREFAS ---
+
+// Lista tarefas (membros veem as suas, gerente vê todas)
+app.get('/api/tasks', requireAuth, (req, res) => {
+  const db = readDatabase();
+  const user = db.users.find(u => u.id === req.session.userId);
+  
+  let tasks;
+  
+  if (user.role === 'manager') {
+    // Gerente vê todas as tarefas
+    tasks = db.tasks;
+  } else {
+    // Membro vê apenas as tarefas atribuídas a ele
+    tasks = db.tasks.filter(t => t.assignedTo === user.id);
+  }
+  
+  // Adiciona informações do responsável em cada tarefa
+  const tasksWithUsers = tasks.map(task => {
+    const assignedUser = db.users.find(u => u.id === task.assignedTo);
+    return {
+      ...task,
+      assignedToName: assignedUser ? assignedUser.name : 'Desconhecido'
+    };
+  });
+  
+  res.json({ tasks: tasksWithUsers });
+});
+
+// Cria uma nova tarefa
+app.post('/api/tasks', requireAuth, (req, res) => {
+  const { title, description, assignedTo, priority, dueDate } = req.body;
+  const db = readDatabase();
+  const currentUser = db.users.find(u => u.id === req.session.userId);
+  
+  if (!title) {
+    return res.status(400).json({ error: 'O título é obrigatório.' });
+  }
+  
+  // Se for membro, só pode criar tarefa para si mesmo
+  let finalAssignedTo = assignedTo;
+  if (currentUser.role === 'member') {
+    finalAssignedTo = currentUser.id;
+  }
+  
+  // Se for gerente, pode atribuir a qualquer um (ou a si mesmo)
+  if (!finalAssignedTo) {
+    finalAssignedTo = currentUser.id;
+  }
+  
+  // Verifica se o usuário atribuído existe
+  const assignedUser = db.users.find(u => u.id === finalAssignedTo);
+  if (!assignedUser) {
+    return res.status(400).json({ error: 'Usuário atribuído não encontrado.' });
+  }
+  
+  const newTask = {
+    id: uuidv4(),
+    title,
+    description: description || '',
+    status: 'pending', // pending, in_progress, completed
+    priority: priority || 'medium', // low, medium, high
+    assignedTo: finalAssignedTo,
+    createdBy: currentUser.id,
+    createdByName: currentUser.name,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    dueDate: dueDate || null
+  };
+  
+  db.tasks.push(newTask);
+  writeDatabase(db);
+  
+  res.json({ message: 'Tarefa criada com sucesso!', task: newTask });
+});
+
+// Atualiza uma tarefa (status ou edição completa)
+app.put('/api/tasks/:id', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const { title, description, status, priority, assignedTo, dueDate } = req.body;
+  
+  const db = readDatabase();
+  const currentUser = db.users.find(u => u.id === req.session.userId);
+  const taskIndex = db.tasks.findIndex(t => t.id === id);
+  
+  if (taskIndex === -1) {
+    return res.status(404).json({ error: 'Tarefa não encontrada.' });
+  }
+  
+  const task = db.tasks[taskIndex];
+  
+  // Verifica permissões
+  const isManager = currentUser.role === 'manager';
+  const isOwner = task.assignedTo === currentUser.id;
+  
+  if (!isManager && !isOwner) {
+    return res.status(403).json({ error: 'Você não tem permissão para editar esta tarefa.' });
+  }
+  
+  // Membros só podem mudar o status
+  if (!isManager) {
+    if (status) task.status = status;
+  } else {
+    // Gerente pode mudar tudo
+    if (title) task.title = title;
+    if (description !== undefined) task.description = description;
+    if (status) task.status = status;
+    if (priority) task.priority = priority;
+    if (assignedTo) {
+      // Verifica se o novo usuário existe
+      const newUser = db.users.find(u => u.id === assignedTo);
+      if (newUser) task.assignedTo = assignedTo;
+    }
+    if (dueDate !== undefined) task.dueDate = dueDate;
+  }
+  
+  task.updatedAt = new Date().toISOString();
+  
+  db.tasks[taskIndex] = task;
+  writeDatabase(db);
+  
+  res.json({ message: 'Tarefa atualizada com sucesso!', task });
+});
+
+// Remove uma tarefa (apenas gerente)
+app.delete('/api/tasks/:id', requireAuth, requireManager, (req, res) => {
+  const { id } = req.params;
+  
+  const db = readDatabase();
+  const taskIndex = db.tasks.findIndex(t => t.id === id);
+  
+  if (taskIndex === -1) {
+    return res.status(404).json({ error: 'Tarefa não encontrada.' });
+  }
+  
+  db.tasks.splice(taskIndex, 1);
+  writeDatabase(db);
+  
+  res.json({ message: 'Tarefa removida com sucesso!' });
+});
+
+// --- SERVIR ARQUIVOS ESTÁTICOS ---
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Inicia o servidor
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Acesse: http://localhost:${PORT}`);
+});
+```
+
+=== public/index.html ===
+
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão de Tarefas - Equipe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- TELA DE LOGIN/REGISTRO -->
+  <div id="auth-screen" class="auth-container">
+    <div class="auth-box">
+      <h1>📋 Gestão de Tarefas</h1>
+      
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Entrar</button>
+        <button class="tab-btn" onclick="switchTab('register')">Criar Conta</button>
+      </div>
+
+      <!-- Formulário de Login -->
+      <form id="login-form" class="auth-form active">
+        <input type="email" id="login-email" placeholder="Seu email" required>
+        <input type="password" id="login-password" placeholder="Sua senha" required>
+        <button type="submit" class="btn-primary">Entrar</button>
+      </form>
+
+      <!-- Formulário de Registro -->
+      <form id="register-form" class="auth-form">
+        <input type="text" id="reg-name" placeholder="Seu nome completo" required>
+        <input type="email" id="reg-email" placeholder="Seu email" required>
+        <input type="password" id="reg-password" placeholder="Crie uma senha" required>
+        <select id="reg-role" required>
+          <option value="" disabled selected>Quem é você?</option>
+          <option value="manager">Gerente de Equipe</option>
+          <option value="member">Membro da Equipe</option>
+        </select>
+        <button type="submit" class="btn-primary">Criar Conta</button>
+      </form>
+
+      <p id="auth-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- TELA PRINCIPAL (DASHBOARD) -->
+  <div id="app-screen" class="app-container" style="display: none;">
+    
+    <!-- Barra Superior -->
+    <header class="header">
+      <div class="header-left">
+        <h2>📋 Gestão de Tarefas</h2>
+      </div>
+      <div class="header-right">
+        <span id="user-info" class="user-info"></span>
+        <button onclick="logout()" class="btn-secondary">Sair</button>
+      </div>
+    </header>
+
+    <div class="main-content">
+      
+      <!-- Coluna de Criar Tarefa (apenas gerente vê completa, membro vê simplificada) -->
+      <div class="sidebar">
+        <div class="card">
+          <h3>➕ Nova Tarefa</h3>
+          <form id="task-form">
+            <input type="text" id="task-title" placeholder="Título da tarefa" required>
+            <textarea id="task-desc" placeholder="Descrição (opcional)" rows="3"></textarea>
+            
+            <select id="task-priority">
+              <option value="low">Prioridade: Baixa</option>
+              <option value="medium" selected>Prioridade: Média</option>
+              <option value="high">Prioridade: Alta</option>
+            </select>
+
+            <input type="date" id="task-due-date" title="Data de entrega">
+
+            <!-- Campo de atribuir a alguém (só aparece para gerente) -->
+            <div id="assign-section" style="display: none;">
+              <label for="task-assign">Atribuir a:</label>
+              <select id="task-assign">
+                <!-- Preenchido via JavaScript -->
+              </select>
+            </div>
+
+            <button type="submit" class="btn-primary">Criar Tarefa</button>
+          </form>
+        </div>
+
+        <!-- Estatísticas simples -->
+        <div class="card stats-card">
+          <h3>📊 Resumo</h3>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-number" id="stat-pending">0</span>
+              <span class="stat-label">Pendentes</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="stat-progress">0</span>
+              <span class="stat-label">Em Andamento</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="stat-done">0</span>
+              <span class="stat-label">Concluídas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Tarefas -->
+      <div class="tasks-area">
+        <div class="tasks-header">
+          <h3 id="tasks-title">Minhas Tarefas</h3>
+          <div class="filters">
+            <button class="filter-btn active" onclick="filterTasks('all')">Todas</button>
+            <button class="filter-btn" onclick="filterTasks('pending')">Pendentes</button>
+            <button class="filter-btn" onclick="filterTasks('in_progress')">Em Andamento</button>
+            <button class="filter-btn" onclick="filterTasks('completed')">Concluídas</button>
+          </div>
+        </div>
+
+        <div id="tasks-list" class="tasks-list">
+          <!-- Tarefas serão carregadas aqui via JavaScript -->
+          <p class="loading">Carregando tarefas...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal de Edição (apenas gerente usa) -->
+  <div id="edit-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h3>Editar Tarefa</h3>
+      <form id="edit-form">
+        <input type="hidden" id="edit-id">
+        <input type="text" id="edit-title" placeholder="Título" required>
+        <textarea id="edit-desc" placeholder="Descrição" rows="3"></textarea>
+        <select id="edit-status">
+          <option value="pending">Pendente</option>
+          <option value="in_progress">Em Andamento</option>
+          <option value="completed">Concluída</option>
+        </select>
+        <select id="edit-priority">
+          <option value="low">Prioridade: Baixa</option>
+          <option value="medium">Prioridade: Média</option>
+          <option value="high">Prioridade: Alta</option>
+        </select>
+        <select id="edit-assign">
+          <!-- Preenchido via JavaScript -->
+        </select>
+        <input type="date" id="edit-due-date">
+        <button type="submit" class="btn-primary">Salvar Alterações</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+```
+
+=== public/style.css ===
+
+```css
+/* Reset e Configurações Gerais */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+  background-color: #f0f2f5;
+  color: #333;
+  line-height: 1.6;
+}
+
+/* Botões */
+.btn-primary {
+  background-color: #4a90d9;
+  color: white;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  width: 100%;
+  transition: background 0.3s;
+}
+
+.btn-primary:hover {
+  background-color: #357abd;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-secondary:hover {
+  background-color: #5a6268;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-right: 5px;
+}
+
+.btn-edit { background-color: #ffc107; color: #333; }
+.btn-delete { background-color: #dc3545; color: white; }
+.btn-status { background-color: #28a745; color: white; }
+
+/* Inputs */
+input, textarea, select {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 15px;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: #4a90d9;
+}
+
+/* Tela de Autenticação */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.auth-box {
+  background: white;
+  padding: 40px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-box h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #333;
+}
+
+.tabs {
+  display: flex;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #eee;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 12px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #777;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.tab-btn.active {
+  color: #4a90d9;
+  border-bottom-color: #4a90d9;
+  font-weight: 600;
+}
+
+.auth-form {
+  display: none;
+}
+
+.auth-form.active {
+  display: block;
+}
+
+.error-msg {
+  color: #dc3545;
+  text-align: center;
+  margin-top: 15px;
+  min-height: 20px;
+}
+
+/* Layout Principal */
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  padding: 15px 25px;
+  border-radius: 10px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.header h2 {
+  color: #4a90d9;
+}
+
+.user-info {
+  margin-right: 15px;
+  font-weight: 600;
+  color: #555;
+}
+
+.main-content {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 25px;
+}
+
+/* Sidebar */
+.card {
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  margin-bottom: 25px;
+}
+
+.card h3 {
+  margin-bottom: 20px;
+  color: #333;
+  border-bottom: 2px solid #f0f0f0;
+  padding-bottom: 10px;
+}
+
+/* Estatísticas */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  text-align: center;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-number {
+  font-size: 28px;
+  font-weight: bold;
+  color: #4a90d9;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #777;
+}
+
+/* Área de Tarefas */
+.tasks-area {
+  background: white;
+  padding: 25px;
+  border-radius: 10px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  min-height: 600px;
+}
+
+.tasks-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.tasks-header h3 {
+  color: #333;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover, .filter-btn.active {
+  background: #4a90d9;
+  color: white;
+  border-color: #4a90d9;
+}
+
+/* Lista de Tarefas */
+.tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.loading {
+  text-align: center;
+  color: #777;
+  padding: 40px;
+}
+
+.task-card {
+  border: 1px solid #eee;
+  border-left: 5px solid #4a90d9;
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.task-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.task-card.priority-high { border-left-color: #dc3545; }
+.task-card.priority-medium { border-left-color: #ffc107; }
+.task-card.priority-low { border-left-color: #28a745; }
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.task-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+  flex: 1;
+}
+
+.task-badges {
+  display: flex;
+  gap: 8px;
+  margin-left: 15px;
+}
+
+.badge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-priority-high { background: #f8d7da; color: #721c24; }
+.badge-priority-medium { background: #fff3cd; color: #856404; }
+.badge-priority-low { background: #d4edda; color: #155724; }
+
+.badge-status-pending { background: #e2e3e5; color: #383d41; }
+.badge-status-in_progress { background: #cce5ff; color: #004085; }
+.badge-status-completed { background: #d4edda; color: #155724; }
+
+.task-desc {
+  color: #666;
+  margin-bottom: 15px;
+  font-size: 15px;
+}
+
+.task-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #888;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.task-assigned {
+  font-weight: 600;
+  color: #4a90d9;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Status Buttons */
+.status-select {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+  background-color: white;
+  margin: 5% auto;
+  padding: 30px;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 500px;
+  position: relative;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+.close {
+  position: absolute;
+  right: 20px;
+  top: 15px;
+  font-size: 28px;
+  cursor: pointer;
+  color: #aaa;
+}
+
+.close:hover {
+  color: #333;
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+  
+  .tasks-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .filters {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+}
+```
+
+=== public/app.js ===
+
+```javascript
+// Estado global da aplicação
+let currentUser = null;
+let allTasks = [];
+let currentFilter = 'all';
+let usersList = [];
+
+// Inicialização
+document.addEventListener('DOMContentLoaded', () => {
+  checkAuth();
+  
+  // Event Listeners
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('register-form').addEventListener('submit', handleRegister);
+  document.getElementById('task-form').addEventListener('submit', handleCreateTask);
+  document.getElementById('edit-form').addEventListener('submit', handleEditTask);
+});
+
+// --- FUNÇÕES DE AUTENTICAÇÃO ---
+
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/me');
+    if (response.ok) {
+      const data = await response.json();
+      currentUser = data.user;
+      showApp();
+      loadTasks();
+      if (currentUser.role === 'manager') {
+        loadUsers();
+      }
+    } else {
+      showAuth();
+    }
+  } catch (err) {
+    console.error('Erro ao verificar autenticação:', err);
+    showAuth();
+  }
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      currentUser = data.user;
+      showApp();
+      loadTasks();
+      if (currentUser.role === 'manager') loadUsers();
+      showError('');
+    } else {
+      showError(data.error);
+    }
+  } catch (err) {
+    showError('Erro ao conectar com o servidor.');
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const name = document.getElementById('reg-name').value;
+  const email = document.getElementById('reg-email').value;
+  const password = document.getElementById('reg-password').value;
+  const role = document.getElementById('reg-role').value;
+  
+  try {
+    const response = await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, role })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      currentUser = data.user;
+      showApp();
+      loadTasks();
+      if (currentUser.role === 'manager') loadUsers();
+      showError('');
+    } else {
+      showError(data.error);
+    }
+  } catch (err) {
+    showError('Erro ao conectar com o servidor.');
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    currentUser = null;
+    location.reload();
+  } catch (err) {
+    console.error('Erro ao fazer logout:', err);
+  }
+}
+
+function showAuth() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'block';
+  
+  // Atualiza interface baseada no papel do usuário
+  document.getElementById('user-info').textContent = 
+    `${currentUser.name} (${currentUser.role === 'manager' ? 'Gerente' : 'Membro'})`;
+  
+  document.getElementById('tasks-title').textContent = 
+    currentUser.role === 'manager' ? 'Todas as Tarefas' : 'Minhas Tarefas';
+  
+  // Mostra campo de atribuir apenas para gerente
+  if (currentUser.role === 'manager') {
+    document.getElementById('assign-section').style.display = 'block';
+  }
+}
+
+function showError(msg) {
+  document.getElementById('auth-error').textContent = msg;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.auth-form').forEach(form => form.classList.remove('active'));
+  
+  if (tab === 'login') {
+    document.querySelectorAll('.tab-btn')[0].classList.add('active');
+    document.getElementById('login-form').classList.add('active');
+  } else {
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    document.getElementById('register-form').classList.add('active');
+  }
+}
+
+// --- FUNÇÕES DE TAREFAS ---
+
+async function loadUsers() {
+  try {
+    const response = await fetch('/api/users');
+    if (response.ok) {
+      const data = await response.json();
+      usersList = data.users;
+      
+      // Preenche os selects de atribuição
+      const assignSelect = document.getElementById('task-assign');
+      const editAssignSelect = document.getElementById('edit-assign');
+      
+      const options = usersList.map(user => 
+        `<option value="${user.id}">${user.name}</option>`
+      ).join('');
+      
+      assignSelect.innerHTML = options;
+      editAssignSelect.innerHTML = options;
+    }
+  } catch (err) {
+    console.error('Erro ao carregar usuários:', err);
+  }
+}
+
+async function loadTasks() {
+  try {
+    const response = await fetch('/api/tasks');
+    if (response.ok) {
+      const data = await response.json();
+      allTasks = data.tasks;
+      renderTasks();
+      updateStats();
+    }
+  } catch (err) {
+    console.error('Erro ao carregar tarefas:', err);
+  }
+}
+
+async function handleCreateTask(e) {
+  e.preventDefault();
+  
+  const title = document.getElementById('task-title').value;
+  const description = document.getElementById('task-desc').value;
+  const priority = document.getElementById('task-priority').value;
+  const dueDate = document.getElementById('task-due-date').value;
+  
+  let assignedTo = null;
+  if (currentUser.role === 'manager') {
+    assignedTo = document.getElementById('task-assign').value;
+  }
+  
+  try {
+    const response = await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, priority, assignedTo, dueDate })
+    });
+    
+    if (response.ok) {
+      document.getElementById('task-form').reset();
+      loadTasks();
+    } else {
+      const data = await response.json();
+      alert(data.error);
+    }
+  } catch (err) {
+    alert('Erro ao criar tarefa.');
+  }
+}
+
+async function handleEditTask(e) {
+  e.preventDefault();
+  
+  const id = document.getElementById('edit-id').value;
+  const title = document.getElementById('edit-title').value;
+  const description = document.getElementById('edit-desc').value;
+  const status = document.getElementById('edit-status').value;
+  const priority = document.getElementById('edit-priority').value;
+  const assignedTo = document.getElementById('edit-assign').value;
+  const dueDate = document.getElementById('edit-due-date').value;
+  
+  try {
+    const response = await fetch(`/api/tasks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, status, priority, assignedTo, dueDate })
+    });
+    
+    if (response.ok) {
+      closeModal();
+      loadTasks();
+    } else {
+      const data = await response.json();
+      alert(data.error);
+    }
+  } catch (err) {
+    alert('Erro ao editar tarefa.');
+  }
+}
+
+async function updateTaskStatus(taskId, newStatus) {
+  try {
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    
+    if (response.ok) {
+      loadTasks();
+    } else {
+      const data = await response.json();
+      alert(data.error);
+    }
+  } catch (err) {
+    alert('Erro ao atualizar status.');
+  }
+}
+
+async function deleteTask(taskId) {
+  if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
+  
+  try {
+    const response = await fetch(`/api/tasks/${taskId}`, {
+      method: 'DELETE'
+    });
+    
+    if (response.ok) {
+      loadTasks();
+    } else {
+      const data = await response.json();
+      alert(data.error);
+    }
+  } catch (err) {
+    alert('Erro ao excluir tarefa.');
+  }
+}
+
+// --- FUNÇÕES DE RENDERIZAÇÃO ---
+
+function filterTasks(filter) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  renderTasks();
+}
+
+function renderTasks() {
+  const container = document.getElementById('tasks-list');
+  
+  let filteredTasks = allTasks;
+  if (currentFilter !== 'all') {
+    filteredTasks = allTasks.filter(t => t.status === currentFilter);
+  }
+  
+  if (filteredTasks.length === 0) {
+    container.innerHTML = '<p class="loading">Nenhuma tarefa encontrada.</p>';
+    return;
+  }
+  
+  container.innerHTML = filteredTasks.map(task => {
+    const isManager = currentUser.role === 'manager';
+    const isOwner = task.assignedTo === currentUser.id;
+    const canEdit = isManager; // Apenas gerente pode editar completamente
+    const canDelete = isManager;
+    const canChangeStatus = isManager || isOwner;
+    
+    const priorityText = {
+      low: 'Baixa',
+      medium: 'Média',
+      high: 'Alta'
+    };
+    
+    const statusText = {
+      pending: 'Pendente',
+      in_progress: 'Em Andamento',
+      completed: 'Concluída'
+    };
+    
+    const dueDate = task.dueDate ? new Date(task.dueDate).toLocaleDateString('pt-BR') : 'Sem prazo';
+    
+    return `
+      <div class="task-card priority-${task.priority}">
+        <div class="task-header">
+          <div class="task-title">${escapeHtml(task.title)}</div>
+          <div class="task-badges">
+            <span class="badge badge-priority-${task.priority}">${priorityText[task.priority]}</span>
+            <span class="badge badge-status-${task.status}">${statusText[task.status]}</span>
+          </div>
+        </div>
+        
+        <div class="task-desc">${escapeHtml(task.description || 'Sem descrição')}</div>
+        
+        <div class="task-meta">
+          <span>Responsável: <span class="task-assigned">${escapeHtml(task.assignedToName)}</span></span>
+          <span>Prazo: ${dueDate}</span>
+          <span>Criada por: ${escapeHtml(task.createdByName)}</span>
+        </div>
+        
+        <div class="task-actions">
+          ${canChangeStatus ? `
+            <select class="status-select" onchange="updateTaskStatus('${task.id}', this.value)">
+              <option value="pending" ${task.status === 'pending' ? 'selected' : ''}>Pendente</option>
+              <option value="in_progress" ${task.status === 'in_progress' ? 'selected' : ''}>Em Andamento</option>
+              <option value="completed" ${task.status === 'completed' ? 'selected' : ''}>Concluída</option>
+            </select>
+          ` : ''}
+          
+          ${canEdit ? `
+            <button class="btn-small btn-edit" onclick="openEditModal('${task.id}')">✏️ Editar</button>
+          ` : ''}
+          
+          ${canDelete ? `
+            <button class="btn-small btn-delete" onclick="deleteTask('${task.id}')">🗑️ Excluir</button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateStats() {
+  const pending = allTasks.filter(t => t.status === 'pending').length;
+  const inProgress = allTasks.filter(t => t.status === 'in_progress').length;
+  const completed = allTasks.filter(t => t.status === 'completed').length;
+  
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-progress').textContent = inProgress;
+  document.getElementById('stat-done').textContent = completed;
+}
+
+// --- FUNÇÕES DO MODAL ---
+
+function openEditModal(taskId) {
+  const task = allTasks.find(t => t.id === taskId);
+  if (!task) return;
+  
+  document.getElementById('edit-id').value = task.id;
+  document.getElementById('edit-title').value = task.title;
+  document.getElementById('edit-desc').value = task.description;
+  document.getElementById('edit-status').value = task.status;
+  document.getElementById('edit-priority').value = task.priority;
+  document.getElementById('edit-assign').value = task.assignedTo;
+  document.getElementById('edit-due-date').value = task.dueDate || '';
+  
+  document.getElementById('edit-modal').style.display = 'block';
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+}
+
+// Fecha modal se clicar fora dele
+window.onclick = function(event) {
+  const modal = document.getElementById('edit-modal');
+  if (event.target === modal) {
+    closeModal();
+  }
+}
+
+// --- UTILITÁRIOS ---
+
+function escapeHtml(text) {
+  if (!text) return '';
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+```

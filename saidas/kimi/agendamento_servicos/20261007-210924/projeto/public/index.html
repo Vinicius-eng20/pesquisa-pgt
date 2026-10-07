@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Agendamento de Serviços</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <h1>Agendamento de Serviços</h1>
+    <div id="auth-section">
+      <h2>Entrar ou Cadastrar</h2>
+      <input id="username" placeholder="Usuário">
+      <input id="password" type="password" placeholder="Senha">
+      <button onclick="login()">Entrar</button>
+      <button onclick="register()">Cadastrar</button>
+      <div id="auth-msg"></div>
+    </div>
+    <div id="main-section" style="display:none">
+      <div>
+        <span id="welcome"></span>
+        <button onclick="logout()">Sair</button>
+      </div>
+      <div id="client-section" style="display:none">
+        <h2>Serviços</h2>
+        <div id="services-list"></div>
+        <h2>Meus Agendamentos</h2>
+        <div id="my-appointments"></div>
+      </div>
+      <div id="admin-section" style="display:none">
+        <h2>Administração</h2>
+        <div>
+          <h3>Serviços</h3>
+          <div id="admin-services"></div>
+          <h4>Cadastrar Serviço</h4>
+          <input id="service-name" placeholder="Nome">
+          <input id="service-desc" placeholder="Descrição">
+          <input id="service-duration" type="number" placeholder="Duração (min)">
+          <button onclick="addService()">Cadastrar</button>
+        </div>
+        <div>
+          <h3>Horários</h3>
+          <div id="admin-slots"></div>
+          <h4>Cadastrar Horário</h4>
+          <select id="slot-service"></select>
+          <input id="slot-datetime" type="datetime-local">
+          <button onclick="addSlot()">Cadastrar</button>
+        </div>
+        <div>
+          <h3>Todos os Agendamentos</h3>
+          <div id="all-appointments"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

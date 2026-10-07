@@ -1,0 +1,396 @@
+=== README.md ===
+# MegaShop - Loja Virtual de Departamentos
+
+Este é um projeto de uma loja virtual completa (shopping online) com área para clientes e área administrativa para o dono da loja.
+
+## Funcionalidades
+*   **Clientes:** Podem se cadastrar, ver produtos por departamentos, adicionar ao carrinho, finalizar compras e ver o histórico de seus pedidos.
+*   **Dono da Loja (Admin):** Pode cadastrar, editar e remover produtos, além de ver todos os pedidos da loja e atualizar a situação deles (Pendente, Enviado, Entregue).
+*   **Banco de Dados Local:** Tudo é salvo em um arquivo dentro do próprio site. Não precisa de internet externa ou outros serviços para funcionar.
+
+## Como Instalar e Rodar
+Para o site funcionar, você precisa ter o **Node.js** instalado no seu computador ou no seu servidor de hospedagem.
+
+1. Abra a pasta do projeto no terminal (ou prompt de comando).
+2. Instale as dependências digitando:
+   ```bash
+   npm install
+   ```
+3. Inicie o site digitando:
+   ```bash
+   npm start
+   ```
+4. O site estará rodando! Acesse pelo navegador no endereço: `http://localhost:3000`
+
+## Acesso Inicial
+Para facilitar, o sistema já cria sozinho o usuário do **Dono da Loja** na primeira vez que rodar:
+*   **E-mail:** admin@loja.com
+*   **Senha:** admin123
+
+Você pode usar essa conta para cadastrar os primeiros produtos da loja. Depois, crie uma conta normal na tela de cadastro para testar a visão do cliente.
+
+=== package.json ===
+{
+  "name": "megashop",
+  "version": "1.0.0",
+  "description": "Loja virtual de departamentos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const SECRET_KEY = 'chave_super_secreta_da_loja';
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// Configuração do Banco de Dados
+const db = new sqlite3.Database('./database.sqlite', (err) => {
+    if (err) console.error(err.message);
+    else console.log('Banco de dados conectado.');
+});
+
+// Criação das Tabelas e Dados Iniciais
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'client'
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        price REAL NOT NULL,
+        department TEXT NOT NULL
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        items TEXT NOT NULL,
+        total REAL NOT NULL,
+        status TEXT DEFAULT 'Pendente',
+        date TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )`);
+
+    // Cria o usuário Administrador padrão, se não existir
+    const adminEmail = 'admin@loja.com';
+    db.get(`SELECT * FROM users WHERE email = ?`, [adminEmail], (err, row) => {
+        if (!row) {
+            const hash = bcrypt.hashSync('admin123', 8);
+            db.run(`INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)`, 
+                ['Dono da Loja', adminEmail, hash, 'admin']);
+            console.log('Conta do dono da loja criada.');
+        }
+    });
+});
+
+// Middleware de Autenticação
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.sendStatus(401);
+
+    jwt.verify(token, SECRET_KEY, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+}
+
+// Middleware para Admin
+function isAdmin(req, res, next) {
+    if (req.user.role !== 'admin') return res.status(403).json({error: 'Acesso negado'});
+    next();
+}
+
+// Rotas de Autenticação
+app.post('/api/register', (req, res) => {
+    const { name, email, password } = req.body;
+    const hash = bcrypt.hashSync(password, 8);
+    db.run(`INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'client')`,
+        [name, email, hash], function(err) {
+            if (err) return res.status(400).json({error: 'E-mail já cadastrado.'});
+            res.json({message: 'Cadastro realizado com sucesso!'});
+        });
+});
+
+app.post('/api/login', (req, res) => {
+    const { email, password } = req.body;
+    db.get(`SELECT * FROM users WHERE email = ?`, [email], (err, user) => {
+        if (!user || !bcrypt.compareSync(password, user.password)) {
+            return res.status(401).json({error: 'E-mail ou senha incorretos.'});
+        }
+        const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, SECRET_KEY, { expiresIn: '24h' });
+        res.json({ token, user: { id: user.id, name: user.name, role: user.role } });
+    });
+});
+
+// Rotas de Produtos
+app.get('/api/products', (req, res) => {
+    db.all(`SELECT * FROM products`, [], (err, rows) => {
+        if (err) return res.status(500).json({error: err.message});
+        res.json(rows);
+    });
+});
+
+app.post('/api/products', authenticateToken, isAdmin, (req, res) => {
+    const { name, description, price, department } = req.body;
+    db.run(`INSERT INTO products (name, description, price, department) VALUES (?, ?, ?, ?)`,
+        [name, description, price, department], function(err) {
+            if (err) return res.status(500).json({error: err.message});
+            res.json({ id: this.lastID, message: 'Produto adicionado!' });
+        });
+});
+
+app.put('/api/products/:id', authenticateToken, isAdmin, (req, res) => {
+    const { name, description, price, department } = req.body;
+    db.run(`UPDATE products SET name = ?, description = ?, price = ?, department = ? WHERE id = ?`,
+        [name, description, price, department, req.params.id], function(err) {
+            if (err) return res.status(500).json({error: err.message});
+            res.json({ message: 'Produto atualizado!' });
+        });
+});
+
+app.delete('/api/products/:id', authenticateToken, isAdmin, (req, res) => {
+    db.run(`DELETE FROM products WHERE id = ?`, req.params.id, function(err) {
+        if (err) return res.status(500).json({error: err.message});
+        res.json({ message: 'Produto removido!' });
+    });
+});
+
+// Rotas de Pedidos
+app.post('/api/orders', authenticateToken, (req, res) => {
+    const { items, total } = req.body;
+    const itemsStr = JSON.stringify(items);
+    db.run(`INSERT INTO orders (user_id, items, total) VALUES (?, ?, ?)`,
+        [req.user.id, itemsStr, total], function(err) {
+            if (err) return res.status(500).json({error: err.message});
+            res.json({ id: this.lastID, message: 'Pedido realizado com sucesso!' });
+        });
+});
+
+app.get('/api/orders', authenticateToken, (req, res) => {
+    let query = `SELECT orders.*, users.name as client_name FROM orders JOIN users ON orders.user_id = users.id`;
+    let params = [];
+    
+    if (req.user.role !== 'admin') {
+        query += ` WHERE user_id = ?`;
+        params.push(req.user.id);
+    }
+    query += ` ORDER BY date DESC`;
+
+    db.all(query, params, (err, rows) => {
+        if (err) return res.status(500).json({error: err.message});
+        // Converter string de volta para JSON
+        const formattedRows = rows.map(r => ({...r, items: JSON.parse(r.items)}));
+        res.json(formattedRows);
+    });
+});
+
+app.put('/api/orders/:id/status', authenticateToken, isAdmin, (req, res) => {
+    const { status } = req.body;
+    db.run(`UPDATE orders SET status = ? WHERE id = ?`, [status, req.params.id], function(err) {
+        if (err) return res.status(500).json({error: err.message});
+        res.json({ message: 'Status atualizado!' });
+    });
+});
+
+// Rota principal (envia o site)
+app.get('*', (req, res) => {
+    res.sendFile(path.resolve(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaShop - Shopping Online</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo" onclick="showView('store-view')"><i class="fa-solid fa-store"></i> MegaShop</div>
+        <div class="nav-links" id="auth-links">
+            <!-- Preenchido via JS dependendo do login -->
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <!-- Tela de Login / Cadastro -->
+        <div id="login-view" class="auth-box hidden">
+            <h2>Acessar Conta</h2>
+            <input type="email" id="login-email" placeholder="E-mail">
+            <input type="password" id="login-password" placeholder="Senha">
+            <button class="btn btn-primary" onclick="login()">Entrar</button>
+            <p onclick="toggleAuthView('register')" class="link">Não tem conta? Cadastre-se</p>
+        </div>
+
+        <div id="register-view" class="auth-box hidden">
+            <h2>Criar Conta</h2>
+            <input type="text" id="reg-name" placeholder="Nome Completo">
+            <input type="email" id="reg-email" placeholder="E-mail">
+            <input type="password" id="reg-password" placeholder="Senha">
+            <button class="btn btn-primary" onclick="register()">Cadastrar</button>
+            <p onclick="toggleAuthView('login')" class="link">Já tenho conta. Fazer Login</p>
+        </div>
+
+        <!-- Loja (Catálogo) -->
+        <div id="store-view">
+            <div class="header-store">
+                <h2>Nossos Produtos</h2>
+                <div class="filters">
+                    <button class="btn btn-outline" onclick="filterProducts('Todos')">Todos</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Eletrônicos')">Eletrônicos</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Moda')">Moda</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Casa')">Casa</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Esporte')">Esporte</button>
+                </div>
+            </div>
+            <div id="product-grid" class="grid"></div>
+        </div>
+
+        <!-- Carrinho -->
+        <div id="cart-view" class="hidden panel">
+            <h2><i class="fa-solid fa-cart-shopping"></i> Meu Carrinho</h2>
+            <div id="cart-items"></div>
+            <div class="cart-total">
+                <h3>Total: R$ <span id="cart-total-price">0.00</span></h3>
+                <button class="btn btn-success" onclick="checkout()">Finalizar Compra</button>
+            </div>
+        </div>
+
+        <!-- Pedidos do Cliente / Admin -->
+        <div id="orders-view" class="hidden panel">
+            <h2><i class="fa-solid fa-box"></i> Pedidos</h2>
+            <div id="orders-list"></div>
+        </div>
+
+        <!-- Painel Admin - Gerenciar Produtos -->
+        <div id="admin-products-view" class="hidden panel">
+            <h2><i class="fa-solid fa-gear"></i> Gerenciar Produtos</h2>
+            <div class="admin-form">
+                <input type="hidden" id="prod-id">
+                <input type="text" id="prod-name" placeholder="Nome do Produto">
+                <input type="number" id="prod-price" placeholder="Preço (ex: 99.90)" step="0.01">
+                <select id="prod-dept">
+                    <option value="Eletrônicos">Eletrônicos</option>
+                    <option value="Moda">Moda</option>
+                    <option value="Casa">Casa</option>
+                    <option value="Esporte">Esporte</option>
+                    <option value="Outros">Outros</option>
+                </select>
+                <textarea id="prod-desc" placeholder="Descrição do produto"></textarea>
+                <button class="btn btn-primary" onclick="saveProduct()">Salvar Produto</button>
+            </div>
+            <hr>
+            <div id="admin-product-list"></div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+    --primary: #2c3e50;
+    --accent: #e67e22;
+    --bg: #f4f7f6;
+    --white: #ffffff;
+    --text: #333333;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+body { background-color: var(--bg); color: var(--text); }
+
+/* Navegação */
+.navbar { background: var(--primary); color: var(--white); padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.logo { font-size: 1.5rem; font-weight: bold; cursor: pointer; color: var(--accent); }
+.nav-links button { margin-left: 10px; }
+
+.container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
+.hidden { display: none !important; }
+
+/* Autenticação */
+.auth-box { max-width: 400px; margin: 3rem auto; background: var(--white); padding: 2rem; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 1rem; }
+.auth-box h2 { text-align: center; color: var(--primary); margin-bottom: 1rem;}
+.auth-box input { padding: 12px; border: 1px solid #ccc; border-radius: 4px; }
+.link { text-align: center; color: var(--primary); cursor: pointer; text-decoration: underline; margin-top: 10px; font-size: 0.9rem;}
+
+/* Botões */
+.btn { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: #1a252f; }
+.btn-accent { background: var(--accent); color: white; }
+.btn-accent:hover { background: #d35400; }
+.btn-success { background: #27ae60; color: white; }
+.btn-success:hover { background: #2ecc71; }
+.btn-danger { background: #c0392b; color: white; }
+.btn-danger:hover { background: #e74c3c; }
+.btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); margin: 0 5px;}
+.btn-outline:hover { background: var(--primary); color: white; }
+
+/* Loja */
+.header-store { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1.5rem; }
+.card { background: var(--white); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+.card-img { height: 150px; background: #e0e0e0; display: flex; align-items: center; justify-content: center; color: #999; font-size: 3rem; }
+.card-body { padding: 1rem; flex-grow: 1; display: flex; flex-direction: column; }
+.card-title { font-size: 1.1rem; margin-bottom: 0.5rem; color: var(--primary); }
+.card-dept { font-size: 0.8rem; color: var(--accent); font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase; }
+.card-desc { font-size: 0.9rem; color: #666; margin-bottom: 1rem; flex-grow: 1; }
+.card-price { font-size: 1.3rem; font-weight: bold; color: #27ae60; margin-bottom: 1rem; }
+
+/* Painéis e Listas */
+.panel { background: var(--white); padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.list-item { border-bottom: 1px solid #eee; padding: 1rem 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.cart-total { text-align: right; margin-top: 2rem; padding-top: 1rem; border-top: 2px solid #eee; }
+
+/* Form Admin */
+.admin-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 2rem; background: #f9f9f9; padding: 1.5rem; border-radius: 8px; border: 1px solid #ddd; }
+.admin-form input, .admin-form select, .admin-form textarea { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+.admin-form textarea { min-height: 80px; resize: vertical; }
+
+/* Order Badges */
+.badge { padding: 5px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: bold; }
+.badge-Pendente { background: #f1c40f; color: #fff; }
+.badge-Enviado { background: #3498db; color: #fff; }
+.badge-Entregue { background: #2ecc71; color: #fff; }
+
+.order-products { font-size: 0.9rem; color: #555; margin-top: 5px; }
+select.order-status { padding: 5px; border-radius: 4px; }

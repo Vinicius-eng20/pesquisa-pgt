@@ -1,0 +1,12 @@
+data_hora_utc,modelo,modelo_id,provedor,dominio,rodada,gratuito,tokens_entrada,tokens_saida,tokens_raciocinio,tokens_total,custo_usd,motivo_termino,tentativas_api,duracao_s,duracao_api_s,tokens_por_s,n_arquivos,tem_readme,cercas_removidas,estado,pasta,erro
+2026-10-07T19:16:05+00:00,kimi,moonshotai/kimi-k3,Parasail,restaurante_pedidos,0,False,298,19424,0,19722,0.2532868,stop,1,161.5,161.5,120.2,4,True,0,gerada,saidas\kimi\restaurante_pedidos\20261007-191605,
+2026-10-07T21:06:47+00:00,kimi,moonshotai/kimi-k3,Parasail,despesas_pessoais,0,False,308,496,0,804,0.0072488,stop,1,28.6,28.6,17.3,1,True,0,gerada,saidas\kimi\despesas_pessoais\20261007-210647,
+2026-10-07T21:07:19+00:00,kimi,moonshotai/kimi-k3,Parasail,loja_departamentos,0,False,311,4699,0,5010,0.0618956,stop,1,121.6,121.6,38.6,5,True,0,gerada,saidas\kimi\loja_departamentos\20261007-210719,
+2026-10-07T21:09:24+00:00,kimi,moonshotai/kimi-k3,Parasail,agendamento_servicos,0,False,310,5756,0,6066,0.075634,stop,1,70.7,70.7,81.4,6,True,0,gerada,saidas\kimi\agendamento_servicos\20261007-210924,
+2026-10-07T21:10:38+00:00,kimi,moonshotai/kimi-k3,DeepInfra,cursos_online,0,False,303,7582,0,7885,0.10890705,stop,1,84.0,84.0,90.3,6,True,0,gerada,saidas\kimi\cursos_online\20261007-211038,
+2026-10-07T21:12:05+00:00,kimi,moonshotai/kimi-k3,DeepInfra,reservas_hotel,0,False,312,14558,0,14870,0.2083407,stop,1,202.2,202.2,72.0,6,False,0,gerada,saidas\kimi\reservas_hotel\20261007-211205,
+2026-10-07T21:15:30+00:00,kimi,moonshotai/kimi-k3,Parasail,biblioteca_digital,0,False,320,13527,0,13847,0.176683,stop,1,120.2,120.2,112.5,6,True,4,gerada,saidas\kimi\biblioteca_digital\20261007-211530,
+2026-10-07T21:17:33+00:00,kimi,moonshotai/kimi-k3,Parasail,marketplace_freelance,0,False,331,12427,0,12758,0.1624116,stop,1,78.4,78.4,158.4,16,True,0,gerada,saidas\kimi\marketplace_freelance\20261007-211733,
+2026-10-07T21:18:55+00:00,kimi,moonshotai/kimi-k3,DeepInfra,inscricao_eventos,0,False,297,7274,0,7571,0.10450095,stop,1,110.8,110.8,65.7,5,True,0,gerada,saidas\kimi\inscricao_eventos\20261007-211855,
+2026-10-07T21:20:48+00:00,kimi,moonshotai/kimi-k3,Parasail,tarefas_equipe,0,False,312,10532,0,10844,0.1377272,stop,1,68.2,68.2,154.4,6,True,5,gerada,saidas\kimi\tarefas_equipe\20261007-212048,
+2026-10-07T23:06:42+00:00,kimi,moonshotai/kimi-k3,Parasail,despesas_pessoais,1,False,836,11910,0,12746,0.1570036,stop,1,130.8,130.8,91.0,6,True,5,gerada,saidas\kimi\despesas_pessoais\20261007-210647\reparo_1,

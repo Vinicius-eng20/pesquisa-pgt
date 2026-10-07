@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Cursos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Tela de Login / Cadastro -->
+    <div id="auth-container" class="container auth-box">
+        <h1>Plataforma de Cursos</h1>
+        
+        <div id="login-form">
+            <h2>Entrar na sua conta</h2>
+            <input type="text" id="login-user" placeholder="Nome de usuário" required>
+            <input type="password" id="login-pass" placeholder="Senha" required>
+            <button onclick="fazerLogin()">Entrar</button>
+            <p>Ainda não tem conta? <a href="#" onclick="alternarAuth('registrar')">Criar conta de Aluno</a></p>
+        </div>
+
+        <div id="registrar-form" style="display: none;">
+            <h2>Criar Conta de Aluno</h2>
+            <input type="text" id="reg-user" placeholder="Nome de usuário" required>
+            <input type="password" id="reg-pass" placeholder="Senha" required>
+            <button onclick="fazerRegistro()">Cadastrar</button>
+            <p>Já tem conta? <a href="#" onclick="alternarAuth('login')">Fazer login</a></p>
+        </div>
+        <p id="auth-mensagem" class="mensagem"></p>
+    </div>
+
+    <!-- Dashboard Principal (Escondido até logar) -->
+    <div id="dashboard" style="display: none;">
+        <nav class="navbar">
+            <h2>🎓 Cursos Online</h2>
+            <div>
+                <span id="boas-vindas"></span>
+                <button class="btn-danger" onclick="fazerLogout()">Sair</button>
+            </div>
+        </nav>
+
+        <!-- Área do Aluno -->
+        <div id="aluno-area" class="container" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="alternarAbaAluno('catalogo')">Catálogo de Cursos</button>
+                <button class="tab-btn" onclick="alternarAbaAluno('meus-cursos')">Meus Cursos</button>
+            </div>
+
+            <div id="aluno-catalogo" class="tab-content">
+                <h3>Cursos Disponíveis</h3>
+                <div id="lista-cursos-aluno" class="grid-cursos"></div>
+            </div>
+
+            <div id="aluno-meus-cursos" class="tab-content" style="display: none;">
+                <h3>Cursos em que estou matriculado</h3>
+                <div id="lista-meus-cursos" class="grid-cursos"></div>
+            </div>
+        </div>
+
+        <!-- Área do Administrador -->
+        <div id="admin-area" class="container" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="alternarAbaAdmin('cursos')">Gerenciar Cursos</button>
+                <button class="tab-btn" onclick="alternarAbaAdmin('matriculas')">Gerenciar Matrículas</button>
+            </div>
+
+            <div id="admin-cursos" class="tab-content">
+                <h3>Novo Curso</h3>
+                <div class="form-inline">
+                    <input type="text" id="curso-titulo" placeholder="Título do curso">
+                    <input type="text" id="curso-instrutor" placeholder="Nome do instrutor">
+                    <textarea id="curso-descricao" placeholder="Descrição do curso"></textarea>
+                    <button onclick="salvarCurso()" id="btn-salvar-curso">Adicionar Curso</button>
+                    <button onclick="cancelarEdicao()" id="btn-cancelar-edicao" style="display: none; background: gray;">Cancelar Edição</button>
+                </div>
+                
+                <h3>Cursos Cadastrados</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Título</th>
+                            <th>Instrutor</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-cursos-admin"></tbody>
+                </table>
+            </div>
+
+            <div id="admin-matriculas" class="tab-content" style="display: none;">
+                <h3>Todas as Matrículas</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aluno</th>
+                            <th>Curso</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-matriculas-admin"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>💰 Controle de Despesas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== TELA DE LOGIN / CADASTRO ===== -->
+  <div id="tela-auth" class="tela">
+    <div class="auth-box">
+      <h1>💰 Controle de Despesas</h1>
+
+      <div class="auth-tabs">
+        <button class="tab-btn ativo" id="tab-login" onclick="mostrarTab('login')">Entrar</button>
+        <button class="tab-btn" id="tab-cadastro" onclick="mostrarTab('cadastro')">Cadastrar</button>
+      </div>
+
+      <!-- Login -->
+      <div id="form-login" class="auth-form">
+        <input type="email" id="login-email" placeholder="Email">
+        <input type="password" id="login-senha" placeholder="Senha">
+        <button class="btn btn-primario" onclick="fazerLogin()">Entrar</button>
+        <p class="erro-msg" id="login-erro"></p>
+      </div>
+
+      <!-- Cadastro -->
+      <div id="form-cadastro" class="auth-form" style="display:none">
+        <input type="text" id="cad-nome" placeholder="Nome completo">
+        <input type="email" id="cad-email" placeholder="Email">
+        <input type="password" id="cad-senha" placeholder="Senha (mínimo 4 caracteres)">
+        <button class="btn btn-primario" onclick="fazerCadastro()">Cadastrar</button>
+        <p class="erro-msg" id="cad-erro"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TELA DO USUÁRIO ===== -->
+  <div id="tela-usuario" class="tela" style="display:none">
+    <nav class="navbar">
+      <span class="nav-logo">💰 Despesas</span>
+      <span class="nav-usuario" id="nav-usuario-nome"></span>
+      <button class="btn btn-sair" onclick="sair()">Sair</button>
+    </nav>
+
+    <div class="container">
+      <!-- Resumo do mês -->
+      <div class="card resumo-card">
+        <div class="resumo-header">
+          <h2>📊 Resumo do Mês</h2>
+          <div class="filtro-mes">
+            <select id="filtro-mes" onchange="carregarDados()">
+              <option value="1">Janeiro</option>
+              <option value="2">Fevereiro</option>
+              <option value="3">Março</option>
+              <option value="4">Abril</option>
+              <option value="5">Maio</option>
+              <option value="6">Junho</option>
+              <option value="7">Julho</option>
+              <option value="8">Agosto</option>
+              <option value="9">Setembro</option>
+              <option value="10">Outubro</option>
+              <option value="11">Novembro</option>
+              <option value="12">Dezembro</option>
+            </select>
+            <select id="filtro-ano" onchange="carregarDados()"></select>
+          </div>
+        </div>
+        <div class="total-gasto" id="total-gasto">R$ 0,00</div>
+        <div class="por-categoria" id="por-categoria"></div>
+      </div>
+
+      <!-- Nova despesa -->
+      <div class="card">
+        <h2>➕ Nova Despesa</h2>
+        <div class="form-despesa">
+          <input type="text" id="desp-descricao" placeholder="Descrição (ex: Almoço)">
+          <input type="number" id="desp-valor" placeholder="Valor (R$)" step="0.01" min="0.01">
+          <select id="desp-categoria"></select>
+          <input type="date" id="desp-data">
+          <button class="btn btn-primario" onclick="adicionarDespesa()">Adicionar</button>
+        </div>
+        <p class="erro-msg" id="desp-erro"></p>
+      </div>
+
+      <!-- Lista de despesas -->
+      <div class="card">
+        <h2>📋 Minhas Despesas</h2>
+        <div class="lista-despesas" id="lista-despesas"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TELA DO ADMINISTRADOR ===== -->
+  <div id="tela-admin" class="tela" style="display:none">
+    <nav class="navbar navbar-admin">
+      <span class="nav-logo">⚙️ Painel Admin</span>
+      <span class="nav-usuario" id="nav-admin-nome"></span>
+      <button class="btn btn-sair" onclick="sair()">Sair</button>
+    </nav>
+
+    <div class="container">
+      <div class="admin-tabs">
+        <button class="tab-btn ativo" onclick="mostrarAdminTab('relatorio', this)">📊 Relatório</button>
+        <button class="tab-btn" onclick="mostrarAdminTab('categorias', this)">🏷️ Categorias</button>
+        <button class="tab-btn" onclick="mostrarAdminTab('usuarios', this)">👥 Usuários</button>
+      </div>
+
+      <!-- Relatório -->
+      <div id="admin-relatorio" class="admin-secao">
+        <div class="card">
+          <div class="resumo-header">
+            <h2>Total de Gastos de Todos os Usuários</h2>
+            <div class="filtro-mes">
+              <select id="admin-filtro-mes" onchange="carregarRelatorio()">
+                <option value="1">Janeiro</option>
+                <option value="2">Fevereiro</option>
+                <option value="3">Março</option>
+                <option value="4">Abril</option>
+                <option value="5">Maio</option>
+                <option value="6">Junho</option>
+                <option value="7">Julho</option>
+                <option value="8">Agosto</option>
+                <option value="9">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+              <select id="admin-filtro-ano" onchange="carregarRelatorio()"></select>
+            </div>
+          </div>
+          <div class="total-gasto" id="admin-total-geral">R$ 0,00</div>
+        </div>
+
+        <div class="card">
+          <h3>Por Usuário</h3>
+          <div id="admin-por-usuario"></div>
+        </div>
+
+        <div class="card">
+          <h3>Por Categoria</h3>
+          <div id="admin-por-categoria"></div>
+        </div>
+      </div>
+
+      <!-- Categorias -->
+      <div id="admin-categorias" class="admin-secao" style="display:none">
+        <div class="card">
+          <h2>🏷️ Gerenciar Categorias</h2>
+          <div class="form-inline">
+            <input type="text" id="nova-categoria" placeholder="Nome da nova categoria">
+            <button class="btn btn-primario" onclick="adicionarCategoria()">Adicionar</button>
+          </div>
+          <p class="erro-msg" id="cat-erro"></p>
+          <div class="lista-categorias" id="lista-categorias"></div>
+        </div>
+      </div>
+
+      <!-- Usuários -->
+      <div id="admin-usuarios" class="admin-secao" style="display:none">
+        <div class="card">
+          <h2>👥 Gerenciar Usuários</h2>
+          <div class="lista-usuarios" id="lista-usuarios"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

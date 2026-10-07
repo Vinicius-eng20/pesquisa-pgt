@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão de Tarefas - Equipe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- TELA DE LOGIN/REGISTRO -->
+  <div id="auth-screen" class="auth-container">
+    <div class="auth-box">
+      <h1>📋 Gestão de Tarefas</h1>
+      
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('login')">Entrar</button>
+        <button class="tab-btn" onclick="switchTab('register')">Criar Conta</button>
+      </div>
+
+      <!-- Formulário de Login -->
+      <form id="login-form" class="auth-form active">
+        <input type="email" id="login-email" placeholder="Seu email" required>
+        <input type="password" id="login-password" placeholder="Sua senha" required>
+        <button type="submit" class="btn-primary">Entrar</button>
+      </form>
+
+      <!-- Formulário de Registro -->
+      <form id="register-form" class="auth-form">
+        <input type="text" id="reg-name" placeholder="Seu nome completo" required>
+        <input type="email" id="reg-email" placeholder="Seu email" required>
+        <input type="password" id="reg-password" placeholder="Crie uma senha" required>
+        <select id="reg-role" required>
+          <option value="" disabled selected>Quem é você?</option>
+          <option value="manager">Gerente de Equipe</option>
+          <option value="member">Membro da Equipe</option>
+        </select>
+        <button type="submit" class="btn-primary">Criar Conta</button>
+      </form>
+
+      <p id="auth-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- TELA PRINCIPAL (DASHBOARD) -->
+  <div id="app-screen" class="app-container" style="display: none;">
+    
+    <!-- Barra Superior -->
+    <header class="header">
+      <div class="header-left">
+        <h2>📋 Gestão de Tarefas</h2>
+      </div>
+      <div class="header-right">
+        <span id="user-info" class="user-info"></span>
+        <button onclick="logout()" class="btn-secondary">Sair</button>
+      </div>
+    </header>
+
+    <div class="main-content">
+      
+      <!-- Coluna de Criar Tarefa (apenas gerente vê completa, membro vê simplificada) -->
+      <div class="sidebar">
+        <div class="card">
+          <h3>➕ Nova Tarefa</h3>
+          <form id="task-form">
+            <input type="text" id="task-title" placeholder="Título da tarefa" required>
+            <textarea id="task-desc" placeholder="Descrição (opcional)" rows="3"></textarea>
+            
+            <select id="task-priority">
+              <option value="low">Prioridade: Baixa</option>
+              <option value="medium" selected>Prioridade: Média</option>
+              <option value="high">Prioridade: Alta</option>
+            </select>
+
+            <input type="date" id="task-due-date" title="Data de entrega">
+
+            <!-- Campo de atribuir a alguém (só aparece para gerente) -->
+            <div id="assign-section" style="display: none;">
+              <label for="task-assign">Atribuir a:</label>
+              <select id="task-assign">
+                <!-- Preenchido via JavaScript -->
+              </select>
+            </div>
+
+            <button type="submit" class="btn-primary">Criar Tarefa</button>
+          </form>
+        </div>
+
+        <!-- Estatísticas simples -->
+        <div class="card stats-card">
+          <h3>📊 Resumo</h3>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-number" id="stat-pending">0</span>
+              <span class="stat-label">Pendentes</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="stat-progress">0</span>
+              <span class="stat-label">Em Andamento</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-number" id="stat-done">0</span>
+              <span class="stat-label">Concluídas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de Tarefas -->
+      <div class="tasks-area">
+        <div class="tasks-header">
+          <h3 id="tasks-title">Minhas Tarefas</h3>
+          <div class="filters">
+            <button class="filter-btn active" onclick="filterTasks('all')">Todas</button>
+            <button class="filter-btn" onclick="filterTasks('pending')">Pendentes</button>
+            <button class="filter-btn" onclick="filterTasks('in_progress')">Em Andamento</button>
+            <button class="filter-btn" onclick="filterTasks('completed')">Concluídas</button>
+          </div>
+        </div>
+
+        <div id="tasks-list" class="tasks-list">
+          <!-- Tarefas serão carregadas aqui via JavaScript -->
+          <p class="loading">Carregando tarefas...</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal de Edição (apenas gerente usa) -->
+  <div id="edit-modal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h3>Editar Tarefa</h3>
+      <form id="edit-form">
+        <input type="hidden" id="edit-id">
+        <input type="text" id="edit-title" placeholder="Título" required>
+        <textarea id="edit-desc" placeholder="Descrição" rows="3"></textarea>
+        <select id="edit-status">
+          <option value="pending">Pendente</option>
+          <option value="in_progress">Em Andamento</option>
+          <option value="completed">Concluída</option>
+        </select>
+        <select id="edit-priority">
+          <option value="low">Prioridade: Baixa</option>
+          <option value="medium">Prioridade: Média</option>
+          <option value="high">Prioridade: Alta</option>
+        </select>
+        <select id="edit-assign">
+          <!-- Preenchido via JavaScript -->
+        </select>
+        <input type="date" id="edit-due-date">
+        <button type="submit" class="btn-primary">Salvar Alterações</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

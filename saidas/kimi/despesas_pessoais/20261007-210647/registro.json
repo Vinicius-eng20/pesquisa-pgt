@@ -1,0 +1,39 @@
+{
+  "data_hora_utc": "2026-10-07T21:06:47+00:00",
+  "modelo": "kimi",
+  "modelo_id": "moonshotai/kimi-k3",
+  "dominio": "despesas_pessoais",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\kimi\\despesas_pessoais\\20261007-210647",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Parasail",
+  "id_geracao": "gen-1791407209-BFU5Dz8AivjJHzFAo3qX",
+  "modelo_servido": "moonshotai/kimi-k3",
+  "tokens_entrada": 308,
+  "tokens_saida": 496,
+  "tokens_raciocinio": 0,
+  "tokens_total": 804,
+  "custo_usd": 0.0072488,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 28.6,
+  "duracao_api_s": 28.6,
+  "tokens_por_s": 17.3,
+  "n_arquivos": 1,
+  "arquivos": [
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

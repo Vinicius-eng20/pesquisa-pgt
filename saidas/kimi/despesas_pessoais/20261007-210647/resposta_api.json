@@ -1,0 +1,46 @@
+{
+  "id": "gen-1791407209-BFU5Dz8AivjJHzFAo3qX",
+  "object": "chat.completion",
+  "created": 1791407209,
+  "model": "moonshotai/kimi-k3",
+  "provider": "Parasail",
+  "system_fingerprint": null,
+  "service_tier": null,
+  "choices": [
+    {
+      "index": 0,
+      "logprobs": null,
+      "finish_reason": "stop",
+      "native_finish_reason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": "=== README.md ===\n# 💰 Controle de Despesas Pessoais\n\n## 📋 O que é\nUm site para você controlar seus gastos pessoais. Cada pessoa tem sua conta, registra seus gastos e vê quanto gastou no mês. O administrador gerencia categorias, usuários e vê relatórios gerais.\n\n## 🔑 Primeiro Acesso (Administrador)\n\n- **Email:** admin@admin.com\n- **Senha:** admin123\n\n## ▶️ Como rodar\n\n```bash\n# 1. Baixar/instalar dependências\nnpm install\n\n# 2. Rodar o servidor\nnpm start\n```\n\nAbra no navegador: **http://localhost:3000**\n\n## 🚀 Colocar na internet (Render.com - grátis)\n\n1. Crie uma conta em https://render.com\n2. Crie um repositório no GitHub com esses arquivos\n3. No Render, clique em **New > Web Service**\n4. Conecte seu repositório GitHub\n5. Configure:\n   - **Build Command:** `npm install`\n   - **Start Command:** `npm start`\n6. Clique em **Deploy**\n\nPronto! Seu site estará no ar com um link público.\n\n## 👤 Como usar\n\n### Para usuários normais:\n1. Clique em **\"Cadastrar\"** na tela inicial\n2. Preencha nome, email e senha\n3. Faça login\n4. Registre seus gastos\n5. Veja o resumo mensal\n\n### Para administrador:\n1. Entre com admin@admin.com / admin123\n2. Cadastre categorias de gasto\n3. Gerencie usuários\n4. Veja relatórios gerais\n\n## 🗄️ Banco de dados\nOs dados ficam salvos no arquivo `despesas.db` (SQLite) - tudo dentro do próprio site, sem serviços externos.\n\n## 📦 Tecnologias\n- **Backend:** Node.js + Express\n- **Banco:** SQLite\n- **Frontend:** HTML + CSS + JavaScript\n- **Autenticação:** JWT + bcrypt\n",
+        "refusal": null,
+        "reasoning": null
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 308,
+    "completion_tokens": 496,
+    "total_tokens": 804,
+    "cost": 0.0072488,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0072488,
+      "upstream_inference_prompt_cost": 0.0008008,
+      "upstream_inference_completions_cost": 0.006448
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  }
+}

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MegaShop - Shopping Online</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="logo" onclick="showView('store-view')"><i class="fa-solid fa-store"></i> MegaShop</div>
+        <div class="nav-links" id="auth-links">
+            <!-- Preenchido via JS dependendo do login -->
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <!-- Tela de Login / Cadastro -->
+        <div id="login-view" class="auth-box hidden">
+            <h2>Acessar Conta</h2>
+            <input type="email" id="login-email" placeholder="E-mail">
+            <input type="password" id="login-password" placeholder="Senha">
+            <button class="btn btn-primary" onclick="login()">Entrar</button>
+            <p onclick="toggleAuthView('register')" class="link">Não tem conta? Cadastre-se</p>
+        </div>
+
+        <div id="register-view" class="auth-box hidden">
+            <h2>Criar Conta</h2>
+            <input type="text" id="reg-name" placeholder="Nome Completo">
+            <input type="email" id="reg-email" placeholder="E-mail">
+            <input type="password" id="reg-password" placeholder="Senha">
+            <button class="btn btn-primary" onclick="register()">Cadastrar</button>
+            <p onclick="toggleAuthView('login')" class="link">Já tenho conta. Fazer Login</p>
+        </div>
+
+        <!-- Loja (Catálogo) -->
+        <div id="store-view">
+            <div class="header-store">
+                <h2>Nossos Produtos</h2>
+                <div class="filters">
+                    <button class="btn btn-outline" onclick="filterProducts('Todos')">Todos</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Eletrônicos')">Eletrônicos</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Moda')">Moda</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Casa')">Casa</button>
+                    <button class="btn btn-outline" onclick="filterProducts('Esporte')">Esporte</button>
+                </div>
+            </div>
+            <div id="product-grid" class="grid"></div>
+        </div>
+
+        <!-- Carrinho -->
+        <div id="cart-view" class="hidden panel">
+            <h2><i class="fa-solid fa-cart-shopping"></i> Meu Carrinho</h2>
+            <div id="cart-items"></div>
+            <div class="cart-total">
+                <h3>Total: R$ <span id="cart-total-price">0.00</span></h3>
+                <button class="btn btn-success" onclick="checkout()">Finalizar Compra</button>
+            </div>
+        </div>
+
+        <!-- Pedidos do Cliente / Admin -->
+        <div id="orders-view" class="hidden panel">
+            <h2><i class="fa-solid fa-box"></i> Pedidos</h2>
+            <div id="orders-list"></div>
+        </div>
+
+        <!-- Painel Admin - Gerenciar Produtos -->
+        <div id="admin-products-view" class="hidden panel">
+            <h2><i class="fa-solid fa-gear"></i> Gerenciar Produtos</h2>
+            <div class="admin-form">
+                <input type="hidden" id="prod-id">
+                <input type="text" id="prod-name" placeholder="Nome do Produto">
+                <input type="number" id="prod-price" placeholder="Preço (ex: 99.90)" step="0.01">
+                <select id="prod-dept">
+                    <option value="Eletrônicos">Eletrônicos</option>
+                    <option value="Moda">Moda</option>
+                    <option value="Casa">Casa</option>
+                    <option value="Esporte">Esporte</option>
+                    <option value="Outros">Outros</option>
+                </select>
+                <textarea id="prod-desc" placeholder="Descrição do produto"></textarea>
+                <button class="btn btn-primary" onclick="saveProduct()">Salvar Produto</button>
+            </div>
+            <hr>
+            <div id="admin-product-list"></div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

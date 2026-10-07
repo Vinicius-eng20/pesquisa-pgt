@@ -1,0 +1,872 @@
+=== README.md ===
+# Plataforma de Cursos Online
+
+Este é um projeto completo de uma plataforma de cursos online com sistema de matrículas, painel de alunos e painel de administrador. Tudo (frontend, backend e banco de dados) está contido neste único projeto, sem a necessidade de serviços externos pagos ou APIs de terceiros.
+
+## Requisitos
+- Você precisa ter o **Node.js** instalado no seu computador (versão 14 ou superior). 
+- Se não tiver, baixe e instale em: https://nodejs.org/
+
+## Como rodar o projeto (Passo a passo)
+
+1. Abra o terminal (ou Prompt de Comando) na pasta onde estão esses arquivos.
+2. Instale as dependências do projeto rodando o comando:
+   ```bash
+   npm install
+   ```
+3. Inicie o servidor rodando o comando:
+   ```bash
+   npm start
+   ```
+4. O site estará rodando! Abra o seu navegador e acesse:
+   ```
+   http://localhost:3000
+   ```
+
+## Contas de Acesso Inicial
+O sistema já cria um usuário Administrador automaticamente na primeira vez que é aberto.
+- **Usuário Administrador:** `admin`
+- **Senha do Administrador:** `admin123`
+
+Para os alunos, basta clicar em "Criar conta de Aluno" na tela inicial e fazer o cadastro. 
+
+## Como colocar na internet (Hospedagem)
+Como este projeto roda um servidor próprio com banco de dados interno, você precisa de uma hospedagem que aceite Node.js (VPS ou plataformas como Render, Railway, Replit).
+Para hospedar, basta subir esses arquivos para o seu servidor de preferência, instalar o Node.js nele e rodar os mesmos comandos acima (`npm install` e `npm start`).
+
+---
+
+=== package.json ===
+{
+  "name": "plataforma-cursos",
+  "version": "1.0.0",
+  "description": "Plataforma de cursos online completa",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configuração do Banco de Dados (SQLite)
+const db = new sqlite3.Database('./database.sqlite', (err) => {
+    if (err) {
+        console.error('Erro ao conectar no banco de dados:', err.message);
+    } else {
+        console.log('Conectado ao banco de dados SQLite.');
+        inicializarBanco();
+    }
+});
+
+// Criação das tabelas e usuário admin padrão
+function inicializarBanco() {
+    db.serialize(() => {
+        // Tabela de Usuários
+        db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            senha TEXT,
+            tipo TEXT -- 'admin' ou 'aluno'
+        )`);
+
+        // Tabela de Cursos
+        db.run(`CREATE TABLE IF NOT EXISTS cursos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titulo TEXT,
+            descricao TEXT,
+            instrutor TEXT
+        )`);
+
+        // Tabela de Matrículas
+        db.run(`CREATE TABLE IF NOT EXISTS matriculas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aluno_id INTEGER,
+            curso_id INTEGER,
+            data_matricula DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(aluno_id) REFERENCES usuarios(id),
+            FOREIGN KEY(curso_id) REFERENCES cursos(id)
+        )`);
+
+        // Cria o usuário admin padrão se não existir
+        db.get(`SELECT * FROM usuarios WHERE username = 'admin'`, (err, row) => {
+            if (!row) {
+                const senhaHash = bcrypt.hashSync('admin123', 10);
+                db.run(`INSERT INTO usuarios (username, senha, tipo) VALUES (?, ?, ?)`, 
+                    ['admin', senhaHash, 'admin']);
+                console.log('Usuário admin criado com sucesso. Usuário: admin | Senha: admin123');
+            }
+        });
+    });
+}
+
+// Middlewares
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
+app.use(session({
+    secret: 'segredo-super-secreto-plataforma-cursos',
+    resave: false,
+    saveUninitialized: false
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Middleware de Autenticação
+function autenticar(req, res, next) {
+    if (req.session.usuarioId) {
+        next();
+    } else {
+        res.status(401).json({ erro: 'Não autorizado' });
+    }
+}
+
+function apenasAdmin(req, res, next) {
+    if (req.session.usuarioTipo === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ erro: 'Acesso negado' });
+    }
+}
+
+// --- ROTAS DE AUTENTICAÇÃO ---
+
+// Registrar novo usuário (sempre será aluno)
+app.post('/api/registrar', (req, res) => {
+    const { username, senha } = req.body;
+    if (!username || !senha) return res.status(400).json({ erro: 'Usuário e senha são obrigatórios.' });
+
+    const senhaHash = bcrypt.hashSync(senha, 10);
+    db.run(`INSERT INTO usuarios (username, senha, tipo) VALUES (?, ?, 'aluno')`, 
+        [username, senhaHash], 
+        function(err) {
+            if (err) {
+                return res.status(400).json({ erro: 'Usuário já existe.' });
+            }
+            res.json({ sucesso: true, mensagem: 'Cadastro realizado com sucesso!' });
+        }
+    );
+});
+
+// Login
+app.post('/api/login', (req, res) => {
+    const { username, senha } = req.body;
+    db.get(`SELECT * FROM usuarios WHERE username = ?`, [username], (err, user) => {
+        if (err || !user) {
+            return res.status(400).json({ erro: 'Usuário não encontrado.' });
+        }
+        if (!bcrypt.compareSync(senha, user.senha)) {
+            return res.status(400).json({ erro: 'Senha incorreta.' });
+        }
+
+        req.session.usuarioId = user.id;
+        req.session.usuarioTipo = user.tipo;
+        req.session.username = user.username;
+
+        res.json({ sucesso: true, tipo: user.tipo, username: user.username });
+    });
+});
+
+// Logout
+app.post('/api/logout', (req, res) => {
+    req.session.destroy();
+    res.json({ sucesso: true });
+});
+
+// Verificar usuário logado (para o frontend saber quem está logado)
+app.get('/api/perfil', autenticar, (req, res) => {
+    res.json({ 
+        id: req.session.usuarioId, 
+        username: req.session.username, 
+        tipo: req.session.usuarioTipo 
+    });
+});
+
+// --- ROTAS DE CURSOS (PÚBLICAS E ADMIN) ---
+
+// Listar todos os cursos (tanto para aluno quanto admin)
+app.get('/api/cursos', autenticar, (req, res) => {
+    db.all(`SELECT * FROM cursos`, [], (err, rows) => {
+        if (err) return res.status(500).json({ erro: err.message });
+        res.json(rows);
+    });
+});
+
+// Cadastrar curso (Admin)
+app.post('/api/admin/cursos', autenticar, apenasAdmin, (req, res) => {
+    const { titulo, descricao, instrutor } = req.body;
+    db.run(`INSERT INTO cursos (titulo, descricao, instrutor) VALUES (?, ?, ?)`,
+        [titulo, descricao, instrutor],
+        function(err) {
+            if (err) return res.status(500).json({ erro: err.message });
+            res.json({ sucesso: true, id: this.lastID });
+        }
+    );
+});
+
+// Editar curso (Admin)
+app.put('/api/admin/cursos/:id', autenticar, apenasAdmin, (req, res) => {
+    const { titulo, descricao, instrutor } = req.body;
+    db.run(`UPDATE cursos SET titulo = ?, descricao = ?, instrutor = ? WHERE id = ?`,
+        [titulo, descricao, instrutor, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ erro: err.message });
+            res.json({ sucesso: true });
+        }
+    );
+});
+
+// Remover curso (Admin) - também remove matrículas atreladas a ele
+app.delete('/api/admin/cursos/:id', autenticar, apenasAdmin, (req, res) => {
+    const cursoId = req.params.id;
+    db.serialize(() => {
+        db.run(`DELETE FROM matriculas WHERE curso_id = ?`, [cursoId]);
+        db.run(`DELETE FROM cursos WHERE id = ?`, [cursoId], function(err) {
+            if (err) return res.status(500).json({ erro: err.message });
+            res.json({ sucesso: true });
+        });
+    });
+});
+
+// --- ROTAS DE MATRÍCULAS ---
+
+// Aluno se matricular
+app.post('/api/matriculas', autenticar, (req, res) => {
+    const { curso_id } = req.body;
+    const aluno_id = req.session.usuarioId;
+
+    // Verificar se já está matriculado
+    db.get(`SELECT * FROM matriculas WHERE aluno_id = ? AND curso_id = ?`, [aluno_id, curso_id], (err, row) => {
+        if (row) return res.status(400).json({ erro: 'Você já está matriculado neste curso.' });
+
+        db.run(`INSERT INTO matriculas (aluno_id, curso_id) VALUES (?, ?)`, [aluno_id, curso_id], function(err) {
+            if (err) return res.status(500).json({ erro: err.message });
+            res.json({ sucesso: true });
+        });
+    });
+});
+
+// Aluno cancelar sua própria matrícula
+app.delete('/api/matriculas/:curso_id', autenticar, (req, res) => {
+    db.run(`DELETE FROM matriculas WHERE aluno_id = ? AND curso_id = ?`, 
+        [req.session.usuarioId, req.params.curso_id], function(err) {
+            if (err) return res.status(500).json({ erro: err.message });
+            res.json({ sucesso: true });
+        }
+    );
+});
+
+// Aluno vê seus próprios cursos
+app.get('/api/meus-cursos', autenticar, (req, res) => {
+    db.all(`
+        SELECT c.id, c.titulo, c.descricao, c.instrutor, m.data_matricula 
+        FROM matriculas m
+        JOIN cursos c ON m.curso_id = c.id
+        WHERE m.aluno_id = ?
+    `, [req.session.usuarioId], (err, rows) => {
+        if (err) return res.status(500).json({ erro: err.message });
+        res.json(rows);
+    });
+});
+
+// Admin vê todas as matrículas de todos os alunos
+app.get('/api/admin/matriculas', autenticar, apenasAdmin, (req, res) => {
+    db.all(`
+        SELECT m.id as matricula_id, u.username as aluno, c.titulo as curso, m.data_matricula
+        FROM matriculas m
+        JOIN usuarios u ON m.aluno_id = u.id
+        JOIN cursos c ON m.curso_id = c.id
+        ORDER BY m.data_matricula DESC
+    `, [], (err, rows) => {
+        if (err) return res.status(500).json({ erro: err.message });
+        res.json(rows);
+    });
+});
+
+// Admin cancela qualquer matrícula
+app.delete('/api/admin/matriculas/:id', autenticar, apenasAdmin, (req, res) => {
+    db.run(`DELETE FROM matriculas WHERE id = ?`, [req.params.id], function(err) {
+        if (err) return res.status(500).json({ erro: err.message });
+        res.json({ sucesso: true });
+    });
+});
+
+// Iniciar Servidor
+app.listen(PORT, () => {
+    console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Cursos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Tela de Login / Cadastro -->
+    <div id="auth-container" class="container auth-box">
+        <h1>Plataforma de Cursos</h1>
+        
+        <div id="login-form">
+            <h2>Entrar na sua conta</h2>
+            <input type="text" id="login-user" placeholder="Nome de usuário" required>
+            <input type="password" id="login-pass" placeholder="Senha" required>
+            <button onclick="fazerLogin()">Entrar</button>
+            <p>Ainda não tem conta? <a href="#" onclick="alternarAuth('registrar')">Criar conta de Aluno</a></p>
+        </div>
+
+        <div id="registrar-form" style="display: none;">
+            <h2>Criar Conta de Aluno</h2>
+            <input type="text" id="reg-user" placeholder="Nome de usuário" required>
+            <input type="password" id="reg-pass" placeholder="Senha" required>
+            <button onclick="fazerRegistro()">Cadastrar</button>
+            <p>Já tem conta? <a href="#" onclick="alternarAuth('login')">Fazer login</a></p>
+        </div>
+        <p id="auth-mensagem" class="mensagem"></p>
+    </div>
+
+    <!-- Dashboard Principal (Escondido até logar) -->
+    <div id="dashboard" style="display: none;">
+        <nav class="navbar">
+            <h2>🎓 Cursos Online</h2>
+            <div>
+                <span id="boas-vindas"></span>
+                <button class="btn-danger" onclick="fazerLogout()">Sair</button>
+            </div>
+        </nav>
+
+        <!-- Área do Aluno -->
+        <div id="aluno-area" class="container" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="alternarAbaAluno('catalogo')">Catálogo de Cursos</button>
+                <button class="tab-btn" onclick="alternarAbaAluno('meus-cursos')">Meus Cursos</button>
+            </div>
+
+            <div id="aluno-catalogo" class="tab-content">
+                <h3>Cursos Disponíveis</h3>
+                <div id="lista-cursos-aluno" class="grid-cursos"></div>
+            </div>
+
+            <div id="aluno-meus-cursos" class="tab-content" style="display: none;">
+                <h3>Cursos em que estou matriculado</h3>
+                <div id="lista-meus-cursos" class="grid-cursos"></div>
+            </div>
+        </div>
+
+        <!-- Área do Administrador -->
+        <div id="admin-area" class="container" style="display: none;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="alternarAbaAdmin('cursos')">Gerenciar Cursos</button>
+                <button class="tab-btn" onclick="alternarAbaAdmin('matriculas')">Gerenciar Matrículas</button>
+            </div>
+
+            <div id="admin-cursos" class="tab-content">
+                <h3>Novo Curso</h3>
+                <div class="form-inline">
+                    <input type="text" id="curso-titulo" placeholder="Título do curso">
+                    <input type="text" id="curso-instrutor" placeholder="Nome do instrutor">
+                    <textarea id="curso-descricao" placeholder="Descrição do curso"></textarea>
+                    <button onclick="salvarCurso()" id="btn-salvar-curso">Adicionar Curso</button>
+                    <button onclick="cancelarEdicao()" id="btn-cancelar-edicao" style="display: none; background: gray;">Cancelar Edição</button>
+                </div>
+                
+                <h3>Cursos Cadastrados</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Título</th>
+                            <th>Instrutor</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-cursos-admin"></tbody>
+                </table>
+            </div>
+
+            <div id="admin-matriculas" class="tab-content" style="display: none;">
+                <h3>Todas as Matrículas</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Aluno</th>
+                            <th>Curso</th>
+                            <th>Data</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabela-matriculas-admin"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f4f6f8;
+    color: #333;
+    margin: 0;
+    padding: 0;
+}
+
+.container {
+    max-width: 1000px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.auth-box {
+    max-width: 400px;
+    margin-top: 100px;
+    text-align: center;
+}
+
+h1, h2, h3 {
+    color: #2c3e50;
+}
+
+input, textarea {
+    width: 100%;
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Importante para não vazar o padding */
+}
+
+button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 5px;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+
+.btn-danger {
+    background-color: #e74c3c;
+}
+.btn-danger:hover {
+    background-color: #c0392b;
+}
+
+.mensagem {
+    color: #e74c3c;
+    font-weight: bold;
+    margin-top: 15px;
+}
+
+/* Navbar */
+.navbar {
+    background-color: #2c3e50;
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.navbar h2 {
+    margin: 0;
+    color: white;
+}
+
+/* Abas (Tabs) */
+.tabs {
+    margin-bottom: 20px;
+    border-bottom: 2px solid #ddd;
+}
+
+.tab-btn {
+    background: none;
+    color: #333;
+    border: none;
+    border-bottom: 3px solid transparent;
+    border-radius: 0;
+    padding: 10px 20px;
+}
+
+.tab-btn.active {
+    border-bottom: 3px solid #3498db;
+    color: #3498db;
+    font-weight: bold;
+}
+
+.tab-btn:hover {
+    background: none;
+    color: #2980b9;
+}
+
+/* Grid de cursos para o aluno */
+.grid-cursos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+}
+
+.card-curso {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+}
+
+.card-curso h4 {
+    margin-top: 0;
+    color: #2980b9;
+}
+
+.card-curso p {
+    flex-grow: 1;
+    font-size: 14px;
+    color: #666;
+}
+
+.card-curso small {
+    display: block;
+    margin-bottom: 15px;
+    color: #888;
+}
+
+/* Tabelas do Admin */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+th {
+    background-color: #f8f9fa;
+}
+
+.form-inline {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+    border: 1px solid #eee;
+}
+
+=== public/app.js ===
+let usuarioLogado = null;
+let cursoEditandoId = null;
+
+// Verifica se já está logado ao carregar a página
+document.addEventListener('DOMContentLoaded', async () => {
+    const res = await fetch('/api/perfil');
+    if (res.ok) {
+        usuarioLogado = await res.json();
+        mostrarDashboard();
+    }
+});
+
+// --- AUTENTICAÇÃO ---
+
+function alternarAuth(tela) {
+    document.getElementById('auth-mensagem').innerText = '';
+    if (tela === 'login') {
+        document.getElementById('login-form').style.display = 'block';
+        document.getElementById('registrar-form').style.display = 'none';
+    } else {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('registrar-form').style.display = 'block';
+    }
+}
+
+async function fazerLogin() {
+    const username = document.getElementById('login-user').value;
+    const senha = document.getElementById('login-pass').value;
+
+    const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, senha })
+    });
+    const data = await res.json();
+
+    if (data.sucesso) {
+        usuarioLogado = data;
+        mostrarDashboard();
+    } else {
+        document.getElementById('auth-mensagem').innerText = data.erro;
+    }
+}
+
+async function fazerRegistro() {
+    const username = document.getElementById('reg-user').value;
+    const senha = document.getElementById('reg-pass').value;
+
+    const res = await fetch('/api/registrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, senha })
+    });
+    const data = await res.json();
+
+    if (data.sucesso) {
+        alert('Conta criada! Faça login para continuar.');
+        alternarAuth('login');
+    } else {
+        document.getElementById('auth-mensagem').innerText = data.erro;
+    }
+}
+
+async function fazerLogout() {
+    await fetch('/api/logout', { method: 'POST' });
+    location.reload();
+}
+
+// --- DASHBOARD ---
+
+function mostrarDashboard() {
+    document.getElementById('auth-container').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('boas-vindas').innerText = `Olá, ${usuarioLogado.username}!`;
+
+    if (usuarioLogado.tipo === 'admin') {
+        document.getElementById('admin-area').style.display = 'block';
+        carregarCursosAdmin();
+    } else {
+        document.getElementById('aluno-area').style.display = 'block';
+        carregarCatalogoAluno();
+    }
+}
+
+// --- ÁREA DO ALUNO ---
+
+function alternarAbaAluno(aba) {
+    document.querySelectorAll('#aluno-area .tab-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    document.getElementById('aluno-catalogo').style.display = aba === 'catalogo' ? 'block' : 'none';
+    document.getElementById('aluno-meus-cursos').style.display = aba === 'meus-cursos' ? 'block' : 'none';
+
+    if (aba === 'catalogo') carregarCatalogoAluno();
+    if (aba === 'meus-cursos') carregarMeusCursos();
+}
+
+async function carregarCatalogoAluno() {
+    const res = await fetch('/api/cursos');
+    const cursos = await res.json();
+    const container = document.getElementById('lista-cursos-aluno');
+    container.innerHTML = '';
+
+    if (cursos.length === 0) {
+        container.innerHTML = '<p>Nenhum curso disponível no momento.</p>';
+        return;
+    }
+
+    cursos.forEach(curso => {
+        container.innerHTML += `
+            <div class="card-curso">
+                <h4>${curso.titulo}</h4>
+                <p>${curso.descricao}</p>
+                <small>Instrutor: ${curso.instrutor}</small>
+                <button onclick="matricular(${curso.id})">Matricular-se</button>
+            </div>
+        `;
+    });
+}
+
+async function matricular(curso_id) {
+    const res = await fetch('/api/matriculas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ curso_id })
+    });
+    const data = await res.json();
+    
+    if (data.sucesso) {
+        alert('Matrícula realizada com sucesso!');
+        alternarAbaAluno('meus-cursos'); // Joga o aluno para a aba de meus cursos
+        document.querySelectorAll('#aluno-area .tab-btn')[1].classList.add('active');
+        document.querySelectorAll('#aluno-area .tab-btn')[0].classList.remove('active');
+    } else {
+        alert(data.erro);
+    }
+}
+
+async function carregarMeusCursos() {
+    const res = await fetch('/api/meus-cursos');
+    const cursos = await res.json();
+    const container = document.getElementById('lista-meus-cursos');
+    container.innerHTML = '';
+
+    if (cursos.length === 0) {
+        container.innerHTML = '<p>Você ainda não está matriculado em nenhum curso.</p>';
+        return;
+    }
+
+    cursos.forEach(curso => {
+        const dataMatricula = new Date(curso.data_matricula).toLocaleDateString();
+        container.innerHTML += `
+            <div class="card-curso" style="border-left: 5px solid #2ecc71;">
+                <h4>${curso.titulo}</h4>
+                <p>${curso.descricao}</p>
+                <small>Instrutor: ${curso.instrutor} | Matriculado em: ${dataMatricula}</small>
+                <button class="btn-danger" onclick="cancelarMinhaMatricula(${curso.id})">Cancelar Matrícula</button>
+            </div>
+        `;
+    });
+}
+
+async function cancelarMinhaMatricula(curso_id) {
+    if(confirm('Tem certeza que deseja cancelar a matrícula neste curso?')) {
+        await fetch(`/api/matriculas/${curso_id}`, { method: 'DELETE' });
+        carregarMeusCursos();
+    }
+}
+
+// --- ÁREA DO ADMIN ---
+
+function alternarAbaAdmin(aba) {
+    document.querySelectorAll('#admin-area .tab-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    document.getElementById('admin-cursos').style.display = aba === 'cursos' ? 'block' : 'none';
+    document.getElementById('admin-matriculas').style.display = aba === 'matriculas' ? 'block' : 'none';
+
+    if (aba === 'cursos') carregarCursosAdmin();
+    if (aba === 'matriculas') carregarMatriculasAdmin();
+}
+
+async function salvarCurso() {
+    const titulo = document.getElementById('curso-titulo').value;
+    const descricao = document.getElementById('curso-descricao').value;
+    const instrutor = document.getElementById('curso-instrutor').value;
+
+    if (!titulo || !descricao || !instrutor) return alert('Preencha todos os campos do curso.');
+
+    const metodo = cursoEditandoId ? 'PUT' : 'POST';
+    const url = cursoEditandoId ? `/api/admin/cursos/${cursoEditandoId}` : '/api/admin/cursos';
+
+    const res = await fetch(url, {
+        method: metodo,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo, descricao, instrutor })
+    });
+
+    if (res.ok) {
+        cancelarEdicao();
+        carregarCursosAdmin();
+    }
+}
+
+async function carregarCursosAdmin() {
+    const res = await fetch('/api/cursos');
+    const cursos = await res.json();
+    const tbody = document.getElementById('tabela-cursos-admin');
+    tbody.innerHTML = '';
+
+    cursos.forEach(curso => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${curso.titulo}</td>
+                <td>${curso.instrutor}</td>
+                <td>
+                    <button onclick="prepararEdicao(${curso.id}, '${curso.titulo}', '${curso.instrutor}', \`${curso.descricao}\`)">Editar</button>
+                    <button class="btn-danger" onclick="removerCurso(${curso.id})">Remover</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function prepararEdicao(id, titulo, instrutor, descricao) {
+    cursoEditandoId = id;
+    document.getElementById('curso-titulo').value = titulo;
+    document.getElementById('curso-instrutor').value = instrutor;
+    document.getElementById('curso-descricao').value = descricao;
+    
+    document.getElementById('btn-salvar-curso').innerText = 'Salvar Edição';
+    document.getElementById('btn-cancelar-edicao').style.display = 'inline-block';
+}
+
+function cancelarEdicao() {
+    cursoEditandoId = null;
+    document.getElementById('curso-titulo').value = '';
+    document.getElementById('curso-instrutor').value = '';
+    document.getElementById('curso-descricao').value = '';
+    document.getElementById('btn-salvar-curso').innerText = 'Adicionar Curso';
+    document.getElementById('btn-cancelar-edicao').style.display = 'none';
+}
+
+async function removerCurso(id) {
+    if(confirm('ATENÇÃO: Isso removerá o curso e todas as matrículas atreladas a ele. Deseja continuar?')) {
+        await fetch(`/api/admin/cursos/${id}`, { method: 'DELETE' });
+        carregarCursosAdmin();
+    }
+}
+
+async function carregarMatriculasAdmin() {
+    const res = await fetch('/api/admin/matriculas');
+    const matriculas = await res.json();
+    const tbody = document.getElementById('tabela-matriculas-admin');
+    tbody.innerHTML = '';
+
+    if (matriculas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">Nenhuma matrícula encontrada no sistema.</td></tr>';
+        return;
+    }
+
+    matriculas.forEach(m => {
+        const dataFormatada = new Date(m.data_matricula).toLocaleString();
+        tbody.innerHTML += `
+            <tr>
+                <td>${m.aluno}</td>
+                <td>${m.curso}</td>
+                <td>${dataFormatada}</td>
+                <td>
+                    <button class="btn-danger" onclick="adminCancelarMatricula(${m.matricula_id})">Cancelar Matrícula</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+async function adminCancelarMatricula(id) {
+    if(confirm('Tem certeza que deseja cancelar esta matrícula?')) {
+        await fetch(`/api/admin/matriculas/${id}`, { method: 'DELETE' });
+        carregarMatriculasAdmin();
+    }
+}

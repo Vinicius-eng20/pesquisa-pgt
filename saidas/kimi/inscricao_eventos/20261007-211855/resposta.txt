@@ -1,0 +1,653 @@
+=== README.md ===
+# Portal de Eventos
+
+Sistema completo de inscrição em eventos, com contas de usuário, painel do organizador e dados salvos em banco de dados SQLite. Tudo funciona dentro do próprio site, sem serviços externos.
+
+## Requisitos
+
+- [Node.js](https://nodejs.org) versão 18 ou superior (baixe e instale a versão LTS). Nenhum outro programa é necessário.
+
+## Instalação
+
+1. Baixe ou copie todos os arquivos deste projeto para uma pasta no seu computador.
+2. Abra um terminal (Prompt de Comando / PowerShell no Windows) dentro dessa pasta.
+3. Execute:
+
+```bash
+npm install
+```
+
+## Executando o site
+
+```bash
+npm start
+```
+
+Depois abra no navegador: **http://localhost:3000**
+
+Para parar o site, pressione `Ctrl + C` no terminal.
+
+## Conta do organizador
+
+Na primeira vez que o site for iniciado, uma conta de organizador é criada automaticamente:
+
+- **E-mail:** admin@eventos.com
+- **Senha:** admin123
+
+Entre com ela e troque a senha depois (banco de dados: edite o arquivo `database.sqlite` ou crie outra conta e promova-a alterando o campo `role` para `organizer`). Os participantes se cadastram pela própria tela de registro.
+
+## Colocando na internet de verdade
+
+Opção simples (serviços de hospedagem gratuitos ou baratos como **Render**, **Railway**, **Fly.io** ou um VPS):
+
+1. Suba estes arquivos para um repositório (ex.: GitHub) ou envie para o servidor.
+2. No serviço de hospedagem, configure:
+   - **Comando de build:** `npm install`
+   - **Comando de start:** `npm start`
+3. Defina a variável de ambiente `SESSION_SECRET` com um texto longo e secreto (ex.: uma sequência aleatória de 40 caracteres).
+4. O serviço fornecerá um endereço público (ex.: `https://seu-site.onrender.com`).
+
+Em um VPS (ex.: Ubuntu):
+
+```bash
+sudo apt update && sudo apt install -y nodejs npm
+cd pasta-do-projeto
+npm install
+SESSION_SECRET="um-segredo-bem-longo" PORT=3000 npm start
+```
+
+Para manter rodando após fechar o terminal, use por exemplo:
+
+```bash
+npm install -g pm2
+SESSION_SECRET="um-segredo-bem-longo" pm2 start server.js --name portal-eventos
+pm2 save && pm2 startup
+```
+
+## Onde os dados ficam salvos
+
+Tudo fica no arquivo `database.sqlite`, criado automaticamente na pasta do projeto. Para backup, basta copiar esse arquivo com o site parado. Apagar o arquivo apaga todos os dados (contas, eventos e inscrições).
+
+## Funcionalidades
+
+**Participante:**
+- Criar conta e entrar
+- Ver eventos disponíveis (com vagas restantes)
+- Inscrever-se em eventos (com respeito ao limite de vagas)
+- Ver e cancelar suas inscrições
+
+**Organizador:**
+- Criar, editar e cancelar eventos
+- Ver todas as inscrições de todos os participantes, por evento ou geral
+- Confirmar presença (check-in) dos inscritos
+
+=== package.json ===
+{
+  "name": "portal-eventos",
+  "version": "1.0.0",
+  "description": "Portal de inscrição para eventos com participantes e organizador",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0"
+  }
+}
+
+=== server.js ===
+const path = require('path');
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const SqliteStore = require('better-sqlite3-session-store')(session);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ---------- Banco de dados (arquivo database.sqlite, criado automaticamente) ----------
+const db = new Database(path.join(__dirname, 'database.sqlite'));
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'participant' CHECK (role IN ('participant','organizer')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  event_date TEXT NOT NULL,
+  capacity INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','cancelled')),
+  created_by INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS registrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  event_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','cancelled')),
+  attended INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, event_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+);
+`);
+
+// Cria o organizador padrão na primeira execução
+const organizerEmail = 'admin@eventos.com';
+const existingAdmin = db.prepare('SELECT id FROM users WHERE email = ?').get(organizerEmail);
+if (!existingAdmin) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)')
+    .run('Organizador', organizerEmail, hash, 'organizer');
+  console.log('Conta do organizador criada: admin@eventos.com / admin123');
+}
+
+// ---------- Sessões (também salvas no banco, persistem ao reiniciar) ----------
+const sessionDb = new Database(path.join(__dirname, 'database.sqlite'));
+app.use(session({
+  store: new SqliteStore({ client: sessionDb, expired: { clear: true, intervalMs: 900000 } }),
+  secret: process.env.SESSION_SECRET || 'troque-este-segredo-em-producao',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 dias
+}));
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- Helpers ----------
+function requireAuth(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Você precisa entrar na sua conta.' });
+  next();
+}
+
+function requireOrganizer(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Você precisa entrar na sua conta.' });
+  if (req.session.role !== 'organizer') return res.status(403).json({ error: 'Apenas o organizador pode fazer isso.' });
+  next();
+}
+
+function validEmail(email) {
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function eventWithCount(event) {
+  const row = db.prepare(
+    "SELECT COUNT(*) AS c FROM registrations WHERE event_id = ? AND status = 'confirmed'"
+  ).get(event.id);
+  return { ...event, confirmed_count: row.c };
+}
+
+// ---------- Autenticação ----------
+app.post('/api/register', (req, res) => {
+  const { name, email, password } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Informe seu nome.' });
+  if (!validEmail(email)) return res.status(400).json({ error: 'Informe um e-mail válido.' });
+  if (!password || password.length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim().toLowerCase());
+  if (exists) return res.status(409).json({ error: 'Este e-mail já está cadastrado. Faça login.' });
+
+  const hash = bcrypt.hashSync(password, 10);
+  const info = db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)')
+    .run(name.trim(), email.trim().toLowerCase(), hash, 'participant');
+
+  req.session.userId = info.lastInsertRowid;
+  req.session.role = 'participant';
+  req.session.name = name.trim();
+  res.json({ id: info.lastInsertRowid, name: name.trim(), email: email.trim().toLowerCase(), role: 'participant' });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!validEmail(email) || !password) return res.status(400).json({ error: 'Informe e-mail e senha.' });
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim().toLowerCase());
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+  }
+
+  req.session.userId = user.id;
+  req.session.role = user.role;
+  req.session.name = user.name;
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/me', (req, res) => {
+  if (!req.session.userId) return res.json({ user: null });
+  const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(req.session.userId);
+  res.json({ user: user || null });
+});
+
+// ---------- Eventos ----------
+// Lista eventos: participantes veem só os ativos; organizador vê todos
+app.get('/api/events', (req, res) => {
+  let events;
+  if (req.session.role === 'organizer') {
+    events = db.prepare('SELECT * FROM events ORDER BY event_date ASC').all();
+  } else {
+    events = db.prepare("SELECT * FROM events WHERE status = 'active' ORDER BY event_date ASC").all();
+  }
+  res.json(events.map(eventWithCount));
+});
+
+app.get('/api/events/:id', (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  res.json(eventWithCount(event));
+});
+
+app.post('/api/events', requireOrganizer, (req, res) => {
+  const { title, description, location, event_date, capacity } = req.body || {};
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Informe o título do evento.' });
+  if (!event_date) return res.status(400).json({ error: 'Informe a data e hora do evento.' });
+  const cap = parseInt(capacity, 10);
+  if (isNaN(cap) || cap < 1) return res.status(400).json({ error: 'Informe um número de vagas válido (mínimo 1).' });
+
+  const info = db.prepare(
+    'INSERT INTO events (title, description, location, event_date, capacity, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(title.trim(), (description || '').trim(), (location || '').trim(), event_date, cap, req.session.userId);
+
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(info.lastInsertRowid);
+  res.json(eventWithCount(event));
+});
+
+app.put('/api/events/:id', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+
+  const { title, description, location, event_date, capacity } = req.body || {};
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Informe o título do evento.' });
+  if (!event_date) return res.status(400).json({ error: 'Informe a data e hora do evento.' });
+  const cap = parseInt(capacity, 10);
+  if (isNaN(cap) || cap < 1) return res.status(400).json({ error: 'Informe um número de vagas válido (mínimo 1).' });
+
+  const confirmed = db.prepare(
+    "SELECT COUNT(*) AS c FROM registrations WHERE event_id = ? AND status = 'confirmed'"
+  ).get(event.id).c;
+  if (cap < confirmed) {
+    return res.status(400).json({ error: `Não é possível reduzir para ${cap} vagas: já existem ${confirmed} inscritos confirmados.` });
+  }
+
+  db.prepare('UPDATE events SET title = ?, description = ?, location = ?, event_date = ?, capacity = ? WHERE id = ?')
+    .run(title.trim(), (description || '').trim(), (location || '').trim(), event_date, cap, event.id);
+
+  const updated = db.prepare('SELECT * FROM events WHERE id = ?').get(event.id);
+  res.json(eventWithCount(updated));
+});
+
+// Cancelar evento (não apaga, mantém histórico)
+app.delete('/api/events/:id', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  db.prepare("UPDATE events SET status = 'cancelled' WHERE id = ?").run(event.id);
+  res.json({ ok: true });
+});
+
+// Reativar evento cancelado
+app.post('/api/events/:id/reactivate', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  db.prepare("UPDATE events SET status = 'active' WHERE id = ?").run(event.id);
+  res.json({ ok: true });
+});
+
+// ---------- Inscrições ----------
+// Inscrever-se
+app.post('/api/events/:id/register', requireAuth, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event) return res.status(404).json({ error: 'Evento não encontrado.' });
+  if (event.status === 'cancelled') return res.status(400).json({ error: 'Este evento foi cancelado.' });
+
+  const existing = db.prepare('SELECT * FROM registrations WHERE user_id = ? AND event_id = ?')
+    .get(req.session.userId, event.id);
+
+  if (existing && existing.status === 'confirmed') {
+    return res.status(409).json({ error: 'Você já está inscrito neste evento.' });
+  }
+
+  const confirmed = db.prepare(
+    "SELECT COUNT(*) AS c FROM registrations WHERE event_id = ? AND status = 'confirmed'"
+  ).get(event.id).c;
+
+  if (confirmed >= event.capacity) {
+    return res.status(400).json({ error: 'As vagas deste evento acabaram.' });
+  }
+
+  if (existing) {
+    db.prepare("UPDATE registrations SET status = 'confirmed', attended = 0, created_at = datetime('now') WHERE id = ?")
+      .run(existing.id);
+  } else {
+    db.prepare('INSERT INTO registrations (user_id, event_id) VALUES (?, ?)')
+      .run(req.session.userId, event.id);
+  }
+
+  res.json({ ok: true });
+});
+
+// Cancelar a própria inscrição
+app.delete('/api/registrations/:id', requireAuth, (req, res) => {
+  const reg = db.prepare('SELECT * FROM registrations WHERE id = ?').get(req.params.id);
+  if (!reg) return res.status(404).json({ error: 'Inscrição não encontrada.' });
+  if (reg.user_id !== req.session.userId && req.session.role !== 'organizer') {
+    return res.status(403).json({ error: 'Você só pode cancelar as suas próprias inscrições.' });
+  }
+  db.prepare("UPDATE registrations SET status = 'cancelled' WHERE id = ?").run(reg.id);
+  res.json({ ok: true });
+});
+
+// Minhas inscrições (participante)
+app.get('/api/my-registrations', requireAuth, (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.id AS registration_id, r.status AS registration_status, r.attended, r.created_at AS registered_at,
+           e.id AS event_id, e.title, e.description, e.location, e.event_date, e.capacity, e.status AS event_status
+    FROM registrations r
+    JOIN events e ON e.id = r.event_id
+    WHERE r.user_id = ?
+    ORDER BY e.event_date ASC
+  `).all(req.session.userId);
+  res.json(rows);
+});
+
+// Todas as inscrições (organizador)
+app.get('/api/registrations', requireOrganizer, (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.id AS registration_id, r.status AS registration_status, r.attended, r.created_at AS registered_at,
+           u.id AS user_id, u.name AS user_name, u.email AS user_email,
+           e.id AS event_id, e.title AS event_title, e.event_date, e.status AS event_status
+    FROM registrations r
+    JOIN users u ON u.id = r.user_id
+    JOIN events e ON e.id = r.event_id
+    ORDER BY e.event_date ASC, u.name ASC
+  `).all();
+  res.json(rows);
+});
+
+// Inscrições de um evento específico (organizador)
+app.get('/api/events/:id/registrations', requireOrganizer, (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.id AS registration_id, r.status AS registration_status, r.attended, r.created_at AS registered_at,
+           u.id AS user_id, u.name AS user_name, u.email AS user_email
+    FROM registrations r
+    JOIN users u ON u.id = r.user_id
+    WHERE r.event_id = ?
+    ORDER BY u.name ASC
+  `).all(req.params.id);
+  res.json(rows);
+});
+
+// Confirmar / desfazer presença (organizador)
+app.post('/api/registrations/:id/attendance', requireOrganizer, (req, res) => {
+  const reg = db.prepare('SELECT * FROM registrations WHERE id = ?').get(req.params.id);
+  if (!reg) return res.status(404).json({ error: 'Inscrição não encontrada.' });
+  if (reg.status !== 'confirmed') return res.status(400).json({ error: 'Só é possível confirmar presença de inscrições ativas.' });
+
+  const attended = req.body && req.body.attended ? 1 : 0;
+  db.prepare('UPDATE registrations SET attended = ? WHERE id = ?').run(attended, reg.id);
+  res.json({ ok: true, attended: !!attended });
+});
+
+app.listen(PORT, () => {
+  console.log(`Portal de Eventos rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal de Eventos</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <h1 class="logo">🎫 Portal de Eventos</h1>
+      <div id="userArea" class="user-area"></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Mensagens -->
+    <div id="toast" class="toast hidden"></div>
+
+    <!-- ============ TELA DE AUTENTICAÇÃO ============ -->
+    <section id="authSection" class="auth-grid hidden">
+      <div class="card">
+        <h2>Entrar</h2>
+        <form id="loginForm">
+          <label>E-mail
+            <input type="email" name="email" required placeholder="seu@email.com" />
+          </label>
+          <label>Senha
+            <input type="password" name="password" required placeholder="Sua senha" />
+          </label>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Criar conta</h2>
+        <form id="registerForm">
+          <label>Nome completo
+            <input type="text" name="name" required placeholder="Seu nome" />
+          </label>
+          <label>E-mail
+            <input type="email" name="email" required placeholder="seu@email.com" />
+          </label>
+          <label>Senha (mínimo 6 caracteres)
+            <input type="password" name="password" required minlength="6" placeholder="Crie uma senha" />
+          </label>
+          <button type="submit" class="btn btn-primary">Cadastrar</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ ÁREA LOGADA ============ -->
+    <section id="appSection" class="hidden">
+      <nav class="tabs" id="tabsNav"></nav>
+      <div id="tabContent"></div>
+    </section>
+  </main>
+
+  <!-- ============ MODAL (formulário de evento / lista de inscritos) ============ -->
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle"></h3>
+        <button class="btn btn-icon" id="modalClose" title="Fechar">✕</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="container">Portal de Eventos — seus dados ficam salvos neste site.</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --primary: #4f46e5;
+  --primary-dark: #4338ca;
+  --danger: #dc2626;
+  --danger-dark: #b91c1c;
+  --success: #16a34a;
+  --success-dark: #15803d;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-500: #6b7280;
+  --gray-700: #374151;
+  --gray-900: #111827;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  background: var(--gray-100);
+  color: var(--gray-900);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container { width: 100%; max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+
+/* ---------- Topbar ---------- */
+.topbar { background: var(--primary); color: #fff; padding: 14px 0; }
+.topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.logo { font-size: 1.25rem; }
+.user-area { display: flex; align-items: center; gap: 12px; font-size: 0.95rem; }
+.user-area .badge-role {
+  background: rgba(255,255,255,0.2); padding: 2px 10px; border-radius: 999px; font-size: 0.8rem;
+}
+
+/* ---------- Layout ---------- */
+main { flex: 1; padding: 24px 0 48px; }
+.footer { background: var(--gray-200); color: var(--gray-500); text-align: center; padding: 14px 0; font-size: 0.85rem; }
+
+.hidden { display: none !important; }
+
+/* ---------- Autenticação ---------- */
+.auth-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px; max-width: 760px; margin: 40px auto;
+}
+
+/* ---------- Cards ---------- */
+.card {
+  background: #fff; border-radius: 12px; padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.card h2 { margin-bottom: 16px; font-size: 1.2rem; }
+
+/* ---------- Formulários ---------- */
+form label { display: block; margin-bottom: 14px; font-size: 0.9rem; color: var(--gray-700); font-weight: 600; }
+input, textarea, select {
+  width: 100%; padding: 10px 12px; margin-top: 4px;
+  border: 1px solid var(--gray-300); border-radius: 8px; font-size: 1rem; font-family: inherit;
+}
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+textarea { resize: vertical; min-height: 80px; }
+
+/* ---------- Botões ---------- */
+.btn {
+  display: inline-block; border: none; border-radius: 8px; cursor: pointer;
+  padding: 10px 18px; font-size: 0.95rem; font-weight: 600; font-family: inherit;
+  transition: background 0.15s ease;
+}
+.btn-primary { background: var(--primary); color: #fff; width: 100%; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: var(--gray-200); color: var(--gray-700); }
+.btn-secondary:hover { background: var(--gray-300); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: var(--danger-dark); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover { background: var(--success-dark); }
+.btn-sm { padding: 6px 12px; font-size: 0.85rem; }
+.btn-icon { background: transparent; color: var(--gray-500); font-size: 1.1rem; padding: 4px 10px; }
+.btn-icon:hover { color: var(--gray-900); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Abas ---------- */
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab-btn {
+  border: none; background: var(--gray-200); color: var(--gray-700);
+  padding: 10px 20px; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 0.95rem;
+}
+.tab-btn.active { background: var(--primary); color: #fff; }
+
+/* ---------- Lista de eventos ---------- */
+.events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+.event-card { display: flex; flex-direction: column; gap: 8px; }
+.event-card h3 { font-size: 1.1rem; }
+.event-meta { color: var(--gray-500); font-size: 0.88rem; display: flex; flex-direction: column; gap: 2px; }
+.event-desc { color: var(--gray-700); font-size: 0.92rem; flex: 1; white-space: pre-wrap; }
+.event-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.vagas { font-weight: 600; font-size: 0.9rem; }
+.vagas.lotado { color: var(--danger); }
+.vagas.ok { color: var(--success); }
+
+/* ---------- Badges ---------- */
+.badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
+}
+.badge-active { background: #dcfce7; color: var(--success-dark); }
+.badge-cancelled { background: #fee2e2; color: var(--danger-dark); }
+.badge-attended { background: #dbeafe; color: #1d4ed8; }
+
+/* ---------- Tabelas ---------- */
+.table-wrapper { overflow-x: auto; background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--gray-200); }
+th { background: var(--gray-100); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--gray-500); }
+tr:last-child td { border-bottom: none; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  padding: 12px 22px; border-radius: 10px; color: #fff; font-weight: 600;
+  z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,0.2); max-width: 90vw;
+}
+.toast.success { background: var(--success); }
+.toast.error { background: var(--danger); }
+
+/* ---------- Modal ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50;
+}
+.modal {
+  background: #fff; border-radius: 14px; width: 100%; max-width: 620px;
+  max-height: 90vh; display: flex; flex-direction: column;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--gray-200);
+}
+.modal-body { padding: 20px; overflow-y: auto; }
+
+/* ---------- Estado vazio ---------- */
+.empty-state {
+  text-align: center; color: var(--gray-500); padding: 40px 20px;
+  background: #fff; border-radius: 12px;
+}
+
+.section-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.section-header h2 { font-size: 1.25rem; }
+
+@media (max-width: 560px) {
+  .event-actions .btn { flex: 1; text-align: center; }
+}

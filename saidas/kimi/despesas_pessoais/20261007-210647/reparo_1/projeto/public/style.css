@@ -1,0 +1,509 @@
+/* ===== RESET E BASE ===== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f0f2f5;
+  color: #333;
+  min-height: 100vh;
+}
+
+/* ===== TELAS ===== */
+.tela {
+  min-height: 100vh;
+}
+
+/* ===== AUTENTICAÇÃO ===== */
+#tela-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.auth-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.auth-box h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 1.6em;
+  color: #333;
+}
+
+.auth-tabs {
+  display: flex;
+  margin-bottom: 24px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #e0e0e0;
+}
+
+.auth-tabs .tab-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: #888;
+  transition: all 0.3s;
+}
+
+.auth-tabs .tab-btn.ativo {
+  background: #667eea;
+  color: #fff;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 15px;
+  transition: border-color 0.3s;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+/* ===== NAVBAR ===== */
+.navbar {
+  background: #667eea;
+  color: #fff;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+.navbar-admin {
+  background: #2d3748;
+}
+
+.nav-logo {
+  font-size: 1.2em;
+  font-weight: 700;
+}
+
+.nav-usuario {
+  font-size: 0.95em;
+  opacity: 0.9;
+}
+
+/* ===== CONTAINER ===== */
+.container {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+/* ===== CARDS ===== */
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+  font-size: 1.15em;
+  margin-bottom: 16px;
+  color: #444;
+}
+
+.card h3 {
+  font-size: 1em;
+  margin-bottom: 12px;
+  color: #555;
+}
+
+/* ===== RESUMO ===== */
+.resumo-card {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+.resumo-card h2 {
+  color: #fff;
+}
+
+.resumo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.filtro-mes select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  font-size: 14px;
+  margin-left: 6px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.total-gasto {
+  font-size: 2.4em;
+  font-weight: 800;
+  margin: 16px 0;
+}
+
+.por-categoria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cat-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 0.9em;
+}
+
+.cat-badge strong {
+  margin-left: 4px;
+}
+
+/* ===== FORMULÁRIO DESPESA ===== */
+.form-despesa {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-despesa input,
+.form-despesa select {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 14px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.form-despesa input:focus,
+.form-despesa select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.form-despesa input[type="text"] {
+  flex: 2;
+}
+
+.form-inline {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.form-inline input {
+  flex: 1;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+/* ===== BOTÕES ===== */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.btn-primario {
+  background: #667eea;
+  color: #fff;
+  width: 100%;
+}
+
+.btn-primario:hover {
+  background: #5a6fd6;
+}
+
+.btn-sair {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.btn-sair:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-excluir {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.btn-excluir:hover {
+  background: #fecaca;
+}
+
+.btn-toggle {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.btn-ativar {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.btn-desativar {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ===== LISTA DE DESPESAS ===== */
+.lista-despesas {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.despesa-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+
+.despesa-info {
+  flex: 1;
+}
+
+.despesa-desc {
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.despesa-meta {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 2px;
+}
+
+.despesa-valor {
+  font-weight: 700;
+  color: #dc2626;
+  font-size: 1.05em;
+  margin-right: 10px;
+}
+
+/* ===== CATEGORIAS ADMIN ===== */
+.lista-categorias {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.categoria-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+
+/* ===== USUÁRIOS ADMIN ===== */
+.lista-usuarios {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.usuario-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.usuario-info {
+  flex: 1;
+}
+
+.usuario-nome {
+  font-weight: 600;
+}
+
+.usuario-email {
+  font-size: 0.85em;
+  color: #888;
+}
+
+.usuario-status {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-ativo {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-inativo {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.usuario-gasto {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 0.9em;
+}
+
+/* ===== ADMIN TABS ===== */
+.admin-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.admin-tabs .tab-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  background: #e2e8f0;
+  color: #4a5568;
+  transition: all 0.3s;
+}
+
+.admin-tabs .tab-btn.ativo {
+  background: #2d3748;
+  color: #fff;
+}
+
+/* ===== RELATÓRIO ===== */
+.relatorio-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.relatorio-nome {
+  font-weight: 600;
+}
+
+.relatorio-email {
+  font-size: 0.8em;
+  color: #888;
+}
+
+.relatorio-valor {
+  font-weight: 700;
+  color: #667eea;
+}
+
+.relatorio-qtd {
+  font-size: 0.8em;
+  color: #888;
+  margin-left: 8px;
+}
+
+/* ===== MENSAGENS ===== */
+.erro-msg {
+  color: #dc2626;
+  font-size: 0.85em;
+  margin-top: 10px;
+  text-align: center;
+  min-height: 20px;
+}
+
+.vazio {
+  text-align: center;
+  color: #aaa;
+  padding: 30px;
+  font-size: 0.95em;
+}
+
+/* ===== RESPONSIVO ===== */
+@media (max-width: 600px) {
+  .auth-box {
+    padding: 24px;
+  }
+
+  .total-gasto {
+    font-size: 1.8em;
+  }
+
+  .form-despesa {
+    flex-direction: column;
+  }
+
+  .form-despesa input,
+  .form-despesa select {
+    width: 100%;
+  }
+
+  .resumo-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .despesa-item {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .navbar {
+    padding: 12px 16px;
+  }
+
+  .nav-logo {
+    font-size: 1em;
+  }
+
+  .admin-tabs {
+    flex-wrap: wrap;
+  }
+}
