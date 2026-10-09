@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bella Cucina — Sistema de Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Splash inicial -->
+    <div id="splash" class="splash">
+      <div class="splash-brand">
+        <span class="logo-dot"></span>
+        <span>Bella Cucina</span>
+      </div>
+      <div class="splash-status" id="splash-status">Preparando sua visita…</div>
+    </div>
+
+    <!-- TELA: LOGIN / CADASTRO -->
+    <section id="screen-auth" class="screen screen-auth" hidden>
+      <div class="auth-illustration">
+        <div class="plate">
+          <div class="plate-ring"></div>
+          <div class="plate-glow"></div>
+          <div class="plate-emoji">🍽️</div>
+        </div>
+        <div class="side-notes">
+          <div class="note-chip">Feijoada <b>R$ 52</b></div>
+          <div class="note-chip">Bife de Costela <b>R$ 58</b></div>
+          <div class="note-chip">Pudim <b>R$ 16</b></div>
+        </div>
+      </div>
+
+      <div class="auth-panel">
+        <div class="auth-brand">
+          <span class="logo-dot"></span>
+          <span>Bella Cucina</span>
+        </div>
+        <h1 class="auth-title">Bem-vindo de volta</h1>
+        <p class="auth-sub">Acesse para ver o cardápio, fazer pedidos e acompanhar tudo em tempo real.</p>
+
+        <div class="auth-tabs">
+          <button class="tab active" data-tab="login">Entrar</button>
+          <button class="tab" data-tab="register">Criar conta</button>
+        </div>
+
+        <form id="form-login" class="auth-form" data-form="login">
+          <label class="field">
+            <span>E-mail</span>
+            <input type="email" name="email" placeholder="voce@exemplo.com" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input type="password" name="password" placeholder="Sua senha" autocomplete="current-password" required />
+          </label>
+          <button type="submit" class="btn btn-primary btn-lg">Entrar</button>
+          <div class="form-error" data-error></div>
+        </form>
+
+        <form id="form-register" class="auth-form" data-form="register" hidden>
+          <label class="field">
+            <span>Seu nome</span>
+            <input type="text" name="name" placeholder="Como podemos te chamar?" required />
+          </label>
+          <label class="field">
+            <span>E-mail</span>
+            <input type="email" name="email" placeholder="voce@exemplo.com" required />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input type="password" name="password" placeholder="Mínimo 4 caracteres" required />
+          </label>
+          <button type="submit" class="btn btn-primary btn-lg">Criar minha conta</button>
+          <div class="form-error" data-error></div>
+        </form>
+
+        <div class="auth-hint">
+          <strong>Contas de exemplo:</strong><br/>
+          Gerente: <code>gerente@restaurante.com</code> · senha <code>1234</code><br/>
+          Cliente: <code>cliente@restaurante.com</code> · senha <code>1234</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- TELA: APLICAÇÃO -->
+    <section id="screen-app" class="screen screen-app" hidden>
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="logo-dot"></span>
+          <span>Bella Cucina</span>
+        </div>
+        <nav class="topbar-nav" id="nav"></nav>
+        <div class="topbar-right">
+          <div class="user-chip">
+            <span class="avatar" id="user-avatar"></span>
+            <div class="user-info">
+              <span class="user-name" id="user-name"></span>
+              <span class="user-role" id="user-role"></span>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-logout">Sair</button>
+        </div>
+      </header>
+
+      <main class="content" id="content"></main>
+    </section>
+
+    <!-- Toast -->
+    <div class="toast-wrap" id="toast-wrap"></div>
+    <!-- Modal -->
+    <div class="modal-backdrop" id="modal" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

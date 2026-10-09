@@ -1,0 +1,1507 @@
+=== README.md ===
+# Plataforma de Cursos Online
+
+Site completo para cadastro e matrícula em cursos online, com área de aluno e área de administrador. Todo o conteúdo (cursos, matrículas e contas) fica salvo dentro do próprio navegador, então as informações permanecem mesmo se você fechar e abrir o site de novo.
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (instale em https://nodejs.org se ainda não tiver).
+
+1. Abra o terminal dentro da pasta do projeto.
+2. Rode o comando:
+   ```
+   npm install
+   ```
+3. Para abrir o site no seu computador (modo de desenvolvimento):
+   ```
+   npm run dev
+   ```
+   Depois abra o navegador em `http://localhost:5173`.
+
+4. Para publicar na internet (produção):
+   ```
+   npm run build
+   ```
+   O site pronto para publicar fica na pasta `dist`.
+   Você pode publicar a pasta `dist` em qualquer hospedagem estática como **Netlify**, **Vercel** ou **GitHub Pages**.
+
+> Dica rápida para Netlify: no painel, crie um site novo e arraste a pasta `dist`. Pronto.
+
+## Como funciona
+
+- Na tela inicial, escolha **Entrar como Aluno** ou **Entrar como Administrador**.
+- **Conta padrão do administrador** (já vem criada):
+  - Usuário: `admin`
+  - Senha: `admin123`
+- Os alunos escolhem seu nome, usuário e senha quando entram pela primeira vez (é criado o cadastro automaticamente).
+- Depois de entrar, o aluno pode: ver os cursos disponíveis, se matricular e ver seus cursos matriculados.
+- O administrador pode: cadastrar, editar e remover cursos, ver todas as matrículas de todos os alunos e cancelar matrículas.
+
+## Observação importante sobre "funcionar na internet"
+
+Nesta versão, os dados ficam guardados no navegador de cada pessoa (localStorage). Ou seja:
+
+- O site funciona de verdade na internet, mas cada visitante vê e salva os dados no seu próprio navegador.
+- Um aluno que matricula em um curso não vê essa matrícula na tela do administrador (e vice-versa), pois não há um servidor compartilhando os dados entre todos.
+
+Se você quiser que **todos os usuários vejam os mesmos cursos e matrículas de verdade** (administrador vê as matrículas de todos os alunos), é necessário uma base de dados em um servidor (backend). Posso criar essa versão também se você me pedir.
+
+=== package.json ===
+{
+  "name": "plataforma-cursos",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.0"
+  }
+}
+
+=== index.html ===
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Plataforma de Cursos Online</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+=== vite.config.js ===
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+
+=== src/main.jsx ===
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import App from './App.jsx'
+import './styles.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+)
+
+=== src/styles.css ===
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: #f4f6fb;
+  color: #1f2937;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+/* Barra superior */
+.topbar {
+  background: #1e3a8a;
+  color: #fff;
+  padding: 14px 16px;
+}
+
+.topbar-inner {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.nav-links a,
+.nav-links button {
+  color: #dbeafe;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.nav-links a:hover,
+.nav-links button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.nav-links a.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.badge-role {
+  background: #2563eb;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+/* Cartões */
+.card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Títulos */
+h1 {
+  font-size: 26px;
+  margin-bottom: 12px;
+}
+
+h2 {
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: #6b7280;
+  margin-bottom: 20px;
+}
+
+/* Botões */
+.btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: filter 0.15s;
+}
+
+.btn:hover {
+  filter: brightness(0.95);
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+
+.btn-danger-soft {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Formulários */
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* Mensagens */
+.alert {
+  padding: 12px 14px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.alert-error {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.alert-success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.alert-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+/* Curso item */
+.course-item {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+.course-item .course-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.course-item .course-desc {
+  color: #4b5563;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.course-item .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tag {
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.course-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Tabela */
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle;
+}
+
+th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #374151;
+}
+
+.empty {
+  text-align: center;
+  color: #6b7280;
+  padding: 24px;
+  background: #fff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+}
+
+/* Página inicial */
+.hero {
+  text-align: center;
+  padding: 40px 16px;
+}
+
+.hero h1 {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.hero p {
+  color: #4b5563;
+  margin-bottom: 28px;
+}
+
+.choice-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+@media (max-width: 560px) {
+  .choice-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+.choice-card {
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 24px;
+  text-align: left;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.choice-card:hover {
+  border-color: #2563eb;
+  transform: translateY(-2px);
+}
+
+.choice-card .icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+
+.choice-card h3 {
+  font-size: 18px;
+  margin-bottom: 6px;
+}
+
+.choice-card p {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.page-actions {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.form-row > div {
+  flex: 1;
+}
+
+@media (max-width: 520px) {
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
+}
+
+=== src/storage.js ===
+// Camadas de armazenamento usando o localStorage do navegador.
+// Tudo fica salvo no próprio navegador e continua disponível
+// mesmo depois de fechar e reabrir o site.
+
+const KEYS = {
+  courses: 'plataforma_cursos',
+  students: 'plataforma_alunos',
+  enrollments: 'plataforma_matriculas',
+  session: 'plataforma_sessao',
+}
+
+function read(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function write(key, value) {
+  localStorage.setItem(key, JSON.stringify(value))
+}
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+// Garante que o administrador padrão exista na primeira vez.
+function ensureAdmin() {
+  const students = read(KEYS.students, [])
+  if (!students.some((s) => s.login === 'admin')) {
+    students.push({
+      id: 'admin',
+      name: 'Administrador',
+      login: 'admin',
+      password: 'admin123',
+      isAdmin: true,
+    })
+    write(KEYS.students, students)
+  }
+}
+
+export const db = {
+  // Cursos
+  getCourses() {
+    return read(KEYS.courses, [])
+  },
+  saveCourses(courses) {
+    write(KEYS.courses, courses)
+  },
+  addCourse(course) {
+    const courses = this.getCourses()
+    course.id = uid()
+    course.createdAt = new Date().toISOString()
+    courses.push(course)
+    this.saveCourses(courses)
+    return course
+  },
+  updateCourse(id, changes) {
+    const courses = this.getCourses().map((c) =>
+      c.id === id ? { ...c, ...changes } : c
+    )
+    this.saveCourses(courses)
+    return courses.find((c) => c.id === id)
+  },
+  removeCourse(id) {
+    this.saveCourses(this.getCourses().filter((c) => c.id !== id))
+    // Remove também as matrículas do curso
+    this.saveEnrollments(this.getEnrollments().filter((e) => e.courseId !== id))
+  },
+
+  // Alunos (e admin)
+  getStudents() {
+    ensureAdmin()
+    return read(KEYS.students, [])
+  },
+  saveStudents(students) {
+    write(KEYS.students, students)
+  },
+  findStudentByLogin(login) {
+    return this.getStudents().find((s) => s.login.toLowerCase() === login.toLowerCase())
+  },
+  addStudent(data) {
+    const students = this.getStudents()
+    const student = {
+      id: uid(),
+      name: data.name,
+      login: data.login,
+      password: data.password,
+      isAdmin: false,
+    }
+    students.push(student)
+    this.saveStudents(students)
+    return student
+  },
+
+  // Matrículas
+  getEnrollments() {
+    return read(KEYS.enrollments, [])
+  },
+  saveEnrollments(enrollments) {
+    write(KEYS.enrollments, enrollments)
+  },
+  addEnrollment(courseId, studentId) {
+    const enrollments = this.getEnrollments()
+    if (enrollments.some((e) => e.courseId === courseId && e.studentId === studentId)) {
+      return null // já matriculado
+    }
+    const enrollment = {
+      id: uid(),
+      courseId,
+      studentId,
+      createdAt: new Date().toISOString(),
+    }
+    enrollments.push(enrollment)
+    this.saveEnrollments(enrollments)
+    return enrollment
+  },
+  removeEnrollment(id) {
+    this.saveEnrollments(this.getEnrollments().filter((e) => e.id !== id))
+  },
+  hasEnrollment(courseId, studentId) {
+    return this.getEnrollments().some(
+      (e) => e.courseId === courseId && e.studentId === studentId
+    )
+  },
+  enrollmentsForStudent(studentId) {
+    return this.getEnrollments().filter((e) => e.studentId === studentId)
+  },
+
+  // Sessão (quem está logado)
+  getSession() {
+    return read(KEYS.session, null)
+  },
+  setSession(session) {
+    write(KEYS.session, session)
+  },
+  clearSession() {
+    localStorage.removeItem(KEYS.session)
+  },
+}
+
+=== src/App.jsx ===
+import React from 'react'
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { db } from './storage.js'
+import Home from './pages/Home.jsx'
+import StudentLogin from './pages/StudentLogin.jsx'
+import AdminLogin from './pages/AdminLogin.jsx'
+import StudentDashboard from './pages/StudentDashboard.jsx'
+import EnrolledCourses from './pages/EnrolledCourses.jsx'
+import AdminDashboard from './pages/AdminDashboard.jsx'
+import EnrollmentsAdmin from './pages/EnrollmentsAdmin.jsx'
+import Layout from './components/Layout.jsx'
+
+function useAuth() {
+  const [session, setSession] = React.useState(db.getSession())
+  const login = (student) => {
+    const s = { studentId: student.id, isAdmin: student.isAdmin }
+    db.setSession(s)
+    setSession(s)
+  }
+  const logout = () => {
+    db.clearSession()
+    setSession(null)
+  }
+  const currentStudent = session ? db.getStudents().find((s) => s.id === session.studentId) : null
+  return { session, login, logout, currentStudent }
+}
+
+const AuthContext = React.createContext(null)
+
+export function AuthProvider({ children }) {
+  const auth = useAuth()
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+}
+
+export function useAuthContext() {
+  return React.useContext(AuthContext)
+}
+
+function RequireAuth({ children, role }) {
+  const { session, currentStudent } = useAuthContext()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  if (!session || !currentStudent) {
+    return <Navigate to="/" replace />
+  }
+  if (role && role !== 'any' && currentStudent.isAdmin !== (role === 'admin')) {
+    return <Navigate to={currentStudent.isAdmin ? '/admin' : '/aluno'} replace />
+  }
+  return children
+}
+
+function AppRoutes() {
+  const { session, currentStudent } = useAuthContext()
+  const defaultPath = session
+    ? currentStudent?.isAdmin
+      ? '/admin'
+      : '/aluno'
+    : '/'
+
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/entrar/aluno" element={<StudentLogin />} />
+      <Route path="/entrar/admin" element={<AdminLogin />} />
+
+      <Route
+        path="/aluno"
+        element={
+          <RequireAuth role="student">
+            <StudentDashboard />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/aluno/meus-cursos"
+        element={
+          <RequireAuth role="student">
+            <EnrolledCourses />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <RequireAuth role="admin">
+            <AdminDashboard />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/admin/matriculas"
+        element={
+          <RequireAuth role="admin">
+            <EnrollmentsAdmin />
+          </RequireAuth>
+        }
+      />
+
+      <Route path="*" element={<Navigate to={defaultPath} replace />} />
+    </Routes>
+  )
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
+  )
+}
+
+=== src/components/Layout.jsx ===
+import React from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useAuthContext } from '../App.jsx'
+
+export default function Layout({ title, subtitle, children, actions }) {
+  const { currentStudent, logout } = useAuthContext()
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  const nav = [
+    currentStudent?.isAdmin
+      ? { to: '/admin', label: 'Cursos' }
+      : { to: '/aluno', label: 'Cursos Disponíveis' },
+    currentStudent?.isAdmin
+      ? { to: '/admin/matriculas', label: 'Matrículas' }
+      : { to: '/aluno/meus-cursos', label: 'Meus Cursos' },
+  ]
+
+  const handleLogout = () => {
+    logout()
+    navigate('/')
+  }
+
+  return (
+    <>
+      <div className="topbar">
+        <div className="topbar-inner">
+          <Link to="/" className="brand">
+            <span>🎓</span>
+            <span>Plataforma de Cursos</span>
+          </Link>
+          <div className="nav-links">
+            {nav.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={location.pathname === item.to ? 'active' : ''}
+              >
+                {item.label}
+              </Link>
+            ))}
+            {currentStudent && (
+              <span className="badge-role">
+                {currentStudent.isAdmin ? 'Admin' : 'Aluno'} · {currentStudent.name}
+              </span>
+            )}
+            <button onClick={handleLogout}>Sair</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="container">
+        {actions && <div className="page-actions">{actions}</div>}
+        <h1>{title}</h1>
+        {subtitle && <p className="subtitle">{subtitle}</p>}
+        {children}
+      </div>
+    </>
+  )
+}
+
+=== src/components/CourseCard.jsx ===
+import React from 'react'
+
+export default function CourseCard({ course, footer }) {
+  return (
+    <div className="course-item">
+      <div className="course-title">{course.title}</div>
+      {course.description && <p className="course-desc">{course.description}</p>}
+      <div className="meta">
+        {course.category && <span className="tag">{course.category}</span>}
+        {course.duration && <span className="tag">{course.duration}</span>}
+      </div>
+      {footer}
+    </div>
+  )
+}
+
+=== src/pages/Home.jsx ===
+import React from 'react'
+import { Link } from 'react-router-dom'
+
+export default function Home() {
+  return (
+    <>
+      <div className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span>🎓</span>
+            <span>Plataforma de Cursos</span>
+          </div>
+        </div>
+      </div>
+      <div className="container">
+        <div className="hero">
+          <h1>Bem-vindo à Plataforma de Cursos</h1>
+          <p>
+            Escolha como você quer entrar. Os alunos se matriculam nos cursos e o
+            administrador gerencia os cursos e as matrículas.
+          </p>
+          <div className="choice-cards">
+            <div className="choice-card">
+              <div className="icon">👨‍🎓</div>
+              <h3>Entrar como Aluno</h3>
+              <p>
+                Veja os cursos disponíveis, matricule-se e acompanhe seus cursos
+                matriculados.
+              </p>
+              <Link to="/entrar/aluno" className="btn btn-primary btn-block">
+                Entrar como Aluno
+              </Link>
+            </div>
+            <div className="choice-card">
+              <div className="icon">🛠️</div>
+              <h3>Entrar como Administrador</h3>
+              <p>
+                Cadastre, edite e remova cursos, veja e cancele matrículas de todos
+                os alunos.
+              </p>
+              <Link to="/entrar/admin" className="btn btn-secondary btn-block">
+                Entrar como Administrador
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+=== src/pages/StudentLogin.jsx ===
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db } from '../storage.js'
+import { useAuthContext } from '../App.jsx'
+
+export default function StudentLogin() {
+  const { login } = useAuthContext()
+  const navigate = useNavigate()
+  const [mode, setMode] = useState('login')
+  const [name, setName] = useState('')
+  const [loginField, setLoginField] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  const handle = (e) => {
+    e.preventDefault()
+    setError('')
+
+    if (mode === 'register') {
+      if (!name.trim() || !loginField.trim() || !password.trim()) {
+        setError('Preencha nome, usuário e senha.')
+        return
+      }
+      if (password.length < 4) {
+        setError('A senha precisa ter pelo menos 4 caracteres.')
+        return
+      }
+      if (db.findStudentByLogin(loginField)) {
+        setError('Este usuário já existe. Faça login.')
+        return
+      }
+      const student = db.addStudent({
+        name: name.trim(),
+        login: loginField.trim(),
+        password,
+      })
+      login(student)
+      navigate('/aluno')
+    } else {
+      const student = db.findStudentByLogin(loginField)
+      if (!student || student.password !== password) {
+        setError('Usuário ou senha incorretos.')
+        return
+      }
+      if (student.isAdmin) {
+        setError('Este é um usuário de administrador. Entre pela área do administrador.')
+        return
+      }
+      login(student)
+      navigate('/aluno')
+    }
+  }
+
+  const switchMode = (m) => {
+    setMode(m)
+    setError('')
+  }
+
+  return (
+    <>
+      <div className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span>👨‍🎓</span>
+            <span>Área do Aluno</span>
+          </div>
+        </div>
+      </div>
+      <div className="container" style={{ maxWidth: 460 }}>
+        <div className="card">
+          <h2>{mode === 'login' ? 'Entrar' : 'Criar conta de aluno'}</h2>
+          <p className="subtitle">
+            {mode === 'login'
+              ? 'Faça login para acessar seus cursos.'
+              : 'Primeira vez? Crie sua conta de aluno.'}
+          </p>
+
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <form onSubmit={handle}>
+            {mode === 'register' && (
+              <div className="field">
+                <label>Seu nome</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ex.: Maria Silva"
+                />
+              </div>
+            )}
+            <div className="field">
+              <label>Usuário</label>
+              <input
+                value={loginField}
+                onChange={(e) => setLoginField(e.target.value)}
+                placeholder="Ex.: maria"
+              />
+            </div>
+            <div className="field">
+              <label>Senha</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Sua senha"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-block">
+              {mode === 'login' ? 'Entrar' : 'Criar conta e entrar'}
+            </button>
+          </form>
+
+          <p style={{ marginTop: 16, textAlign: 'center', fontSize: 14 }}>
+            {mode === 'login' ? (
+              <>
+                Ainda não tem conta?{' '}
+                <a href="#registrar" onClick={(e) => (e.preventDefault(), switchMode('register'))}>
+                  Criar conta
+                </a>
+              </>
+            ) : (
+              <>
+                Já tem conta?{' '}
+                <a href="#login" onClick={(e) => (e.preventDefault(), switchMode('login'))}>
+                  Fazer login
+                </a>
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+    </>
+  )
+}
+
+=== src/pages/AdminLogin.jsx ===
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db } from '../storage.js'
+import { useAuthContext } from '../App.jsx'
+
+export default function AdminLogin() {
+  const { login } = useAuthContext()
+  const navigate = useNavigate()
+  const [loginField, setLoginField] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  const handle = (e) => {
+    e.preventDefault()
+    setError('')
+    const student = db.findStudentByLogin(loginField)
+    if (!student || student.password !== password) {
+      setError('Usuário ou senha incorretos.')
+      return
+    }
+    if (!student.isAdmin) {
+      setError('Este não é um usuário de administrador.')
+      return
+    }
+    login(student)
+    navigate('/admin')
+  }
+
+  return (
+    <>
+      <div className="topbar">
+        <div className="topbar-inner">
+          <div className="brand">
+            <span>🛠️</span>
+            <span>Área do Administrador</span>
+          </div>
+        </div>
+      </div>
+      <div className="container" style={{ maxWidth: 460 }}>
+        <div className="card">
+          <h2>Login do Administrador</h2>
+          <p className="subtitle">Acesse para gerenciar cursos e matrículas.</p>
+
+          {error && <div className="alert alert-error">{error}</div>}
+
+          <form onSubmit={handle}>
+            <div className="field">
+              <label>Usuário</label>
+              <input
+                value={loginField}
+                onChange={(e) => setLoginField(e.target.value)}
+                placeholder="Ex.: admin"
+              />
+            </div>
+            <div className="field">
+              <label>Senha</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Sua senha"
+              />
+            </div>
+            <button type="submit" className="btn btn-primary btn-block">
+              Entrar
+            </button>
+          </form>
+
+          <div className="alert alert-info" style={{ marginTop: 16 }}>
+            Conta inicial: usuário <strong>admin</strong> / senha <strong>admin123</strong>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+=== src/pages/StudentDashboard.jsx ===
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db } from '../storage.js'
+import { useAuthContext } from '../App.jsx'
+import Layout from '../components/Layout.jsx'
+import CourseCard from '../components/CourseCard.jsx'
+
+export default function StudentDashboard() {
+  const { currentStudent } = useAuthContext()
+  const navigate = useNavigate()
+  const [courses, setCourses] = useState(db.getCourses())
+  const [message, setMessage] = useState('')
+
+  const enroll = (course) => {
+    const result = db.addEnrollment(course.id, currentStudent.id)
+    if (result) {
+      setMessage('Você se matriculou com sucesso!')
+    } else {
+      setMessage('Você já está matriculado neste curso.')
+    }
+    setCourses([...db.getCourses()])
+    setTimeout(() => setMessage(''), 2500)
+  }
+
+  return (
+    <Layout
+      title="Cursos Disponíveis"
+      subtitle="Escolha um curso e clique em Matricular-se."
+    >
+      {message && <div className="alert alert-success">{message}</div>}
+
+      {courses.length === 0 ? (
+        <div className="empty">
+          Ainda não há cursos cadastrados. O administrador precisa cadastrar cursos.
+        </div>
+      ) : (
+        courses.map((course) => {
+          const enrolled = db.hasEnrollment(course.id, currentStudent.id)
+          return (
+            <CourseCard
+              key={course.id}
+              course={course}
+              footer={
+                enrolled ? (
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => navigate('/aluno/meus-cursos')}
+                  >
+                    ✓ Você está matriculado
+                  </button>
+                ) : (
+                  <button className="btn btn-primary btn-sm" onClick={() => enroll(course)}>
+                    Matricular-se
+                  </button>
+                )
+              }
+            />
+          )
+        })
+      )}
+    </Layout>
+  )
+}
+
+=== src/pages/EnrolledCourses.jsx ===
+import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { db } from '../storage.js'
+import { useAuthContext } from '../App.jsx'
+import Layout from '../components/Layout.jsx'
+import CourseCard from '../components/CourseCard.jsx'
+
+export default function EnrolledCourses() {
+  const { currentStudent } = useAuthContext()
+  const navigate = useNavigate()
+  const [tick, setTick] = useState(0)
+  const [message, setMessage] = useState('')
+
+  const enrollments = db.enrollmentsForStudent(currentStudent.id)
+  const courses = db
+    .getCourses()
+    .filter((c) => enrollments.some((e) => e.courseId === c.id))
+
+  const cancel = (enrollment) => {
+    const course = db.getCourses().find((c) => c.id === enrollment.courseId)
+    if (window.confirm(`Cancelar sua matrícula no curso "${course?.title}"?`)) {
+      db.removeEnrollment(enrollment.id)
+      setTick(tick + 1)
+      setMessage('Matrícula cancelada.')
+      setTimeout(() => setMessage(''), 2500)
+    }
+  }
+
+  return (
+    <Layout
+      title="Meus Cursos"
+      subtitle="Cursos em que você está matriculado."
+      actions={
+        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/aluno')}>
+          ← Ver cursos disponíveis
+        </button>
+      }
+    >
+      {message && <div className="alert alert-success">{message}</div>}
+
+      {courses.length === 0 ? (
+        <div className="empty">
+          Você ainda não está matriculado em nenhum curso.
+          <div style={{ marginTop: 12 }}>
+            <button className="btn btn-primary btn-sm" onClick={() => navigate('/aluno')}>
+              Ver cursos disponíveis
+            </button>
+          </div>
+        </div>
+      ) : (
+        courses.map((course) => {
+          const enrollment = enrollments.find((e) => e.courseId === course.id)
+          const date = new Date(enrollment.createdAt).toLocaleDateString('pt-BR')
+          return (
+            <CourseCard
+              key={course.id}
+              course={course}
+              footer={
+                <div className="course-actions">
+                  <span className="tag">Matriculado em {date}</span>
+                  <button
+                    className="btn btn-danger-soft btn-sm"
+                    onClick={() => cancel(enrollment)}
+                  >
+                    Cancelar matrícula
+                  </button>
+                </div>
+              }
+            />
+          )
+        })
+      )}
+    </Layout>
+  )
+}
+
+=== src/pages/AdminDashboard.jsx ===
+import React, { useState } from 'react'
+import { db } from '../storage.js'
+import Layout from '../components/Layout.jsx'
+import CourseForm from '../components/CourseForm.jsx'
+
+export default function AdminDashboard() {
+  const [courses, setCourses] = useState(db.getCourses())
+  const [editing, setEditing] = useState(null)
+  const [showForm, setShowForm] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const refresh = () => setCourses([...db.getCourses()])
+
+  const openNew = () => {
+    setEditing(null)
+    setShowForm(true)
+  }
+  const openEdit = (course) => {
+    setEditing(course)
+    setShowForm(true)
+  }
+  const closeForm = () => {
+    setShowForm(false)
+    setEditing(null)
+    refresh()
+  }
+  const save = (data) => {
+    if (editing) {
+      db.updateCourse(editing.id, data)
+      setMessage('Curso atualizado!')
+    } else {
+      db.addCourse(data)
+      setMessage('Curso cadastrado!')
+    }
+    closeForm()
+    setTimeout(() => setMessage(''), 2500)
+  }
+  const remove = (course) => {
+    if (
+      window.confirm(
+        `Remover o curso "${course.title}"? As matrículas deste curso também serão removidas.`
+      )
+    ) {
+      db.removeCourse(course.id)
+      refresh()
+      setMessage('Curso removido.')
+      setTimeout(() => setMessage(''), 2500)
+    }
+  }
+
+  return (
+    <Layout
+      title="Gestão de Cursos"
+      subtitle="Cadastre, edite e remova os cursos da plataforma."
+      actions={
+        !showForm && (
+          <button className="btn btn-primary btn-sm" onClick={openNew}>
+            + Cadastrar Curso
+          </button>
+        )
+      }
+    >
+      {message && <div className="alert alert-success">{message}</div>}
+
+      {showForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2>{editing ? 'Editar Curso' : 'Cadastrar Novo Curso'}</h2>
+          <CourseForm
+            initial={editing || null}
+            onSave={save}
+            onCancel={closeForm}
+          />
+        </div>
+      )}
+
+      {courses.length === 0 && !showForm ? (
+        <div className="empty">Nenhum curso cadastrado ainda. Clique em “Cadastrar Curso”.</div>
+      ) : (
+        courses.map((course) => {
+          const count = db.getEnrollments().filter((e) => e.courseId === course.id).length
+          return (
+            <div className="course-item" key={course.id}>
+              <div className="course-title">{course.title}</div>
+              {course.description && <p className="course-desc">{course.description}</p>}
+              <div className="meta">
+                {course.category && <span className="tag">{course.category}</span>}
+                {course.duration && <span className="tag">{course.duration}</span>}
+                <span className="tag">{count} aluno(s) matriculado(s)</span>
+              </div>
+              <div className="course-actions">
+                <button className="btn btn-secondary btn-sm" onClick={() => openEdit(course)}>
+                  Editar
+                </button>
+                <button className="btn btn-danger-soft btn-sm" onClick={() => remove(course)}>
+                  Remover
+                </button>
+              </div>
+            </div>
+          )
+        })
+      )}
+    </Layout>
+  )
+}
+
+=== src/components/CourseForm.jsx ===
+import React, { useState } from 'react'
+
+export default function CourseForm({ initial, onSave, onCancel }) {
+  const [title, setTitle] = useState(initial?.title || '')
+  const [description, setDescription] = useState(initial?.description || '')
+  const [category, setCategory] = useState(initial?.category || '')
+  const [duration, setDuration] = useState(initial?.duration || '')
+  const [error, setError] = useState('')
+
+  const handle = (e) => {
+    e.preventDefault()
+    if (!title.trim()) {
+      setError('O título é obrigatório.')
+      return
+    }
+    onSave({
+      title: title.trim(),
+      description: description.trim(),
+      category: category.trim(),
+      duration: duration.trim(),
+    })
+  }
+
+  return (
+    <form onSubmit={handle}>
+      {error && <div className="alert alert-error">{error}</div>}
+      <div className="field">
+        <label>Título do curso *</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex.: Introdução a Programação"
+        />
+      </div>
+      <div className="field">
+        <label>Descrição</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Breve descrição do curso"
+        />
+      </div>
+      <div className="form-row">
+        <div className="field">
+          <label>Categoria</label>
+          <input
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="Ex.: Tecnologia"
+          />
+        </div>
+        <div className="field">
+          <label>Duração</label>
+          <input
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            placeholder="Ex.: 20 horas"
+          />
+        </div>
+      </div>
+      <div className="course-actions">
+        <button type="submit" className="btn btn-primary">
+          {initial ? 'Salvar alterações' : 'Cadastrar'}
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+=== src/pages/EnrollmentsAdmin.jsx ===
+import React, { useState } from 'react'
+import { db } from '../storage.js'
+import Layout from '../components/Layout.jsx'
+
+export default function EnrollmentsAdmin() {
+  const [tick, setTick] = useState(0)
+  const [message, setMessage] = useState('')
+
+  const enrollments = db.getEnrollments()
+  const courses = db.getCourses()
+  const students = db.getStudents()
+
+  const rows = enrollments.map((e) => {
+    const course = courses.find((c) => c.id === e.courseId)
+    const student = students.find((s) => s.id === e.studentId)
+    return { e, course, student }
+  })
+
+  const cancel = (e) => {
+    const course = courses.find((c) => c.id === e.courseId)
+    const student = students.find((s) => s.id === e.studentId)
+    if (
+      window.confirm(
+        `Cancelar a matrícula de ${student?.name || 'aluno'} no curso "${course?.title || ''}"?`
+      )
+    ) {
+      db.removeEnrollment(e.id)
+      setTick(tick + 1)
+      setMessage('Matrícula cancelada.')
+      setTimeout(() => setMessage(''), 2500)
+    }
+  }
+
+  return (
+    <Layout
+      title="Todas as Matrículas"
+      subtitle="Acompanhe e cancele as matrículas de todos os alunos."
+    >
+      {message && <div className="alert alert-success">{message}</div>}
+
+      {rows.length === 0 ? (
+        <div className="empty">Nenhuma matrícula cadastrada até o momento.</div>
+      ) : (
+        <div className="card">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aluno</th>
+                  <th>Curso</th>
+                  <th>Data</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ e, course, student }) => (
+                  <tr key={e.id}>
+                    <td>{student?.name || '—'}</td>
+                    <td>{course?.title || '—'}</td>
+                    <td>{new Date(e.createdAt).toLocaleDateString('pt-BR')}</td>
+                    <td>
+                      <button
+                        className="btn btn-danger-soft btn-sm"
+                        onClick={() => cancel(e)}
+                      >
+                        Cancelar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </Layout>
+  )
+}

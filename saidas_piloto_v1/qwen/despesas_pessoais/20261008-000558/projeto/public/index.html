@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minhas Despesas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ================= LOGIN / CADASTRO ================= -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1 class="brand-title">Minhas Despesas</h1>
+          <p class="brand-sub">Controle do seu dinheiro, simples e seu.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab active" type="button">Entrar</button>
+        <button id="tab-register" class="auth-tab" type="button">Criar conta</button>
+      </div>
+
+      <form id="auth-form" class="auth-form" autocomplete="on">
+        <label class="field">
+          <span class="field-label">Usuário</span>
+          <input id="auth-username" type="text" autocomplete="username" placeholder="seu nome de usuário" required />
+        </label>
+        <label class="field" id="email-field">
+          <span class="field-label">E-mail</span>
+          <input id="auth-email" type="email" autocomplete="email" placeholder="voce@email.com" />
+        </label>
+        <label class="field">
+          <span class="field-label">Senha</span>
+          <input id="auth-password" type="password" autocomplete="current-password" placeholder="mínimo 6 caracteres" required />
+        </label>
+
+        <button type="submit" id="auth-submit" class="btn btn-primary btn-block">Entrar</button>
+        <p id="auth-message" class="auth-message hidden"></p>
+      </form>
+    </div>
+    <p class="auth-footnote">Seus dados ficam só neste site, protegidos por senha.</p>
+  </div>
+
+  <!-- ================= APP ================= -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-dot"></span>
+        <span class="brand-title-sm">Minhas Despesas</span>
+      </div>
+      <div class="topbar-right">
+        <span id="user-name" class="user-chip"></span>
+        <span id="admin-badge" class="admin-badge hidden">Admin</span>
+        <button id="logout-btn" class="btn btn-ghost" type="button">Sair</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button id="tab-me" class="nav-tab active" type="button">Meus gastos</button>
+      <button id="tab-admin" class="nav-tab hidden" type="button">Administração</button>
+    </nav>
+
+    <main class="content">
+      <!-- Meus gastos -->
+      <section id="view-me" class="view">
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">Meus gastos</h2>
+            <p class="page-sub" id="me-month-label"></p>
+          </div>
+          <button id="me-refresh" class="btn btn-ghost" type="button">↻ Atualizar</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card stat-hero">
+            <p class="stat-label">Gasto no mês</p>
+            <p class="stat-value" id="stat-month">R$ 0,00</p>
+            <p class="stat-hint" id="stat-month-hint"></p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Total geral</p>
+            <p class="stat-value stat-value-sm" id="stat-total">R$ 0,00</p>
+            <p class="stat-hint" id="stat-total-hint"></p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Lançamentos</p>
+            <p class="stat-value stat-value-sm" id="stat-count">0</p>
+            <p class="stat-hint">registrados até hoje</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3 class="panel-title">Adicionar gasto</h3>
+          </div>
+          <form id="expense-form" class="expense-form">
+            <div class="form-grid">
+              <label class="field">
+                <span class="field-label">Descrição</span>
+                <input id="exp-desc" type="text" placeholder="Ex.: mercado, uber, cinema" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Valor</span>
+                <input id="exp-amount" type="text" inputmode="decimal" placeholder="0,00" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Categoria</span>
+                <select id="exp-category" required></select>
+              </label>
+              <label class="field">
+                <span class="field-label">Data</span>
+                <input id="exp-date" type="date" required />
+              </label>
+            </div>
+            <div class="form-actions">
+              <p id="expense-message" class="form-message"></p>
+              <button type="submit" class="btn btn-primary">Salvar gasto</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3 class="panel-title">Histórico</h3>
+            <div class="filter-row">
+              <select id="filter-month" class="mini-select"></select>
+              <select id="filter-category" class="mini-select">
+                <option value="">Todas as categorias</option>
+              </select>
+            </div>
+          </div>
+          <div id="no-data" class="empty hidden">Nenhum gasto por aqui ainda. Adicione o primeiro acima! 🎉</div>
+          <div class="group-list" id="expense-groups"></div>
+        </div>
+      </section>
+
+      <!-- Administração -->
+      <section id="view-admin" class="view hidden">
+        <div class="page-head">
+          <h2 class="page-title">Administração</h2>
+          <p class="page-sub">Visão geral do sistema para o administrador.</p>
+        </div>
+
+        <div class="admin-stats">
+          <div class="stat-card">
+            <p class="stat-label">Total gasto (todos)</p>
+            <p class="stat-value" id="admin-total">R$ 0,00</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Usuários ativos</p>
+            <p class="stat-value" id="admin-users">0</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Gasto médio / usuário</p>
+            <p class="stat-value" id="admin-avg">R$ 0,00</p>
+          </div>
+        </div>
+
+        <div class="admin-grid">
+          <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">Categorias</h3></div>
+            <form id="category-form" class="category-form">
+              <input id="cat-name" type="text" placeholder="Nova categoria (ex.: Viagem)" required />
+              <input id="cat-color" type="color" value="#64748B" title="Cor" />
+              <button type="submit" class="btn btn-primary">Adicionar</button>
+            </form>
+            <div id="category-message" class="form-message"></div>
+            <ul id="category-list" class="category-list"></ul>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">Usuários</h3></div>
+            <table class="user-table">
+              <thead>
+                <tr><th>Usuário</th><th>Gasto total</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">Feito para quem quer saber exatamente para onde o dinheiro foi.</footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

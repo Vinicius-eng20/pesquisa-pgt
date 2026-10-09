@@ -1,0 +1,9 @@
+Vou criar um sistema completo de agendamento. Primeiro deixa eu entender a estrutura do projeto.
+
+<tool_call>
+<function=list_files>
+<parameter=path>
+.
+</parameter>
+</function>
+</tool_call>

@@ -1,0 +1,21 @@
+{
+  "name": "biblioteca-digital",
+  "version": "1.0.0",
+  "description": "Biblioteca digital com empréstimo de itens",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
+  }
+}
+```
+
+```

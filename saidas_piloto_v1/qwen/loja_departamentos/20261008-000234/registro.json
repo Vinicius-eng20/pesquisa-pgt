@@ -1,0 +1,45 @@
+{
+  "data_hora_utc": "2026-10-08T00:02:34+00:00",
+  "modelo": "qwen",
+  "modelo_id": "qwen/qwen3.8-27b",
+  "dominio": "loja_departamentos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\qwen\\loja_departamentos\\20261008-000234",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma loja virtual de departamentos, com produtos de vários tipos, tipo um shopping online. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o dono da loja. Os clientes precisam poder ver os produtos e colocar no carrinho, finalizar o pedido e ver os pedidos que já fizeram. O dono da loja precisa poder cadastrar, editar e remover produtos, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Ionstream",
+  "id_geracao": "gen-1791417755-aA61yUtzXgDbO6qCaMYa",
+  "modelo_servido": "qwen/qwen3.8-27b",
+  "tokens_entrada": 244,
+  "tokens_saida": 13507,
+  "tokens_raciocinio": 0,
+  "tokens_total": 13751,
+  "custo_usd": 0,
+  "motivo_termino": "error",
+  "tentativas_api": 1,
+  "duracao_s": 201.1,
+  "duracao_api_s": 201.1,
+  "tokens_por_s": 67.2,
+  "n_arquivos": 7,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/css/styles.css",
+    "public/js/utils.js",
+    "public/js/api.js",
+    "public/js/components.js"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": false,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

@@ -1,0 +1,1202 @@
+=== README.md ===
+# Sistema de Reservas de Hotel
+
+Um site completo de reservas de hotel com duas áreas: hóspede e gerente.
+
+## O que o sistema faz
+
+**Hóspedes podem:**
+- Criar uma conta e fazer login
+- Ver quartos disponíveis nas datas escolhidas
+- Reservar um quarto
+- Ver e cancelar suas reservas
+
+**O gerente pode:**
+- Fazer login com a conta de administrador
+- Cadastrar, editar e remover quartos
+- Confirmar ou recusar reservas
+- Ver todas as reservas de todos os hóspedes
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (versão 18 ou superior). Baixe em https://nodejs.org
+
+Depois, abra o terminal na pasta do projeto e rode:
+
+```
+npm install
+npm start
+```
+
+O site vai abrir em: **http://localhost:3000**
+
+## Conta do gerente (já vem pronta)
+
+- **Email:** gerente@hotel.com
+- **Senha:** admin123
+
+## Como funciona na internet
+
+Este projeto roda como um servidor Node.js. Para publicar na internet de graça, você pode usar o **Render.com** ou **Railway.app**:
+
+1. Crie uma conta no Render.com
+2. Crie um "Web Service" e conecte o repositório do projeto
+3. Comando de build: `npm install`
+4. Comando de start: `npm start`
+5. Pronto! Ele te dá um link público
+
+**Importante:** todos os dados (usuários, quartos, reservas) ficam salvos no arquivo `data/db.json` dentro do próprio projeto. Nada é enviado para serviços externos.
+
+---
+
+=== package.json ===
+{
+  "name": "hotel-reservas",
+  "version": "1.0.0",
+  "description": "Sistema de reservas de hotel",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DB_FILE = path.join(__dirname, 'data', 'db.json');
+
+// ---------- BANCO DE DADOS (arquivo JSON) ----------
+function carregarDB() {
+  if (!fs.existsSync(DB_FILE)) {
+    const inicial = {
+      usuarios: [],
+      quartos: [],
+      reservas: []
+    };
+    // Cria a conta do gerente
+    inicial.usuarios.push({
+      id: 1,
+      nome: 'Gerente do Hotel',
+      email: 'gerente@hotel.com',
+      senha: bcrypt.hashSync('admin123', 10),
+      tipo: 'gerente'
+    });
+    // Cria alguns quartos de exemplo
+    const exemplos = [
+      { numero: '101', tipo: 'Solteiro', capacidade: 1, preco: 150, descricao: 'Quarto simples e confortável, ideal para viajantes sozinhos.' },
+      { numero: '102', tipo: 'Casal', capacidade: 2, preco: 250, descricao: 'Quarto com cama de casal, ar-condicionado e TV.' },
+      { numero: '201', tipo: 'Casal Superior', capacidade: 2, preco: 350, descricao: 'Quarto amplo com varanda e vista para o jardim.' },
+      { numero: '202', tipo: 'Família', capacidade: 4, preco: 450, descricao: 'Quarto grande com duas camas de casal e frigobar.' },
+      { numero: '301', tipo: 'Suíte', capacidade: 2, preco: 600, descricao: 'Suíte com banheira, varanda e serviço de quarto.' }
+    ];
+    let idQ = 1;
+    for (const e of exemplos) {
+      inicial.quartos.push({ id: idQ++, ...e });
+    }
+    salvarDB(inicial);
+    return inicial;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  } catch (err) {
+    console.error('Erro ao ler o banco:', err);
+    return { usuarios: [], quartos: [], reservas: [] };
+  }
+}
+
+function salvarDB(db) {
+  const dir = path.dirname(DB_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+let db = carregarDB();
+
+// ---------- CONFIGURAÇÃO ----------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(session({
+  secret: 'hotel-secret-key-2024-muito-segura',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 dias
+}));
+
+// Arquivos estáticos (o front-end dentro de /public)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- HELPERS ----------
+function usuarioLogado(req) {
+  if (!req.session.userId) return null;
+  return db.usuarios.find(u => u.id === req.session.userId) || null;
+}
+
+function proximoId(array) {
+  return array.length ? Math.max(...array.map(i => i.id)) + 1 : 1;
+}
+
+function datasSobrepostas(inicioA, fimA, inicioB, fimB) {
+  // Retorna true se os períodos se sobrepõem
+  return !(fimA <= inicioB || inicioA >= fimB);
+}
+
+function quartoDisponivel(quartoId, dataInicio, dataFim, ignorarReservaId = null) {
+  // Considera reservas confirmadas ou pendentes (não canceladas/recusadas)
+  return !db.reservas.some(r => {
+    if (r.quartoId !== quartoId) return false;
+    if (r.status === 'cancelada' || r.status === 'recusada') return false;
+    if (ignorarReservaId && r.id === ignorarReservaId) return false;
+    return datasSobrepostas(r.dataInicio, r.dataFim, dataInicio, dataFim);
+  });
+}
+
+// ---------- ROTAS DE AUTENTICAÇÃO ----------
+app.post('/api/registrar', async (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ erro: 'Preencha todos os campos.' });
+  }
+  if (db.usuarios.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+    return res.status(400).json({ erro: 'Este email já está cadastrado.' });
+  }
+  const usuario = {
+    id: proximoId(db.usuarios),
+    nome,
+    email,
+    senha: await bcrypt.hash(senha, 10),
+    tipo: 'hospede'
+  };
+  db.usuarios.push(usuario);
+  salvarDB(db);
+  req.session.userId = usuario.id;
+  res.json({ ok: true, usuario: { id: usuario.id, nome, email, tipo: 'hospede' } });
+});
+
+app.post('/api/login', async (req, res) => {
+  const { email, senha } = req.body;
+  const usuario = db.usuarios.find(u => u.email.toLowerCase() === (email || '').toLowerCase());
+  if (!usuario) return res.status(400).json({ erro: 'Email ou senha inválidos.' });
+  const senhaOk = await bcrypt.compare(senha || '', usuario.senha);
+  if (!senhaOk) return res.status(400).json({ erro: 'Email ou senha inválidos.' });
+  req.session.userId = usuario.id;
+  res.json({ ok: true, usuario: { id: usuario.id, nome: usuario.nome, email: usuario.email, tipo: usuario.tipo } });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  const u = usuarioLogado(req);
+  if (!u) return res.status(401).json({ erro: 'Não autenticado.' });
+  res.json({ id: u.id, nome: u.nome, email: u.email, tipo: u.tipo });
+});
+
+// ---------- ROTAS PÚBLICAS ----------
+app.get('/api/quartos', (req, res) => {
+  res.json(db.quartos);
+});
+
+app.get('/api/disponiveis', (req, res) => {
+  const { dataInicio, dataFim } = req.query;
+  if (!dataInicio || !dataFim) {
+    return res.json(db.quartos);
+  }
+  if (dataFim <= dataInicio) {
+    return res.status(400).json({ erro: 'A data de saída deve ser depois da data de entrada.' });
+  }
+  const disponiveis = db.quartos.filter(q => quartoDisponivel(q.id, dataInicio, dataFim));
+  res.json(disponiveis);
+});
+
+// ---------- ROTAS DE RESERVA (hóspede) ----------
+app.post('/api/reservas', (req, res) => {
+  const u = usuarioLogado(req);
+  if (!u || u.tipo !== 'hospede') return res.status(401).json({ erro: 'Faça login como hóspede.' });
+
+  const { quartoId, dataInicio, dataFim } = req.body;
+  if (!quartoId || !dataInicio || !dataFim) {
+    return res.status(400).json({ erro: 'Preencha todos os campos da reserva.' });
+  }
+  if (dataFim <= dataInicio) {
+    return res.status(400).json({ erro: 'A data de saída deve ser depois da data de entrada.' });
+  }
+  const quarto = db.quartos.find(q => q.id === quartoId);
+  if (!quarto) return res.status(404).json({ erro: 'Quarto não encontrado.' });
+
+  if (!quartoDisponivel(quartoId, dataInicio, dataFim)) {
+    return res.status(400).json({ erro: 'Este quarto não está disponível nestas datas.' });
+  }
+
+  const reserva = {
+    id: proximoId(db.reservas),
+    usuarioId: u.id,
+    usuarioNome: u.nome,
+    usuarioEmail: u.email,
+    quartoId: quarto.id,
+    quartoNumero: quarto.numero,
+    quartoTipo: quarto.tipo,
+    dataInicio,
+    dataFim,
+    status: 'pendente',
+    criadaEm: new Date().toISOString()
+  };
+  db.reservas.push(reserva);
+  salvarDB(db);
+  res.json({ ok: true, reserva });
+});
+
+app.get('/api/minhas-reservas', (req, res) => {
+  const u = usuarioLogado(req);
+  if (!u) return res.status(401).json({ erro: 'Faça login.' });
+  const reservas = db.reservas
+    .filter(r => r.usuarioId === u.id)
+    .sort((a, b) => b.id - a.id);
+  res.json(reservas);
+});
+
+app.post('/api/reservas/:id/cancelar', (req, res) => {
+  const u = usuarioLogado(req);
+  if (!u) return res.status(401).json({ erro: 'Faça login.' });
+  const reserva = db.reservas.find(r => r.id === Number(req.params.id));
+  if (!reserva) return res.status(404).json({ erro: 'Reserva não encontrada.' });
+  if (reserva.usuarioId !== u.id && u.tipo !== 'gerente') {
+    return res.status(403).json({ erro: 'Você não pode cancelar esta reserva.' });
+  }
+  if (reserva.status === 'cancelada') {
+    return res.status(400).json({ erro: 'Esta reserva já foi cancelada.' });
+  }
+  reserva.status = 'cancelada';
+  salvarDB(db);
+  res.json({ ok: true, reserva });
+});
+
+// ---------- ROTAS DO GERENTE ----------
+function exigirGerente(req, res, next) {
+  const u = usuarioLogado(req);
+  if (!u || u.tipo !== 'gerente') return res.status(403).json({ erro: 'Acesso restrito ao gerente.' });
+  req.usuario = u;
+  next();
+}
+
+app.get('/api/gerente/reservas', exigirGerente, (req, res) => {
+  const reservas = [...db.reservas].sort((a, b) => b.id - a.id);
+  res.json(reservas);
+});
+
+app.post('/api/gerente/reservas/:id/confirmar', exigirGerente, (req, res) => {
+  const reserva = db.reservas.find(r => r.id === Number(req.params.id));
+  if (!reserva) return res.status(404).json({ erro: 'Reserva não encontrada.' });
+  // Verificar se ainda está disponível (caso outra tenha sido confirmada antes)
+  if (!quartoDisponivel(reserva.quartoId, reserva.dataInicio, reserva.dataFim, reserva.id)) {
+    return res.status(400).json({ erro: 'Já existe outra reserva confirmada nestas datas.' });
+  }
+  reserva.status = 'confirmada';
+  salvarDB(db);
+  res.json({ ok: true, reserva });
+});
+
+app.post('/api/gerente/reservas/:id/recusar', exigirGerente, (req, res) => {
+  const reserva = db.reservas.find(r => r.id === Number(req.params.id));
+  if (!reserva) return res.status(404).json({ erro: 'Reserva não encontrada.' });
+  reserva.status = 'recusada';
+  salvarDB(db);
+  res.json({ ok: true, reserva });
+});
+
+// CRUD de quartos
+app.post('/api/gerente/quartos', exigirGerente, (req, res) => {
+  const { numero, tipo, capacidade, preco, descricao } = req.body;
+  if (!numero || !tipo || !capacidade || !preco) {
+    return res.status(400).json({ erro: 'Preencha todos os campos obrigatórios.' });
+  }
+  if (db.quartos.find(q => q.numero === String(numero))) {
+    return res.status(400).json({ erro: 'Já existe um quarto com este número.' });
+  }
+  const quarto = {
+    id: proximoId(db.quartos),
+    numero: String(numero),
+    tipo,
+    capacidade: Number(capacidade),
+    preco: Number(preco),
+    descricao: descricao || ''
+  };
+  db.quartos.push(quarto);
+  salvarDB(db);
+  res.json({ ok: true, quarto });
+});
+
+app.put('/api/gerente/quartos/:id', exigirGerente, (req, res) => {
+  const quarto = db.quartos.find(q => q.id === Number(req.params.id));
+  if (!quarto) return res.status(404).json({ erro: 'Quarto não encontrado.' });
+  const { numero, tipo, capacidade, preco, descricao } = req.body;
+  if (numero && db.quartos.find(q => q.numero === String(numero) && q.id !== quarto.id)) {
+    return res.status(400).json({ erro: 'Já existe outro quarto com este número.' });
+  }
+  if (numero) quarto.numero = String(numero);
+  if (tipo) quarto.tipo = tipo;
+  if (capacidade) quarto.capacidade = Number(capacidade);
+  if (preco) quarto.preco = Number(preco);
+  if (descricao !== undefined) quarto.descricao = descricao;
+  salvarDB(db);
+  res.json({ ok: true, quarto });
+});
+
+app.delete('/api/gerente/quartos/:id', exigirGerente, (req, res) => {
+  const id = Number(req.params.id);
+  const quarto = db.quartos.find(q => q.id === id);
+  if (!quarto) return res.status(404).json({ erro: 'Quarto não encontrado.' });
+  const temReservaAtiva = db.reservas.some(r =>
+    r.quartoId === id && r.status !== 'cancelada' && r.status !== 'recusada'
+  );
+  if (temReservaAtiva) {
+    return res.status(400).json({ erro: 'Não é possível remover: há reservas ativas neste quarto.' });
+  }
+  db.quartos = db.quartos.filter(q => q.id !== id);
+  salvarDB(db);
+  res.json({ ok: true });
+});
+
+// ---------- INICIAR ----------
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Reservas de Hotel</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topo">
+    <div class="topo-inner">
+      <h1>🏨 Hotel Reservas</h1>
+      <div id="area-usuario"></div>
+    </div>
+  </header>
+
+  <main id="app"></main>
+
+  <footer class="rodape">
+    <p>Sistema de Reservas de Hotel &mdash; feito para funcionar de verdade.</p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  background: #f4f6f9;
+  color: #1f2d3d;
+  min-height: 100vh;
+}
+.topo {
+  background: #1a3b5c;
+  color: #fff;
+  padding: 16px 24px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.topo-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.topo h1 { font-size: 22px; }
+#area-usuario { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+#area-usuario button { margin-left: 4px; }
+
+main {
+  max-width: 1100px;
+  margin: 30px auto;
+  padding: 0 20px;
+}
+
+.rodape {
+  text-align: center;
+  padding: 30px 20px;
+  color: #7a8899;
+  font-size: 14px;
+}
+
+h2 { font-size: 24px; margin-bottom: 16px; color: #1a3b5c; }
+h3 { font-size: 19px; margin-bottom: 12px; color: #1a3b5c; }
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  margin-bottom: 22px;
+}
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+
+.quarto {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+  border-top: 4px solid #2d7dd2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quarto h3 { font-size: 18px; }
+.quarto .tipo { color: #2d7dd2; font-weight: 600; }
+.quarto .preco { font-size: 22px; color: #1a3b5c; font-weight: bold; }
+.quarto .preco small { font-size: 13px; color: #7a8899; font-weight: normal; }
+.quarto .desc { color: #5a6b7d; font-size: 14px; flex-grow: 1; }
+.quarto .capacidade { color: #5a6b7d; font-size: 14px; }
+
+label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 14px; color: #37485c; }
+input, select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #2d7dd2;
+  box-shadow: 0 0 0 3px rgba(45,125,210,0.15);
+}
+
+button {
+  background: #2d7dd2;
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+button:hover { background: #1f5fa3; }
+button.secundario { background: #e0e6ee; color: #37485c; }
+button.secundario:hover { background: #cfd8e3; }
+button.perigo { background: #d9534f; }
+button.perigo:hover { background: #b93e3b; }
+button.sucesso { background: #2e9e5b; }
+button.sucesso:hover { background: #228047; }
+button.aviso { background: #e0a020; }
+button.aviso:hover { background: #b98018; }
+button:disabled { background: #b8c2cf; cursor: not-allowed; }
+
+.form-linha { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-linha > div { flex: 1; min-width: 160px; }
+.form-acoes { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+.abas { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.abas button {
+  background: #e0e6ee; color: #37485c;
+}
+.abas button.ativa { background: #1a3b5c; color: #fff; }
+
+.reserva {
+  background: #fff;
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border-left: 5px solid #b8c2cf;
+}
+.reserva.pendente { border-left-color: #e0a020; }
+.reserva.confirmada { border-left-color: #2e9e5b; }
+.reserva.cancelada { border-left-color: #d9534f; opacity: 0.75; }
+.reserva.recusada { border-left-color: #d9534f; opacity: 0.75; }
+.reserva .linha { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.reserva .status {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.status.pendente { background: #fdf2d7; color: #a67908; }
+.status.confirmada { background: #d9f0e1; color: #1d6b3c; }
+.status.cancelada { background: #fbe0df; color: #b93e3b; }
+.status.recusada { background: #fbe0df; color: #b93e3b; }
+.reserva .dados { color: #5a6b7d; font-size: 14px; margin: 2px 0; }
+.reserva .acoes { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.mensagem {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.mensagem.erro { background: #fbe0df; color: #b93e3b; }
+.mensagem.ok { background: #d9f0e1; color: #1d6b3c; }
+.mensagem.oculto { display: none; }
+
+.centro { max-width: 420px; margin: 40px auto; }
+.centro .abas { justify-content: center; }
+
+.tabela { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.tabela th, .tabela td { text-align: left; padding: 10px; border-bottom: 1px solid #eaeef3; font-size: 14px; }
+.tabela th { background: #f4f6f9; color: #37485c; }
+.tabela tr:hover td { background: #fafbfd; }
+
+.vazio { text-align: center; padding: 40px 20px; color: #7a8899; }
+
+@media (max-width: 600px) {
+  .topo-inner { flex-direction: column; align-items: flex-start; }
+  .form-linha { flex-direction: column; }
+}
+=== public/app.js ===
+// ---------- ESTADO ----------
+let usuario = null;
+let abaLogin = 'login';
+
+// ---------- UTILITÁRIOS ----------
+async function api(url, opcoes = {}) {
+  const resp = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opcoes
+  });
+  let dados = null;
+  try { dados = await resp.json(); } catch (e) {}
+  if (!resp.ok) {
+    throw new Error((dados && dados.erro) || 'Ocorreu um erro.');
+  }
+  return dados;
+}
+
+function el(id) { return document.getElementById(id); }
+
+function escapar(txt) {
+  if (txt === undefined || txt === null) return '';
+  return String(txt)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function formatarData(data) {
+  if (!data) return '';
+  const [a, m, d] = data.split('-');
+  return `${d}/${m}/${a}`;
+}
+
+function hoje() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function mostrarMensagem(texto, tipo = 'erro') {
+  const box = el('mensagem');
+  if (!box) return;
+  box.textContent = texto;
+  box.className = 'mensagem ' + (tipo === 'ok' ? 'ok' : 'erro');
+  setTimeout(() => {
+    if (box) box.className = 'mensagem oculto';
+  }, 5000);
+}
+
+// ---------- INICIALIZAÇÃO ----------
+async function iniciar() {
+  try {
+    usuario = await api('/api/eu');
+  } catch (e) {
+    usuario = null;
+  }
+  renderUsuario();
+  renderConteudo();
+}
+
+function renderUsuario() {
+  const area = el('area-usuario');
+  if (usuario) {
+    area.innerHTML = `
+      <span>Olá, <strong>${escapar(usuario.nome)}</strong> (${usuario.tipo === 'gerente' ? 'Gerente' : 'Hóspede'})</span>
+      <button class="secundario" id="btn-sair">Sair</button>
+    `;
+    el('btn-sair').onclick = async () => {
+      await api('/api/logout', { method: 'POST' });
+      usuario = null;
+      renderUsuario();
+      renderConteudo();
+    };
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+// ---------- RENDER PRINCIPAL ----------
+function renderConteudo() {
+  const app = el('app');
+  if (!usuario) {
+    renderLogin(app);
+  } else if (usuario.tipo === 'gerente') {
+    renderGerente(app);
+  } else {
+    renderHospede(app);
+  }
+}
+
+// ---------- LOGIN / REGISTRO ----------
+function renderLogin(app) {
+  app.innerHTML = `
+    <div class="card centro">
+      <div class="abas">
+        <button id="aba-login" class="${abaLogin === 'login' ? 'ativa' : ''}">Entrar</button>
+        <button id="aba-registrar" class="${abaLogin === 'registrar' ? 'ativa' : ''}">Criar conta</button>
+      </div>
+      <div id="mensagem" class="mensagem oculto"></div>
+      <div id="form-area"></div>
+      <p style="margin-top:18px; font-size:13px; color:#7a8899; text-align:center;">
+        Área do gerente: gerente@hotel.com / admin123
+      </p>
+    </div>
+  `;
+  el('aba-login').onclick = () => { abaLogin = 'login'; renderLogin(app); };
+  el('aba-registrar').onclick = () => { abaLogin = 'registrar'; renderLogin(app); };
+  renderFormAuth();
+}
+
+function renderFormAuth() {
+  const area = el('form-area');
+  if (abaLogin === 'login') {
+    area.innerHTML = `
+      <label>Email</label>
+      <input type="email" id="f-email" placeholder="seu@email.com" />
+      <label>Senha</label>
+      <input type="password" id="f-senha" placeholder="Sua senha" />
+      <div class="form-acoes">
+        <button id="f-enviar">Entrar</button>
+      </div>
+    `;
+    el('f-enviar').onclick = async () => {
+      try {
+        const email = el('f-email').value.trim();
+        const senha = el('f-senha').value;
+        usuario = await api('/api/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, senha })
+        }).then(r => r.usuario);
+        renderUsuario();
+        renderConteudo();
+      } catch (e) {
+        mostrarMensagem(e.message, 'erro');
+      }
+    };
+  } else {
+    area.innerHTML = `
+      <label>Nome completo</label>
+      <input type="text" id="f-nome" placeholder="Seu nome" />
+      <label>Email</label>
+      <input type="email" id="f-email" placeholder="seu@email.com" />
+      <label>Senha</label>
+      <input type="password" id="f-senha" placeholder="Escolha uma senha" />
+      <div class="form-acoes">
+        <button id="f-enviar">Criar conta</button>
+      </div>
+    `;
+    el('f-enviar').onclick = async () => {
+      try {
+        const nome = el('f-nome').value.trim();
+        const email = el('f-email').value.trim();
+        const senha = el('f-senha').value;
+        usuario = await api('/api/registrar', {
+          method: 'POST',
+          body: JSON.stringify({ nome, email, senha })
+        }).then(r => r.usuario);
+        renderUsuario();
+        renderConteudo();
+      } catch (e) {
+        mostrarMensagem(e.message, 'erro');
+      }
+    };
+  }
+}
+
+// ================= HÓSPEDE =================
+let abaHospede = 'buscar';
+
+function renderHospede(app) {
+  app.innerHTML = `
+    <div class="abas">
+      <button id="aba-buscar" class="${abaHospede === 'buscar' ? 'ativa' : ''}">Buscar quartos</button>
+      <button id="aba-minhas" class="${abaHospede === 'minhas' ? 'ativa' : ''}">Minhas reservas</button>
+    </div>
+    <div id="mensagem" class="mensagem oculto"></div>
+    <div id="conteudo-hospede"></div>
+  `;
+  el('aba-buscar').onclick = () => { abaHospede = 'buscar'; renderHospede(app); };
+  el('aba-minhas').onclick = () => { abaHospede = 'minhas'; renderHospede(app); };
+  if (abaHospede === 'buscar') renderBuscarQuartos();
+  else renderMinhasReservas();
+}
+
+async function renderBuscarQuartos() {
+  const area = el('conteudo-hospede');
+  area.innerHTML = `
+    <div class="card">
+      <h2>Buscar quartos disponíveis</h2>
+      <div class="form-linha">
+        <div>
+          <label>Data de entrada</label>
+          <input type="date" id="busca-inicio" min="${hoje()}" />
+        </div>
+        <div>
+          <label>Data de saída</label>
+          <input type="date" id="busca-fim" min="${hoje()}" />
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <button id="btn-buscar" style="width:100%;">Buscar</button>
+        </div>
+      </div>
+    </div>
+    <div id="lista-quartos"></div>
+  `;
+  el('btn-buscar').onclick = buscarQuartos;
+  await buscarQuartos();
+}
+
+async function buscarQuartos() {
+  const area = el('lista-quartos');
+  const inicio = el('busca-inicio').value;
+  const fim = el('busca-fim').value;
+
+  area.innerHTML = '<p class="vazio">Carregando...</p>';
+  try {
+    let url = '/api/disponiveis';
+    if (inicio && fim) url += `?dataInicio=${inicio}&dataFim=${fim}`;
+    const quartos = await api(url);
+    if (quartos.length === 0) {
+      area.innerHTML = '<div class="card vazio">Nenhum quarto disponível para estas datas.</div>';
+      return;
+    }
+    const html = quartos.map(q => `
+      <div class="quarto">
+        <h3>Quarto ${escapar(q.numero)}</h3>
+        <div class="tipo">${escapar(q.tipo)}</div>
+        <div class="capacidade">👥 ${q.capacidade} pessoa(s)</div>
+        <div class="desc">${escapar(q.descricao || '')}</div>
+        <div class="preco">R$ ${Number(q.preco).toFixed(2)} <small>/ noite</small></div>
+        <button data-reservar="${q.id}">Reservar</button>
+      </div>
+    `).join('');
+    area.innerHTML = `<div class="grid">${html}</div>`;
+    area.querySelectorAll('[data-reservar]').forEach(btn => {
+      btn.onclick = () => reservarQuarto(Number(btn.dataset.reservar));
+    });
+  } catch (e) {
+    area.innerHTML = `<div class="card"><div class="mensagem erro">${escapar(e.message)}</div></div>`;
+  }
+}
+
+function reservarQuarto(quartoId) {
+  const inicio = el('busca-inicio').value;
+  const fim = el('busca-fim').value;
+  if (!inicio || !fim) {
+    mostrarMensagem('Escolha as datas de entrada e saída para reservar.', 'erro');
+    return;
+  }
+  if (fim <= inicio) {
+    mostrarMensagem('A data de saída deve ser depois da data de entrada.', 'erro');
+    return;
+  }
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100;';
+  modal.innerHTML = `
+    <div class="card" style="max-width:440px;width:100%;margin:0;">
+      <h3>Confirmar reserva</h3>
+      <p style="margin:10px 0; color:#37485c;">
+        Quarto selecionado<br>
+        <strong>Entrada:</strong> ${formatarData(inicio)}<br>
+        <strong>Saída:</strong> ${formatarData(fim)}
+      </p>
+      <div id="mensagem-modal" class="mensagem oculto"></div>
+      <div class="form-acoes">
+        <button id="btn-confirmar">Confirmar reserva</button>
+        <button class="secundario" id="btn-fechar">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  el('btn-fechar').onclick = () => modal.remove();
+  el('btn-confirmar').onclick = async () => {
+    try {
+      await api('/api/reservas', {
+        method: 'POST',
+        body: JSON.stringify({ quartoId, dataInicio: inicio, dataFim: fim })
+      });
+      modal.remove();
+      mostrarMensagem('Reserva enviada! Aguarde a confirmação do gerente.', 'ok');
+      abaHospede = 'minhas';
+      renderHospede(el('app'));
+    } catch (e) {
+      const box = el('mensagem-modal');
+      if (box) {
+        box.textContent = e.message;
+        box.className = 'mensagem erro';
+      }
+    }
+  };
+}
+
+async function renderMinhasReservas() {
+  const area = el('conteudo-hospede');
+  area.innerHTML = '<p class="vazio">Carregando...</p>';
+  try {
+    const reservas = await api('/api/minhas-reservas');
+    if (reservas.length === 0) {
+      area.innerHTML = '<div class="card vazio">Você ainda não fez nenhuma reserva.</div>';
+      return;
+    }
+    area.innerHTML = reservas.map(r => montarReserva(r, true)).join('');
+    area.querySelectorAll('[data-cancelar]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Deseja realmente cancelar esta reserva?')) return;
+        try {
+          await api(`/api/reservas/${btn.dataset.cancelar}/cancelar`, { method: 'POST' });
+          mostrarMensagem('Reserva cancelada.', 'ok');
+          renderMinhasReservas();
+        } catch (e) {
+          mostrarMensagem(e.message, 'erro');
+        }
+      };
+    });
+  } catch (e) {
+    area.innerHTML = `<div class="card"><div class="mensagem erro">${escapar(e.message)}</div></div>`;
+  }
+}
+
+function montarReserva(r, podeCancelar) {
+  const status = r.status;
+  const labelStatus = {
+    pendente: 'Pendente',
+    confirmada: 'Confirmada',
+    cancelada: 'Cancelada',
+    recusada: 'Recusada'
+  }[status] || status;
+
+  const botoes = [];
+  if (podeCancelar && (status === 'pendente' || status === 'confirmada')) {
+    botoes.push(`<button class="perigo" data-cancelar="${r.id}">Cancelar reserva</button>`);
+  }
+
+  return `
+    <div class="reserva ${status}">
+      <div class="linha">
+        <h3>Quarto ${escapar(r.quartoNumero)} &mdash; ${escapar(r.quartoTipo)}</h3>
+        <span class="status ${status}">${labelStatus}</span>
+      </div>
+      <div class="dados">👤 ${escapar(r.usuarioNome)} (${escapar(r.usuarioEmail)})</div>
+      <div class="dados">📅 Entrada: ${formatarData(r.dataInicio)} &nbsp;&nbsp; Saída: ${formatarData(r.dataFim)}</div>
+      ${botoes.length ? `<div class="acoes">${botoes.join('')}</div>` : ''}
+    </div>
+  `;
+}
+
+// ================= GERENTE =================
+let abaGerente = 'reservas';
+let filtroStatus = 'todas';
+
+function renderGerente(app) {
+  app.innerHTML = `
+    <div class="abas">
+      <button id="aba-reservas" class="${abaGerente === 'reservas' ? 'ativa' : ''}">Reservas</button>
+      <button id="aba-quartos" class="${abaGerente === 'quartos' ? 'ativa' : ''}">Quartos</button>
+    </div>
+    <div id="mensagem" class="mensagem oculto"></div>
+    <div id="conteudo-gerente"></div>
+  `;
+  el('aba-reservas').onclick = () => { abaGerente = 'reservas'; renderGerente(app); };
+  el('aba-quartos').onclick = () => { abaGerente = 'quartos'; renderGerente(app); };
+  if (abaGerente === 'reservas') renderReservasGerente();
+  else renderQuartosGerente();
+}
+
+async function renderReservasGerente() {
+  const area = el('conteudo-gerente');
+  area.innerHTML = '<p class="vazio">Carregando...</p>';
+  try {
+    const reservas = await api('/api/gerente/reservas');
+    let lista = reservas;
+    if (filtroStatus !== 'todas') {
+      lista = reservas.filter(r => r.status === filtroStatus);
+    }
+    area.innerHTML = `
+      <div class="card">
+        <h2>Todas as reservas</h2>
+        <label>Filtrar por status</label>
+        <select id="filtro-status">
+          <option value="todas" ${filtroStatus === 'todas' ? 'selected' : ''}>Todas</option>
+          <option value="pendente" ${filtroStatus === 'pendente' ? 'selected' : ''}>Pendentes</option>
+          <option value="confirmada" ${filtroStatus === 'confirmada' ? 'selected' : ''}>Confirmadas</option>
+          <option value="cancelada" ${filtroStatus === 'cancelada' ? 'selected' : ''}>Canceladas</option>
+          <option value="recusada" ${filtroStatus === 'recusada' ? 'selected' : ''}>Recusadas</option>
+        </select>
+      </div>
+      <div id="lista-reservas"></div>
+    `;
+    el('filtro-status').onchange = (e) => {
+      filtroStatus = e.target.value;
+      renderReservasGerente();
+    };
+
+    const listaEl = el('lista-reservas');
+    if (lista.length === 0) {
+      listaEl.innerHTML = '<div class="card vazio">Nenhuma reserva encontrada.</div>';
+      return;
+    }
+    listaEl.innerHTML = lista.map(r => {
+      const status = r.status;
+      const labelStatus = {
+        pendente: 'Pendente', confirmada: 'Confirmada',
+        cancelada: 'Cancelada', recusada: 'Recusada'
+      }[status] || status;
+      const botoes = [];
+      if (status === 'pendente') {
+        botoes.push(`<button class="sucesso" data-confirmar="${r.id}">Confirmar</button>`);
+        botoes.push(`<button class="aviso" data-recusar="${r.id}">Recusar</button>`);
+      }
+      if (status === 'confirmada') {
+        botoes.push(`<button class="perigo" data-cancelar-ger="${r.id}">Cancelar</button>`);
+      }
+      return `
+        <div class="reserva ${status}">
+          <div class="linha">
+            <h3>Reserva #${r.id} &mdash; Quarto ${escapar(r.quartoNumero)} (${escapar(r.quartoTipo)})</h3>
+            <span class="status ${status}">${labelStatus}</span>
+          </div>
+          <div class="dados">👤 ${escapar(r.usuarioNome)} (${escapar(r.usuarioEmail)})</div>
+          <div class="dados">📅 Entrada: ${formatarData(r.dataInicio)} &nbsp;&nbsp; Saída: ${formatarData(r.dataFim)}</div>
+          ${botoes.length ? `<div class="acoes">${botoes.join('')}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    listaEl.querySelectorAll('[data-confirmar]').forEach(b => {
+      b.onclick = () => acaoReserva(b.dataset.confirmar, 'confirmar');
+    });
+    listaEl.querySelectorAll('[data-recusar]').forEach(b => {
+      b.onclick = () => acaoReserva(b.dataset.recusar, 'recusar');
+    });
+    listaEl.querySelectorAll('[data-cancelar-ger]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Cancelar esta reserva confirmada?')) return;
+        try {
+          await api(`/api/reservas/${b.dataset.cancelarGer}/cancelar`, { method: 'POST' });
+          mostrarMensagem('Reserva cancelada.', 'ok');
+          renderReservasGerente();
+        } catch (e) { mostrarMensagem(e.message, 'erro'); }
+      };
+    });
+  } catch (e) {
+    area.innerHTML = `<div class="card"><div class="mensagem erro">${escapar(e.message)}</div></div>`;
+  }
+}
+
+async function acaoReserva(id, acao) {
+  try {
+    await api(`/api/gerente/reservas/${id}/${acao}`, { method: 'POST' });
+    mostrarMensagem(acao === 'confirmar' ? 'Reserva confirmada!' : 'Reserva recusada.', 'ok');
+    renderReservasGerente();
+  } catch (e) {
+    mostrarMensagem(e.message, 'erro');
+  }
+}
+
+async function renderQuartosGerente() {
+  const area = el('conteudo-gerente');
+  area.innerHTML = '<p class="vazio">Carregando...</p>';
+  try {
+    const quartos = await api('/api/quartos');
+    area.innerHTML = `
+      <div class="card">
+        <h2>Cadastrar novo quarto</h2>
+        <div id="form-quarto-erro" class="mensagem oculto"></div>
+        <div class="form-linha">
+          <div>
+            <label>Número</label>
+            <input type="text" id="q-numero" placeholder="Ex: 401" />
+          </div>
+          <div>
+            <label>Tipo</label>
+            <input type="text" id="q-tipo" placeholder="Ex: Casal, Suíte..." />
+          </div>
+        </div>
+        <div class="form-linha">
+          <div>
+            <label>Capacidade (pessoas)</label>
+            <input type="number" id="q-capacidade" min="1" value="2" />
+          </div>
+          <div>
+            <label>Preço por noite (R$)</label>
+            <input type="number" id="q-preco" min="0" step="0.01" value="200" />
+          </div>
+        </div>
+        <label>Descrição</label>
+        <textarea id="q-descricao" rows="2" placeholder="Detalhes do quarto..."></textarea>
+        <div class="form-acoes">
+          <button id="btn-criar-quarto">Cadastrar quarto</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Quartos cadastrados</h2>
+        <div id="tabela-quartos"></div>
+      </div>
+    `;
+
+    el('btn-criar-quarto').onclick = async () => {
+      const box = el('form-quarto-erro');
+      try {
+        await api('/api/gerente/quartos', {
+          method: 'POST',
+          body: JSON.stringify({
+            numero: el('q-numero').value.trim(),
+            tipo: el('q-tipo').value.trim(),
+            capacidade: el('q-capacidade').value,
+            preco: el('q-preco').value,
+            descricao: el('q-descricao').value.trim()
+          })
+        });
+        mostrarMensagem('Quarto cadastrado com sucesso!', 'ok');
+        renderQuartosGerente();
+      } catch (e) {
+        box.textContent = e.message;
+        box.className = 'mensagem erro';
+      }
+    };
+
+    renderTabelaQuartos(quartos);
+  } catch (e) {
+    area.innerHTML = `<div class="card"><div class="mensagem erro">${escapar(e.message)}</div></div>`;
+  }
+}
+
+function renderTabelaQuartos(quartos) {
+  const el2 = el('tabela-quartos');
+  if (!quartos.length) {
+    el2.innerHTML = '<p class="vazio">Nenhum quarto cadastrado.</p>';
+    return;
+  }
+  el2.innerHTML = `
+    <table class="tabela">
+      <thead>
+        <tr>
+          <th>Número</th><th>Tipo</th><th>Capacidade</th><th>Preço</th><th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${quartos.map(q => `
+          <tr>
+            <td>${escapar(q.numero)}</td>
+            <td>${escapar(q.tipo)}</td>
+            <td>${q.capacidade}</td>
+            <td>R$ ${Number(q.preco).toFixed(2)}</td>
+            <td>
+              <button class="secundario" data-editar="${q.id}">Editar</button>
+              <button class="perigo" data-remover="${q.id}">Remover</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  el2.querySelectorAll('[data-editar]').forEach(b => {
+    b.onclick = () => editarQuarto(Number(b.dataset.editar), quartos);
+  });
+  el2.querySelectorAll('[data-remover]').forEach(b => {
+    b.onclick = async () => {
+      if (!confirm('Remover este quarto?')) return;
+      try {
+        await api(`/api/gerente/quartos/${b.dataset.remover}`, { method: 'DELETE' });
+        mostrarMensagem('Quarto removido.', 'ok');
+        renderQuartosGerente();
+      } catch (e) { mostrarMensagem(e.message, 'erro'); }
+    };
+  });
+}
+
+function editarQuarto(id, quartos) {
+  const q = quartos.find(x => x.id === id);
+  if (!q) return;
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100;';
+  modal.innerHTML = `
+    <div class="card" style="max-width:480px;width:100%;margin:0;">
+      <h3>Editar quarto ${escapar(q.numero)}</h3>
+      <div id="edit-erro" class="mensagem oculto"></div>
+      <label>Número</label>
+      <input type="text" id="e-numero" value="${escapar(q.numero)}" />
+      <label>Tipo</label>
+      <input type="text" id="e-tipo" value="${escapar(q.tipo)}" />
+      <div class="form-linha">
+        <div>
+          <label>Capacidade</label>
+          <input type="number" id="e-capacidade" min="1" value="${q.capacidade}" />
+        </div>
+        <div>
+          <label>Preço (R$)</label>
+          <input type="number" id="e-preco" min="0" step="0.01" value="${q.preco}" />
+        </div>
+      </div>
+      <label>Descrição</label>
+      <textarea id="e-descricao" rows="2">${escapar(q.descricao || '')}</textarea>
+      <div class="form-acoes">
+        <button class="sucesso" id="e-salvar">Salvar</button>
+        <button class="secundario" id="e-fechar">Fechar</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  el('e-fechar').onclick = () => modal.remove();
+  el('e-salvar').onclick = async () => {
+    const box = el('edit-erro');
+    try {
+      await api(`/api/gerente/quartos/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          numero: el('e-numero').value.trim(),
+          tipo: el('e-tipo').value.trim(),
+          capacidade: el('e-capacidade').value,
+          preco: el('e-preco').value,
+          descricao: el('e-descricao').value.trim()
+        })
+      });
+      modal.remove();
+      mostrarMensagem('Quarto atualizado!', 'ok');
+      renderQuartosGerente();
+    } catch (e) {
+      box.textContent = e.message;
+      box.className = 'mensagem erro';
+    }
+  };
+}
+
+// ---------- START ----------
+iniciar();

@@ -1,0 +1,1044 @@
+=== package.json ===
+{
+  "name": "shopping-online",
+  "version": "1.0.0",
+  "description": "Loja virtual de departamentos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "multer": "^1.4.5-lts.1"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ---------- Banco de dados ----------
+const db = new Database(path.join(__dirname, 'loja.db'));
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  senha TEXT NOT NULL,
+  is_admin INTEGER DEFAULT 0,
+  criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS produtos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  descricao TEXT,
+  preco REAL NOT NULL,
+  categoria TEXT NOT NULL,
+  estoque INTEGER DEFAULT 0,
+  imagem TEXT,
+  criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS pedidos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  total REAL NOT NULL,
+  status TEXT DEFAULT 'pendente',
+  endereco TEXT,
+  criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+);
+
+CREATE TABLE IF NOT EXISTS itens_pedido (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_id INTEGER NOT NULL,
+  produto_id INTEGER NOT NULL,
+  quantidade INTEGER NOT NULL,
+  preco_unitario REAL NOT NULL,
+  nome_produto TEXT NOT NULL,
+  FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+  FOREIGN KEY (produto_id) REFERENCES produtos(id)
+);
+`);
+
+// Criar admin padrão
+const adminExiste = db.prepare('SELECT id FROM usuarios WHERE is_admin = 1').get();
+if (!adminExiste) {
+  const senhaHash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO usuarios (nome, email, senha, is_admin) VALUES (?, ?, ?, 1)')
+    .run('Administrador', 'admin@loja.com', senhaHash);
+  console.log('Admin padrão criado: admin@loja.com / admin123');
+}
+
+// Produtos de exemplo
+const qtdProdutos = db.prepare('SELECT COUNT(*) as c FROM produtos').get().c;
+if (qtdProdutos === 0) {
+  const inserir = db.prepare('INSERT INTO produtos (nome, descricao, preco, categoria, estoque) VALUES (?, ?, ?, ?, ?)');
+  const exemplos = [
+    ['Camiseta Básica', 'Camiseta de algodão confortável', 49.90, 'Roupas', 50],
+    ['Tênis Esportivo', 'Tênis ideal para corridas', 199.90, 'Calçados', 30],
+    ['Fone Bluetooth', 'Fone sem fio com cancelamento de ruído', 299.90, 'Eletrônicos', 20],
+    ['Livro de Romance', 'Best-seller nacional', 39.90, 'Livros', 100],
+    ['Panela Antiaderente', 'Panela de 24cm', 89.90, 'Casa', 40],
+    ['Bola de Futebol', 'Bola oficial de campo', 129.90, 'Esportes', 25],
+    ['Perfume Feminino', 'Fragrância marcante 100ml', 249.90, 'Beleza', 15],
+    ['Mochila Escolar', 'Mochila resistente com vários compartimentos', 159.90, 'Acessórios', 35]
+  ];
+  for (const p of exemplos) inserir.run(...p);
+  console.log('Produtos de exemplo criados.');
+}
+
+// ---------- Middlewares ----------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: 'loja-virtual-segredo-' + Date.now(),
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+// Upload de imagens
+const uploadDir = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'))
+});
+const upload = multer({ storage });
+
+function requireLogin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ erro: 'Faça login para continuar' });
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ erro: 'Faça login' });
+  const u = db.prepare('SELECT is_admin FROM usuarios WHERE id = ?').get(req.session.userId);
+  if (!u || !u.is_admin) return res.status(403).json({ erro: 'Acesso restrito ao administrador' });
+  next();
+}
+
+// ---------- Autenticação ----------
+app.post('/api/registrar', (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  if (senha.length < 4) return res.status(400).json({ erro: 'Senha muito curta' });
+  try {
+    const hash = bcrypt.hashSync(senha, 10);
+    const info = db.prepare('INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)').run(nome, email.toLowerCase(), hash);
+    req.session.userId = info.lastInsertRowid;
+    res.json({ ok: true, usuario: { id: info.lastInsertRowid, nome, email, is_admin: 0 } });
+  } catch (e) {
+    res.status(400).json({ erro: 'E-mail já cadastrado' });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  const u = db.prepare('SELECT * FROM usuarios WHERE email = ?').get((email || '').toLowerCase());
+  if (!u || !bcrypt.compareSync(senha || '', u.senha)) return res.status(401).json({ erro: 'E-mail ou senha inválidos' });
+  req.session.userId = u.id;
+  res.json({ ok: true, usuario: { id: u.id, nome: u.nome, email: u.email, is_admin: u.is_admin } });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  if (!req.session.userId) return res.json({ usuario: null });
+  const u = db.prepare('SELECT id, nome, email, is_admin FROM usuarios WHERE id = ?').get(req.session.userId);
+  res.json({ usuario: u || null });
+});
+
+// ---------- Produtos ----------
+app.get('/api/produtos', (req, res) => {
+  const { categoria, busca } = req.query;
+  let sql = 'SELECT * FROM produtos WHERE 1=1';
+  const params = [];
+  if (categoria) { sql += ' AND categoria = ?'; params.push(categoria); }
+  if (busca) { sql += ' AND (nome LIKE ? OR descricao LIKE ?)'; params.push('%' + busca + '%', '%' + busca + '%'); }
+  sql += ' ORDER BY id DESC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/categorias', (req, res) => {
+  const rows = db.prepare('SELECT DISTINCT categoria FROM produtos ORDER BY categoria').all();
+  res.json(rows.map(r => r.categoria));
+});
+
+app.post('/api/produtos', requireAdmin, upload.single('imagem'), (req, res) => {
+  const { nome, descricao, preco, categoria, estoque } = req.body;
+  if (!nome || !preco || !categoria) return res.status(400).json({ erro: 'Preencha os campos obrigatórios' });
+  const imagem = req.file ? '/uploads/' + req.file.filename : null;
+  const info = db.prepare('INSERT INTO produtos (nome, descricao, preco, categoria, estoque, imagem) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(nome, descricao || '', parseFloat(preco), categoria, parseInt(estoque) || 0, imagem);
+  res.json(db.prepare('SELECT * FROM produtos WHERE id = ?').get(info.lastInsertRowid));
+});
+
+app.put('/api/produtos/:id', requireAdmin, upload.single('imagem'), (req, res) => {
+  const id = req.params.id;
+  const existente = db.prepare('SELECT * FROM produtos WHERE id = ?').get(id);
+  if (!existente) return res.status(404).json({ erro: 'Produto não encontrado' });
+  const { nome, descricao, preco, categoria, estoque } = req.body;
+  const imagem = req.file ? '/uploads/' + req.file.filename : existente.imagem;
+  db.prepare('UPDATE produtos SET nome=?, descricao=?, preco=?, categoria=?, estoque=?, imagem=? WHERE id=?')
+    .run(nome || existente.nome, descricao ?? existente.descricao, parseFloat(preco) || existente.preco, categoria || existente.categoria, parseInt(estoque) ?? existente.estoque, imagem, id);
+  res.json(db.prepare('SELECT * FROM produtos WHERE id = ?').get(id));
+});
+
+app.delete('/api/produtos/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM produtos WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- Pedidos ----------
+app.post('/api/pedidos', requireLogin, (req, res) => {
+  const { itens, endereco } = req.body;
+  if (!itens || !itens.length) return res.status(400).json({ erro: 'Carrinho vazio' });
+  const user = db.prepare('SELECT * FROM usuarios WHERE id = ?').get(req.session.userId);
+
+  const tx = db.transaction(() => {
+    let total = 0;
+    const itensValidos = [];
+    for (const item of itens) {
+      const prod = db.prepare('SELECT * FROM produtos WHERE id = ?').get(item.produto_id);
+      if (!prod) throw new Error('Produto não encontrado');
+      if (prod.estoque < item.quantidade) throw new Error('Estoque insuficiente para ' + prod.nome);
+      const precoUnit = prod.preco;
+      total += precoUnit * item.quantidade;
+      itensValidos.push({ ...item, preco_unitario: precoUnit, nome_produto: prod.nome });
+    }
+    const info = db.prepare('INSERT INTO pedidos (usuario_id, total, status, endereco) VALUES (?, ?, ?, ?)')
+      .run(user.id, total, 'pendente', endereco || '');
+    for (const it of itensValidos) {
+      db.prepare('INSERT INTO itens_pedido (pedido_id, produto_id, quantidade, preco_unitario, nome_produto) VALUES (?, ?, ?, ?, ?)')
+        .run(info.lastInsertRowid, it.produto_id, it.quantidade, it.preco_unitario, it.nome_produto);
+      db.prepare('UPDATE produtos SET estoque = estoque - ? WHERE id = ?').run(it.quantidade, it.produto_id);
+    }
+    return info.lastInsertRowid;
+  });
+
+  try {
+    const pedidoId = tx();
+    res.json({ ok: true, pedido_id: pedidoId });
+  } catch (e) {
+    res.status(400).json({ erro: e.message });
+  }
+});
+
+app.get('/api/meus-pedidos', requireLogin, (req, res) => {
+  const pedidos = db.prepare('SELECT * FROM pedidos WHERE usuario_id = ? ORDER BY id DESC').all(req.session.userId);
+  for (const p of pedidos) {
+    p.itens = db.prepare('SELECT * FROM itens_pedido WHERE pedido_id = ?').all(p.id);
+  }
+  res.json(pedidos);
+});
+
+app.get('/api/admin/pedidos', requireAdmin, (req, res) => {
+  const pedidos = db.prepare(`
+    SELECT p.*, u.nome as cliente_nome, u.email as cliente_email
+    FROM pedidos p JOIN usuarios u ON u.id = p.usuario_id
+    ORDER BY p.id DESC
+  `).all();
+  for (const p of pedidos) {
+    p.itens = db.prepare('SELECT * FROM itens_pedido WHERE pedido_id = ?').all(p.id);
+  }
+  res.json(pedidos);
+});
+
+app.put('/api/admin/pedidos/:id/status', requireAdmin, (req, res) => {
+  const { status } = req.body;
+  const validos = ['pendente', 'pago', 'enviado', 'entregue', 'cancelado'];
+  if (!validos.includes(status)) return res.status(400).json({ erro: 'Status inválido' });
+  db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/clientes', requireAdmin, (req, res) => {
+  const clientes = db.prepare('SELECT id, nome, email, criado_em FROM usuarios WHERE is_admin = 0 ORDER BY id DESC').all();
+  res.json(clientes);
+});
+
+// SPA fallback
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log('Servidor rodando na porta ' + PORT);
+  console.log('Acesse: http://localhost:' + PORT);
+  console.log('Admin: admin@loja.com / admin123');
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping Online - Loja Virtual</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="cabecalho">
+  <div class="header-conteudo">
+    <div class="logo" onclick="irPara('home')">🛒 Shopping Online</div>
+    <div class="busca">
+      <input type="text" id="campoBusca" placeholder="Buscar produtos...">
+      <button onclick="buscarProdutos()">Buscar</button>
+    </div>
+    <div class="header-acoes" id="headerAcoes"></div>
+  </div>
+  <nav id="menuCategorias"></nav>
+</header>
+
+<main id="app"></main>
+
+<div id="toast" class="toast"></div>
+
+<div id="modalCarrinho" class="modal">
+  <div class="modal-conteudo">
+    <span class="fechar" onclick="fecharModal('modalCarrinho')">&times;</span>
+    <h2>Meu Carrinho</h2>
+    <div id="carrinhoConteudo"></div>
+  </div>
+</div>
+
+<div id="modalLogin" class="modal">
+  <div class="modal-conteudo">
+    <span class="fechar" onclick="fecharModal('modalLogin')">&times;</span>
+    <h2 id="tituloAuth">Entrar</h2>
+    <div class="abas">
+      <button id="abaLogin" onclick="mostrarAba('login')">Entrar</button>
+      <button id="abaRegistrar" onclick="mostrarAba('registrar')">Cadastrar</button>
+    </div>
+    <form id="formAuth" onsubmit="enviarAuth(event)">
+      <input type="text" id="authNome" name="nome" placeholder="Nome completo" style="display:none">
+      <input type="email" id="authEmail" name="email" placeholder="E-mail" required>
+      <input type="password" id="authSenha" name="senha" placeholder="Senha" required>
+      <button type="submit" id="botaoAuth">Entrar</button>
+    </form>
+    <p id="msgAuth" class="msg-erro"></p>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+
+#cabecalho { background: #1a237e; color: white; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.header-conteudo { display: flex; align-items: center; gap: 20px; padding: 15px 30px; max-width: 1400px; margin: 0 auto; }
+.logo { font-size: 1.5em; font-weight: bold; cursor: pointer; white-space: nowrap; }
+.busca { flex: 1; display: flex; max-width: 600px; }
+.busca input { flex: 1; padding: 10px 15px; border: none; border-radius: 6px 0 0 6px; font-size: 1em; outline: none; }
+.busca button { padding: 10px 20px; border: none; background: #ff6f00; color: white; border-radius: 0 6px 6px 0; cursor: pointer; font-weight: bold; }
+.busca button:hover { background: #e65100; }
+.header-acoes { display: flex; gap: 10px; align-items: center; }
+.header-acoes button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; background: rgba(255,255,255,0.15); color: white; }
+.header-acoes button:hover { background: rgba(255,255,255,0.3); }
+.header-acoes .destaque { background: #ff6f00; }
+.header-acoes .destaque:hover { background: #e65100; }
+
+#menuCategorias { background: #283593; padding: 0 30px; display: flex; gap: 5px; overflow-x: auto; max-width: 1400px; margin: 0 auto; }
+#menuCategorias button { background: none; border: none; color: white; padding: 12px 18px; cursor: pointer; font-size: 0.95em; white-space: nowrap; border-bottom: 3px solid transparent; }
+#menuCategorias button:hover { background: rgba(255,255,255,0.1); }
+#menuCategorias button.ativo { border-bottom-color: #ff6f00; }
+
+main { max-width: 1400px; margin: 0 auto; padding: 25px 30px; min-height: 60vh; }
+
+h1, h2, h3 { color: #1a237e; margin-bottom: 15px; }
+
+.grid-produtos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+
+.card-produto { background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); display: flex; flex-direction: column; transition: transform 0.2s, box-shadow 0.2s; }
+.card-produto:hover { transform: translateY(-4px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+.card-produto .imagem { height: 180px; background: #e0e0e0; display: flex; align-items: center; justify-content: center; font-size: 3em; color: #999; overflow: hidden; }
+.card-produto .imagem img { width: 100%; height: 100%; object-fit: cover; }
+.card-produto .info { padding: 15px; display: flex; flex-direction: column; flex: 1; }
+.card-produto .categoria { font-size: 0.75em; color: #ff6f00; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+.card-produto .nome { font-size: 1.05em; font-weight: 600; margin-bottom: 8px; color: #333; }
+.card-produto .descricao { font-size: 0.85em; color: #666; margin-bottom: 10px; flex: 1; }
+.card-produto .preco { font-size: 1.3em; font-weight: bold; color: #1a237e; margin-bottom: 10px; }
+.card-produto .estoque { font-size: 0.8em; color: #888; margin-bottom: 10px; }
+.card-produto button { padding: 10px; border: none; background: #ff6f00; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.95em; }
+.card-produto button:hover { background: #e65100; }
+.card-produto button:disabled { background: #ccc; cursor: not-allowed; }
+
+.painel { background: white; padding: 25px; border-radius: 10px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.painel h2 { margin-bottom: 20px; }
+
+.form-linha { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+.form-grupo { display: flex; flex-direction: column; gap: 5px; }
+.form-grupo label { font-size: 0.9em; font-weight: 600; color: #555; }
+.form-grupo input, .form-grupo textarea, .form-grupo select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1em; font-family: inherit; }
+.form-grupo textarea { resize: vertical; min-height: 80px; }
+
+.btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 0.95em; }
+.btn-primario { background: #1a237e; color: white; }
+.btn-primario:hover { background: #0d1454; }
+.btn-perigo { background: #c62828; color: white; }
+.btn-perigo:hover { background: #8e0000; }
+.btn-secundario { background: #757575; color: white; }
+.btn-secundario:hover { background: #424242; }
+
+.tabela { width: 100%; border-collapse: collapse; background: white; }
+.tabela th, .tabela td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+.tabela th { background: #f5f5f5; font-weight: bold; color: #333; }
+.tabela tr:hover { background: #fafafa; }
+
+.badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
+.badge.pendente { background: #fff3cd; color: #856404; }
+.badge.pago { background: #cce5ff; color: #004085; }
+.badge.enviado { background: #d4edda; color: #155724; }
+.badge.entregue { background: #d1ecf1; color: #0c5460; }
+.badge.cancelado { background: #f8d7da; color: #721c24; }
+
+.modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+.modal.ativo { display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-conteudo { background: white; padding: 30px; border-radius: 10px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative; }
+.fechar { position: absolute; right: 20px; top: 15px; font-size: 2em; cursor: pointer; color: #999; line-height: 1; }
+.fechar:hover { color: #333; }
+
+.abas { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eee; }
+.abas button { flex: 1; padding: 12px; background: none; border: none; cursor: pointer; font-weight: bold; color: #666; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.abas button.ativo { color: #1a237e; border-bottom-color: #1a237e; }
+
+#formAuth { display: flex; flex-direction: column; gap: 12px; }
+#formAuth input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 1em; }
+#formAuth button { padding: 12px; background: #1a237e; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1em; }
+#formAuth button:hover { background: #0d1454; }
+.msg-erro { color: #c62828; margin-top: 10px; font-size: 0.9em; }
+
+.item-carrinho { display: flex; gap: 15px; padding: 15px 0; border-bottom: 1px solid #eee; align-items: center; }
+.item-carrinho .info { flex: 1; }
+.item-carrinho .info h4 { color: #333; margin-bottom: 5px; }
+.item-carrinho .qtd { display: flex; align-items: center; gap: 8px; }
+.item-carrinho .qtd button { width: 30px; height: 30px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-weight: bold; }
+.item-carrinho .qtd button:hover { background: #f0f0f0; }
+
+.carrinho-total { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; padding-top: 20px; border-top: 2px solid #eee; font-size: 1.2em; font-weight: bold; }
+.carrinho-vazio { text-align: center; color: #999; padding: 40px 0; }
+
+.pedido-card { background: white; border-radius: 10px; padding: 20px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.pedido-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+.pedido-header h3 { margin: 0; }
+
+.toast { position: fixed; bottom: 30px; right: 30px; background: #333; color: white; padding: 15px 25px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; z-index: 300; pointer-events: none; }
+.toast.ativo { opacity: 1; }
+.toast.sucesso { background: #2e7d32; }
+.toast.erro { background: #c62828; }
+
+.acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 768px) {
+  .header-conteudo { flex-wrap: wrap; padding: 12px 15px; }
+  .busca { order: 3; max-width: 100%; width: 100%; }
+  .logo { font-size: 1.2em; }
+  main { padding: 15px; }
+  .form-linha { grid-template-columns: 1fr; }
+  .grid-produtos { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  .card-produto .imagem { height: 130px; }
+  #menuCategorias { padding: 0 15px; }
+  .tabela { font-size: 0.85em; }
+  .tabela th, .tabela td { padding: 8px; }
+}
+</style>
+
+=== public/app.js ===
+let usuarioAtual = null;
+let carrinho = JSON.parse(localStorage.getItem('carrinho') || '[]');
+let categoriaAtual = '';
+let termoBusca = '';
+
+function salvarCarrinho() {
+  localStorage.setItem('carrinho', JSON.stringify(carrinho));
+  atualizarBotaoCarrinho();
+}
+
+function atualizarBotaoCarrinho() {
+  const total = carrinho.reduce((s, i) => s + i.quantidade, 0);
+  const btn = document.getElementById('btnCarrinho');
+  if (btn) btn.textContent = '🛒 Carrinho (' + total + ')';
+}
+
+function toast(msg, tipo) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ativo ' + (tipo || '');
+  setTimeout(() => t.className = 'toast ' + (tipo || ''), 3000);
+}
+
+async function api(url, options) {
+  const r = await fetch(url, options);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.erro || 'Erro na requisição');
+  return data;
+}
+
+async function carregarUsuario() {
+  try {
+    const d = await api('/api/eu');
+    usuarioAtual = d.usuario;
+  } catch { usuarioAtual = null; }
+  renderizarHeader();
+}
+
+function renderizarHeader() {
+  const acoes = document.getElementById('headerAcoes');
+  let html = '<button onclick="abrirCarrinho()" id="btnCarrinho">🛒 Carrinho (0)</button>';
+  if (usuarioAtual) {
+    html += '<button onclick="irPara(\'meus-pedidos\')">Meus Pedidos</button>';
+    if (usuarioAtual.is_admin) html += '<button class="destaque" onclick="irPara(\'admin\')">Painel Admin</button>';
+    html += '<span style="padding:0 8px">Olá, ' + usuarioAtual.nome.split(' ')[0] + '</span>';
+    html += '<button onclick="logout()">Sair</button>';
+  } else {
+    html += '<button class="destaque" onclick="abrirLogin()">Entrar / Cadastrar</button>';
+  }
+  acoes.innerHTML = html;
+  atualizarBotaoCarrinho();
+}
+
+async function carregarCategorias() {
+  try {
+    const cats = await api('/api/categorias');
+    const menu = document.getElementById('menuCategorias');
+    let html = '<button onclick="filtrarCategoria(\'\')" class="' + (categoriaAtual === '' ? 'ativo' : '') + '">Todos</button>';
+    for (const c of cats) {
+      html += '<button onclick="filtrarCategoria(\'' + c + '\')" class="' + (categoriaAtual === c ? 'ativo' : '') + '">' + c + '</button>';
+    }
+    menu.innerHTML = html;
+  } catch {}
+}
+
+function filtrarCategoria(c) {
+  categoriaAtual = c;
+  termoBusca = '';
+  document.getElementById('campoBusca').value = '';
+  carregarCategorias();
+  irPara('home');
+}
+
+function buscarProdutos() {
+  termoBusca = document.getElementById('campoBusca').value.trim();
+  categoriaAtual = '';
+  carregarCategorias();
+  irPara('home');
+}
+
+async function renderHome() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<h1>Produtos</h1><div id="listaProdutos" class="grid-produtos"></div>';
+  let url = '/api/produtos?';
+  if (categoriaAtual) url += 'categoria=' + encodeURIComponent(categoriaAtual) + '&';
+  if (termoBusca) url += 'busca=' + encodeURIComponent(termoBusca) + '&';
+  try {
+    const produtos = await api(url);
+    const lista = document.getElementById('listaProdutos');
+    if (!produtos.length) {
+      lista.innerHTML = '<p>Nenhum produto encontrado.</p>';
+      return;
+    }
+    lista.innerHTML = produtos.map(p => {
+      const img = p.imagem ? '<img src="' + p.imagem + '" alt="' + p.nome + '">' : '📦';
+      const semEstoque = p.estoque <= 0;
+      return '<div class="card-produto">' +
+        '<div class="imagem">' + img + '</div>' +
+        '<div class="info">' +
+        '<div class="categoria">' + p.categoria + '</div>' +
+        '<div class="nome">' + p.nome + '</div>' +
+        '<div class="descricao">' + (p.descricao || '') + '</div>' +
+        '<div class="preco">R$ ' + p.preco.toFixed(2).replace('.', ',') + '</div>' +
+        '<div class="estoque">' + (semEstoque ? 'Sem estoque' : 'Estoque: ' + p.estoque) + '</div>' +
+        '<button ' + (semEstoque ? 'disabled' : '') + ' onclick="adicionarAoCarrinho(' + p.id + ')">' +
+        (semEstoque ? 'Indisponível' : 'Adicionar ao Carrinho') + '</button>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) {
+    document.getElementById('listaProdutos').innerHTML = '<p>Erro ao carregar produtos.</p>';
+  }
+}
+
+async function adicionarAoCarrinho(produtoId) {
+  try {
+    const produtos = await api('/api/produtos');
+    const p = produtos.find(x => x.id === produtoId);
+    if (!p) return;
+    const item = carrinho.find(i => i.produto_id === produtoId);
+    if (item) {
+      if (item.quantidade >= p.estoque) { toast('Estoque insuficiente', 'erro'); return; }
+      item.quantidade++;
+    } else {
+      if (p.estoque <= 0) { toast('Sem estoque', 'erro'); return; }
+      carrinho.push({ produto_id: p.id, nome: p.nome, preco: p.preco, quantidade: 1 });
+    }
+    salvarCarrinho();
+    toast('Adicionado ao carrinho!', 'sucesso');
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+function abrirCarrinho() {
+  renderizarCarrinho();
+  document.getElementById('modalCarrinho').classList.add('ativo');
+}
+
+function renderizarCarrinho() {
+  const el = document.getElementById('carrinhoConteudo');
+  if (!carrinho.length) {
+    el.innerHTML = '<div class="carrinho-vazio">Seu carrinho está vazio.</div>';
+    return;
+  }
+  let html = carrinho.map((i, idx) =>
+    '<div class="item-carrinho">' +
+    '<div class="info"><h4>' + i.nome + '</h4><p>R$ ' + i.preco.toFixed(2).replace('.', ',') + '</p></div>' +
+    '<div class="qtd">' +
+    '<button onclick="alterarQtd(' + idx + ', -1)">−</button>' +
+    '<span>' + i.quantidade + '</span>' +
+    '<button onclick="alterarQtd(' + idx + ', 1)">+</button>' +
+    '</div>' +
+    '<strong>R$ ' + (i.preco * i.quantidade).toFixed(2).replace('.', ',') + '</strong>' +
+    '<button class="btn btn-perigo" onclick="removerItem(' + idx + ')" style="padding:6px 10px">✕</button>' +
+    '</div>'
+  ).join('');
+  const total = carrinho.reduce((s, i) => s + i.preco * i.quantidade, 0);
+  html += '<div class="carrinho-total"><span>Total:</span><span>R$ ' + total.toFixed(2).replace('.', ',') + '</span></div>';
+  html += '<div style="margin-top:15px"><label>Endereço de entrega:</label><input type="text" id="enderecoEntrega" placeholder="Rua, número, cidade" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;margin-top:5px"></div>';
+  html += '<button class="btn btn-primario" style="width:100%;margin-top:15px;padding:14px" onclick="finalizarPedido()">Finalizar Pedido</button>';
+  el.innerHTML = html;
+}
+
+function alterarQtd(idx, delta) {
+  carrinho[idx].quantidade += delta;
+  if (carrinho[idx].quantidade < 1) carrinho.splice(idx, 1);
+  salvarCarrinho();
+  renderizarCarrinho();
+}
+
+function removerItem(idx) {
+  carrinho.splice(idx, 1);
+  salvarCarrinho();
+  renderizarCarrinho();
+}
+
+async function finalizarPedido() {
+  if (!usuarioAtual) {
+    fecharModal('modalCarrinho');
+    toast('Faça login para finalizar', 'erro');
+    abrirLogin();
+    return;
+  }
+  const endereco = document.getElementById('enderecoEntrega').value.trim();
+  if (!endereco) { toast('Informe o endereço', 'erro'); return; }
+  try {
+    const itens = carrinho.map(i => ({ produto_id: i.produto_id, quantidade: i.quantidade }));
+    await api('/api/pedidos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itens, endereco })
+    });
+    carrinho = [];
+    salvarCarrinho();
+    fecharModal('modalCarrinho');
+    toast('Pedido realizado com sucesso!', 'sucesso');
+    irPara('meus-pedidos');
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+async function renderMeusPedidos() {
+  const app = document.getElementById('app');
+  app.innerHTML = '<h1>Meus Pedidos</h1><div id="listaPedidos"></div>';
+  try {
+    const pedidos = await api('/api/meus-pedidos');
+    const el = document.getElementById('listaPedidos');
+    if (!pedidos.length) { el.innerHTML = '<p>Você ainda não fez nenhum pedido.</p>'; return; }
+    el.innerHTML = pedidos.map(p => {
+      const itens = p.itens.map(i => '<li>' + i.quantidade + 'x ' + i.nome_produto + ' — R$ ' + (i.preco_unitario * i.quantidade).toFixed(2).replace('.', ',') + '</li>').join('');
+      return '<div class="pedido-card">' +
+        '<div class="pedido-header">' +
+        '<h3>Pedido #' + p.id + '</h3>' +
+        '<span class="badge ' + p.status + '">' + p.status + '</span>' +
+        '</div>' +
+        '<p><strong>Data:</strong> ' + new Date(p.criado_em).toLocaleString('pt-BR') + '</p>' +
+        '<p><strong>Endereço:</strong> ' + (p.endereco || '-') + '</p>' +
+        '<ul style="margin:10px 0 10px 20px">' + itens + '</ul>' +
+        '<p><strong>Total: R$ ' + p.total.toFixed(2).replace('.', ',') + '</strong></p>' +
+        '</div>';
+    }).join('');
+  } catch (e) { document.getElementById('listaPedidos').innerHTML = '<p>' + e.message + '</p>'; }
+}
+
+async function renderAdmin() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <h1>Painel do Administrador</h1>
+    <div class="abas" style="max-width:400px;margin-bottom:20px">
+      <button id="tabProd" class="ativo" onclick="mudarAbaAdmin('produtos')">Produtos</button>
+      <button id="tabPed" onclick="mudarAbaAdmin('pedidos')">Pedidos</button>
+      <button id="tabCli" onclick="mudarAbaAdmin('clientes')">Clientes</button>
+    </div>
+    <div id="adminConteudo"></div>
+  `;
+  mudarAbaAdmin('produtos');
+}
+
+function mudarAbaAdmin(aba) {
+  document.querySelectorAll('.abas button').forEach(b => b.classList.remove('ativo'));
+  if (aba === 'produtos') document.getElementById('tabProd').classList.add('ativo');
+  if (aba === 'pedidos') document.getElementById('tabPed').classList.add('ativo');
+  if (aba === 'clientes') document.getElementById('tabCli').classList.add('ativo');
+  if (aba === 'produtos') adminProdutos();
+  if (aba === 'pedidos') adminPedidos();
+  if (aba === 'clientes') adminClientes();
+}
+
+async function adminProdutos() {
+  const el = document.getElementById('adminConteudo');
+  el.innerHTML = `
+    <div class="painel">
+      <h2 id="tituloFormProd">Novo Produto</h2>
+      <form id="formProduto" onsubmit="salvarProduto(event)">
+        <input type="hidden" id="prodId">
+        <div class="form-linha">
+          <div class="form-grupo"><label>Nome *</label><input type="text" id="prodNome" required></div>
+          <div class="form-grupo"><label>Categoria *</label><input type="text" id="prodCategoria" required></div>
+        </div>
+        <div class="form-grupo" style="margin-bottom:15px"><label>Descrição</label><textarea id="prodDescricao"></textarea></div>
+        <div class="form-linha">
+          <div class="form-grupo"><label>Preço (R$) *</label><input type="number" step="0.01" min="0" id="prodPreco" required></div>
+          <div class="form-grupo"><label>Estoque</label><input type="number" min="0" id="prodEstoque" value="0"></div>
+        </div>
+        <div class="form-grupo" style="margin-bottom:15px"><label>Imagem (opcional)</label><input type="file" id="prodImagem" accept="image/*"></div>
+        <button type="submit" class="btn btn-primario">Salvar</button>
+        <button type="button" class="btn btn-secundario" onclick="limparFormProduto()">Cancelar</button>
+      </form>
+    </div>
+    <div class="painel">
+      <h2>Produtos Cadastrados</h2>
+      <div style="overflow-x:auto"><table class="tabela" id="tabelaProdutos"></table></div>
+    </div>
+  `;
+  await carregarTabelaProdutos();
+}
+
+async function carregarTabelaProdutos() {
+  try {
+    const produtos = await api('/api/produtos');
+    const t = document.getElementById('tabelaProdutos');
+    if (!produtos.length) { t.innerHTML = '<tr><td>Nenhum produto.</td></tr>'; return; }
+    t.innerHTML = '<thead><tr><th>ID</th><th>Imagem</th><th>Nome</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Ações</th></tr></thead><tbody>' +
+      produtos.map(p => '<tr>' +
+        '<td>' + p.id + '</td>' +
+        '<td>' + (p.imagem ? '<img src="' + p.imagem + '" style="width:50px;height:50px;object-fit:cover;border-radius:4px">' : '📦') + '</td>' +
+        '<td>' + p.nome + '</td>' +
+        '<td>' + p.categoria + '</td>' +
+        '<td>R$ ' + p.preco.toFixed(2).replace('.', ',') + '</td>' +
+        '<td>' + p.estoque + '</td>' +
+        '<td class="acoes">' +
+        '<button class="btn btn-primario" style="padding:6px 12px" onclick="editarProduto(' + p.id + ')">Editar</button>' +
+        '<button class="btn btn-perigo" style="padding:6px 12px" onclick="excluirProduto(' + p.id + ')">Excluir</button>' +
+        '</td></tr>').join('') + '</tbody>';
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+async function editarProduto(id) {
+  const produtos = await api('/api/produtos');
+  const p = produtos.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('prodId').value = p.id;
+  document.getElementById('prodNome').value = p.nome;
+  document.getElementById('prodCategoria').value = p.categoria;
+  document.getElementById('prodDescricao').value = p.descricao || '';
+  document.getElementById('prodPreco').value = p.preco;
+  document.getElementById('prodEstoque').value = p.estoque;
+  document.getElementById('tituloFormProd').textContent = 'Editar Produto #' + p.id;
+  window.scrollTo(0, 0);
+}
+
+function limparFormProduto() {
+  document.getElementById('formProduto').reset();
+  document.getElementById('prodId').value = '';
+  document.getElementById('tituloFormProd').textContent = 'Novo Produto';
+}
+
+async function salvarProduto(e) {
+  e.preventDefault();
+  const id = document.getElementById('prodId').value;
+  const fd = new FormData();
+  fd.append('nome', document.getElementById('prodNome').value);
+  fd.append('categoria', document.getElementById('prodCategoria').value);
+  fd.append('descricao', document.getElementById('prodDescricao').value);
+  fd.append('preco', document.getElementById('prodPreco').value);
+  fd.append('estoque', document.getElementById('prodEstoque').value);
+  const img = document.getElementById('prodImagem').files[0];
+  if (img) fd.append('imagem', img);
+  try {
+    if (id) {
+      await api('/api/produtos/' + id, { method: 'PUT', body: fd });
+      toast('Produto atualizado!', 'sucesso');
+    } else {
+      await api('/api/produtos', { method: 'POST', body: fd });
+      toast('Produto cadastrado!', 'sucesso');
+    }
+    limparFormProduto();
+    carregarTabelaProdutos();
+    carregarCategorias();
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+async function excluirProduto(id) {
+  if (!confirm('Remover este produto?')) return;
+  try {
+    await api('/api/produtos/' + id, { method: 'DELETE' });
+    toast('Produto removido', 'sucesso');
+    carregarTabelaProdutos();
+    carregarCategorias();
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+async function adminPedidos() {
+  const el = document.getElementById('adminConteudo');
+  try {
+    const pedidos = await api('/api/admin/pedidos');
+    if (!pedidos.length) { el.innerHTML = '<p>Nenhum pedido ainda.</p>'; return; }
+    el.innerHTML = pedidos.map(p => {
+      const itens = p.itens.map(i => '<li>' + i.quantidade + 'x ' + i.nome_produto + ' — R$ ' + (i.preco_unitario * i.quantidade).toFixed(2).replace('.', ',') + '</li>').join('');
+      const opcoes = ['pendente', 'pago', 'enviado', 'entregue', 'cancelado'].map(s =>
+        '<option value="' + s + '" ' + (s === p.status ? 'selected' : '') + '>' + s + '</option>').join('');
+      return '<div class="pedido-card">' +
+        '<div class="pedido-header">' +
+        '<h3>Pedido #' + p.id + ' — ' + p.cliente_nome + '</h3>' +
+        '<span class="badge ' + p.status + '">' + p.status + '</span>' +
+        '</div>' +
+        '<p><strong>Cliente:</strong> ' + p.cliente_nome + ' (' + p.cliente_email + ')</p>' +
+        '<p><strong>Data:</strong> ' + new Date(p.criado_em).toLocaleString('pt-BR') + '</p>' +
+        '<p><strong>Endereço:</strong> ' + (p.endereco || '-') + '</p>' +
+        '<ul style="margin:10px 0 10px 20px">' + itens + '</ul>' +
+        '<p><strong>Total: R$ ' + p.total.toFixed(2).replace('.', ',') + '</strong></p>' +
+        '<div style="margin-top:12px"><label>Alterar status: </label>' +
+        '<select onchange="alterarStatus(' + p.id + ', this.value)" style="padding:6px;border-radius:4px;border:1px solid #ddd">' + opcoes + '</select>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) { el.innerHTML = '<p>' + e.message + '</p>'; }
+}
+
+async function alterarStatus(id, status) {
+  try {
+    await api('/api/admin/pedidos/' + id + '/status', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    toast('Status atualizado!', 'sucesso');
+    adminPedidos();
+  } catch (e) { toast(e.message, 'erro'); }
+}
+
+async function adminClientes() {
+  const el = document.getElementById('adminConteudo');
+  try {
+    const clientes = await api('/api/admin/clientes');
+    if (!clientes.length) { el.innerHTML = '<p>Nenhum cliente cadastrado.</p>'; return; }
+    el.innerHTML = '<div class="painel"><h2>Clientes Cadastrados</h2><div style="overflow-x:auto"><table class="tabela"><thead><tr><th>ID</th><th>Nome</th><th>E-mail</th><th>Cadastro</th></tr></thead><tbody>' +
+      clientes.map(c => '<tr><td>' + c.id + '</td><td>' + c.nome + '</td><td>' + c.email + '</td><td>' + new Date(c.criado_em).toLocaleDateString('pt-BR') + '</td></tr>').join('') +
+      '</tbody></table></div></div>';
+  } catch (e) { el.innerHTML = '<p>' + e.message + '</p>'; }
+}
+
+function abrirLogin() {
+  mostrarAba('login');
+  document.getElementById('modalLogin').classList.add('ativo');
+}
+
+function mostrarAba(aba) {
+  const ehLogin = aba === 'login';
+  document.getElementById('abaLogin').classList.toggle('ativo', ehLogin);
+  document.getElementById('abaRegistrar').classList.toggle('ativo', !ehLogin);
+  document.getElementById('authNome').style.display = ehLogin ? 'none' : 'block';
+  document.getElementById('authNome').required = !ehLogin;
+  document.getElementById('tituloAuth').textContent = ehLogin ? 'Entrar' : 'Criar Conta';
+  document.getElementById('botaoAuth').textContent = ehLogin ? 'Entrar' : 'Cadastrar';
+  document.getElementById('msgAuth').textContent = '';
+  window._abaAtual = aba;
+}
+
+async function enviarAuth(e) {
+  e.preventDefault();
+  const aba = window._abaAtual || 'login';
+  const dados = {
+    email: document.getElementById('authEmail').value,
+    senha: document.getElementById('authSenha').value
+  };
+  if (aba === 'registrar') dados.nome = document.getElementById('authNome').value;
+  try {
+    const d = await api(aba === 'login' ? '/api/login' : '/api/registrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(dados)
+    });
+    usuarioAtual = d.usuario;
+    fecharModal('modalLogin');
+    document.getElementById('formAuth').reset();
+    renderizarHeader();
+    toast(aba === 'login' ? 'Bem-vindo!' : 'Conta criada!', 'sucesso');
+    if (window._paginaAtual === 'meus-pedidos') renderMeusPedidos();
+  } catch (e) {
+    document.getElementById('msgAuth').textContent = e.message;
+  }
+}
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  usuarioAtual = null;
+  renderizarHeader();
+  irPara('home');
+  toast('Saiu da conta');
+}
+
+function fecharModal(id) {
+  document.getElementById(id).classList.remove('ativo');
+}
+
+window.addEventListener('click', e => {
+  if (e.target.classList.contains('modal')) e.target.classList.remove('ativo');
+});
+
+function irPara(pagina) {
+  window._paginaAtual = pagina;
+  if (pagina === 'home') renderHome();
+  else if (pagina === 'meus-pedidos') {
+    if (!usuarioAtual) { abrirLogin(); return; }
+    renderMeusPedidos();
+  }
+  else if (pagina === 'admin') {
+    if (!usuarioAtual || !usuarioAtual.is_admin) { toast('Acesso restrito', 'erro'); return; }
+    renderAdmin();
+  }
+  window.scrollTo(0, 0);
+}
+
+(async function init() {
+  await carregarUsuario();
+  await carregarCategorias();
+  irPara('home');
+})();
+
+=== README.md ===
+# 🛒 Shopping Online - Loja Virtual de Departamentos
+
+Loja virtual completa com cadastro de clientes, carrinho de compras, pedidos e painel administrativo. Todos os dados ficam salvos em um banco de dados SQLite no próprio servidor.
+
+## 📋 O que o site faz
+
+**Clientes podem:**
+- Criar conta e fazer login
+- Ver produtos por categoria ou buscar
+- Adicionar produtos ao carrinho
+- Finalizar pedidos informando endereço
+- Ver todos os pedidos já realizados
+
+**Administrador pode:**
+- Cadastrar, editar e remover produtos (com foto)
+- Ver todos os pedidos de todos os clientes
+- Alterar a situação dos pedidos (pendente, pago, enviado, entregue, cancelado)
+- Ver lista de clientes cadastrados
+
+## 🔑 Conta do administrador (já criada automaticamente)
+
+- **E-mail:** `admin@loja.com`
+- **Senha:** `admin123`
+
+> ⚠️ Importante: após entrar como admin, você pode alterar a senha manualmente no banco ou criar outro admin. Recomenda-se trocar essa senha em produção.
+
+## 🚀 Como instalar e executar
+
+### 1. Pré-requisitos
+Instale o **Node.js** (versão 18 ou superior): https://nodejs.org
+
+### 2. Instalar dependências
+No terminal, dentro da pasta do projeto:
+
+```bash
+npm install
+```
+
+### 3. Iniciar o servidor
+
+```bash
+npm start
+```
+
+### 4. Acessar no navegador
+
+Abra: **http://localhost:3000**
+
+## 🌐 Como colocar na internet
+
+O projeto funciona como um servidor Node.js normal. Para publicar online, use qualquer serviço de hospedagem Node.js:
+
+- **Railway** (railway.app) — gratuito para começar
+- **Render** (render.com) — gratuito para começar
+- **Fly.io** (fly.io)
+- **VPS** próprio (DigitalOcean, Contabo, etc.)
+
+**Passos genéricos:**
+1. Suba os arquivos para um repositório Git (GitHub, GitLab)
+2. Conecte o repositório no serviço escolhido
+3. Comando de build: `npm install`
+4. Comando de start: `npm start`
+5. O serviço define a porta automaticamente pela variável `PORT` (já suportada)
+
+## 💾 Onde os dados ficam salvos
+
+Todos os dados (usuários, produtos, pedidos) ficam no arquivo **`loja.db`** na raiz do projeto. Ele é criado automaticamente na primeira execução.
+
+**Para backup:** basta copiar o arquivo `loja.db`.
+
+## 📁 Estrutura do projeto
+
+```
+├── server.js           # Servidor e API
+├── package.json        # Dependências
+├── loja.db             # Banco de dados (criado automaticamente)
+├── public/
+│   ├── index.html      # Página principal
+│   ├── style.css       # Estilos
+│   ├── app.js          # Lógica do site
+│   └── uploads/        # Imagens enviadas
+└── README.md
+```
+
+## 🛠️ Funcionalidades técnicas
+
+- Autenticação com sessão e senha criptografada (bcrypt)
+- Banco SQLite embutido (não precisa instalar nada separado)
+- Upload de imagens dos produtos
+- Controle de estoque automático
+- Carrinho salvo no navegador (localStorage)
+
+## ❓ Problemas comuns
+
+**"Porta já em uso"** → Altere a porta: `PORT=3001 npm start`
+
+**Não consigo fazer login como admin** → Apague o arquivo `loja.db` e reinicie o servidor; a conta admin será recriada.
+
+**Perdi meus dados** → Restaure o backup do arquivo `loja.db`.
+</html>

@@ -1,0 +1,9 @@
+name = "controle-de-despesas"
+main = "src/server.js"
+compatibility_date = "2024-07-01"
+compatibility_flags = ["nodejs_compat"]
+usage_model = "bunds"
+
+# Preencha as variáveis de ambiente do Cloudflare (veja README) com:
+#   npx wrangler secret put SUPABASE_URL
+#   npx wrangler secret put SUPABASE_SERVICE_KEY

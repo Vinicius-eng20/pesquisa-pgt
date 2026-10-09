@@ -1,0 +1,528 @@
+=== package.json ===
+{
+  "name": "team-task-manager",
+  "version": "1.0.0",
+  "description": "Sistema de gestão de tarefas de equipe",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-sqlite3": "^0.9.13",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "sqlite3": "^5.1.6"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const db = new sqlite3.Database(path.join(__dirname, 'data.db'));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    assigned_to INTEGER NOT NULL,
+    created_by INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(assigned_to) REFERENCES users(id),
+    FOREIGN KEY(created_by) REFERENCES users(id)
+  )`);
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: __dirname }),
+  secret: 'troque-esta-chave-secreta-para-algo-unico-123456',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+function requireAuth(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Não autenticado' });
+  next();
+}
+function requireManager(req, res, next) {
+  if (!req.session.userId || req.session.role !== 'gerente') {
+    return res.status(403).json({ error: 'Apenas o gerente pode fazer isso' });
+  }
+  next();
+}
+
+app.post('/api/register', async (req, res) => {
+  const { username, password, name } = req.body;
+  if (!username || !password || !name) return res.status(400).json({ error: 'Preencha todos os campos' });
+  db.get('SELECT COUNT(*) as c FROM users', async (err, row) => {
+    if (err) return res.status(500).json({ error: 'Erro no servidor' });
+    const isFirst = row.c === 0;
+    const role = isFirst ? 'gerente' : 'membro';
+    const hash = await bcrypt.hash(password, 10);
+    db.run('INSERT INTO users (username, password, name, role) VALUES (?, ?, ?, ?)',
+      [username, hash, name, role],
+      function (err2) {
+        if (err2) return res.status(400).json({ error: 'Usuário já existe' });
+        req.session.userId = this.lastID;
+        req.session.role = role;
+        req.session.name = name;
+        res.json({ ok: true, role });
+      });
+  });
+});
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  db.get('SELECT * FROM users WHERE username = ?', [username], async (err, user) => {
+    if (err || !user) return res.status(400).json({ error: 'Usuário ou senha inválidos' });
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(400).json({ error: 'Usuário ou senha inválidos' });
+    req.session.userId = user.id;
+    req.session.role = user.role;
+    req.session.name = user.name;
+    res.json({ ok: true, role: user.role });
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  db.get('SELECT id, username, name, role FROM users WHERE id = ?', [req.session.userId], (err, user) => {
+    if (err || !user) return res.status(401).json({ error: 'Sessão inválida' });
+    res.json(user);
+  });
+});
+
+app.get('/api/members', requireAuth, (req, res) => {
+  db.all("SELECT id, username, name, role FROM users WHERE role = 'membro' ORDER BY name", (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro no servidor' });
+    res.json(rows);
+  });
+});
+
+app.get('/api/tasks', requireAuth, (req, res) => {
+  const isManager = req.session.role === 'gerente';
+  const query = isManager
+    ? `SELECT t.*, u.name AS assigned_name FROM tasks t JOIN users u ON t.assigned_to = u.id ORDER BY t.id DESC`
+    : `SELECT t.*, u.name AS assigned_name FROM tasks t JOIN users u ON t.assigned_to = u.id WHERE t.assigned_to = ? ORDER BY t.id DESC`;
+  const params = isManager ? [] : [req.session.userId];
+  db.all(query, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro no servidor' });
+    res.json(rows);
+  });
+});
+
+app.post('/api/tasks', requireAuth, (req, res) => {
+  const { title, description, assigned_to, status } = req.body;
+  if (!title || !title.trim()) return res.status(400).json({ error: 'Título é obrigatório' });
+  const isManager = req.session.role === 'gerente';
+  let target = assigned_to;
+  if (!isManager) target = req.session.userId;
+  if (!target) return res.status(400).json({ error: 'Selecione um membro' });
+  const st = status || 'pendente';
+  const createdAt = new Date().toISOString();
+  db.run('INSERT INTO tasks (title, description, status, assigned_to, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [title.trim(), description || '', st, target, req.session.userId, createdAt],
+    function (err) {
+      if (err) return res.status(500).json({ error: 'Erro ao criar tarefa' });
+      res.json({ ok: true, id: this.lastID });
+    });
+});
+
+app.put('/api/tasks/:id', requireAuth, (req, res) => {
+  const id = req.params.id;
+  const { title, description, status, assigned_to } = req.body;
+  db.get('SELECT * FROM tasks WHERE id = ?', [id], (err, task) => {
+    if (err || !task) return res.status(404).json({ error: 'Tarefa não encontrada' });
+    const isManager = req.session.role === 'gerente';
+    const isOwner = task.assigned_to === req.session.userId;
+    if (!isManager && !isOwner) return res.status(403).json({ error: 'Sem permissão' });
+
+    if (isManager) {
+      const newTitle = title !== undefined ? title : task.title;
+      const newDesc = description !== undefined ? description : task.description;
+      const newStatus = status !== undefined ? status : task.status;
+      const newAssigned = assigned_to !== undefined ? assigned_to : task.assigned_to;
+      db.run('UPDATE tasks SET title = ?, description = ?, status = ?, assigned_to = ? WHERE id = ?',
+        [newTitle, newDesc, newStatus, newAssigned, id],
+        (e) => e ? res.status(500).json({ error: 'Erro ao atualizar' }) : res.json({ ok: true }));
+    } else {
+      if (status !== undefined) {
+        db.run('UPDATE tasks SET status = ? WHERE id = ?', [status, id],
+          (e) => e ? res.status(500).json({ error: 'Erro ao atualizar' }) : res.json({ ok: true }));
+      } else {
+        res.json({ ok: true });
+      }
+    }
+  });
+});
+
+app.delete('/api/tasks/:id', requireManager, (req, res) => {
+  db.run('DELETE FROM tasks WHERE id = ?', [req.params.id], (err) => {
+    if (err) return res.status(500).json({ error: 'Erro ao remover' });
+    res.json({ ok: true });
+  });
+});
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão de Tarefas da Equipe</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+</body>
+</html>
+
+=== public/styles.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+body { background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.auth-wrap { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.auth-card { background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); width: 100%; max-width: 400px; }
+.auth-card h1 { font-size: 22px; margin-bottom: 8px; color: #0f172a; }
+.auth-card p.sub { color: #64748b; font-size: 14px; margin-bottom: 20px; }
+input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; margin-bottom: 12px; background: #fff; }
+textarea { resize: vertical; min-height: 70px; }
+button { cursor: pointer; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; padding: 10px 16px; transition: .15s; }
+.btn-primary { background: #2563eb; color: #fff; width: 100%; }
+.btn-primary:hover { background: #1d4ed8; }
+.btn-small { padding: 6px 12px; font-size: 13px; }
+.btn-ghost { background: #e2e8f0; color: #334155; }
+.btn-danger { background: #ef4444; color: #fff; }
+.btn-danger:hover { background: #dc2626; }
+.btn-edit { background: #f59e0b; color: #fff; }
+.toggle-auth { text-align: center; margin-top: 12px; font-size: 14px; color: #2563eb; cursor: pointer; }
+.error { background: #fee2e2; color: #991b1b; padding: 10px; border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
+header { background: #fff; border-bottom: 1px solid #e2e8f0; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+header h1 { font-size: 18px; color: #0f172a; }
+header .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #64748b; }
+.badge-role { background: #dbeafe; color: #1e40af; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.new-task-card { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); margin-bottom: 24px; }
+.new-task-card h2 { font-size: 16px; margin-bottom: 16px; }
+.new-task-card form { display: grid; gap: 8px; }
+.new-task-card .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tasks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.task-card { background: #fff; border-radius: 12px; padding: 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.05); border-left: 4px solid #cbd5e1; display: flex; flex-direction: column; gap: 10px; }
+.task-card.status-pendente { border-left-color: #f59e0b; }
+.task-card.status-em_andamento { border-left-color: #3b82f6; }
+.task-card.status-concluida { border-left-color: #22c55e; }
+.task-card h3 { font-size: 15px; color: #0f172a; }
+.task-card .desc { font-size: 13px; color: #64748b; line-height: 1.4; }
+.task-card .meta { font-size: 12px; color: #94a3b8; }
+.task-card .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 8px; }
+.status-select { margin-bottom: 0; padding: 6px 8px; font-size: 13px; }
+.empty { text-align: center; padding: 40px; color: #94a3b8; background: #fff; border-radius: 12px; }
+
+=== public/app.js ===
+let currentUser = null;
+let members = [];
+let tasks = [];
+let authMode = 'login';
+let editingId = null;
+
+const STATUS_LABELS = {
+  'pendente': 'Pendente',
+  'em_andamento': 'Em andamento',
+  'concluida': 'Concluída'
+};
+
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...options
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erro');
+  return data;
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function renderAuth(error) {
+  const app = document.getElementById('app');
+  const isLogin = authMode === 'login';
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <h1>Gestão de Tarefas da Equipe</h1>
+        <p class="sub">${isLogin ? 'Entre com sua conta' : 'Crie sua conta. O primeiro usuário será o gerente.'}</p>
+        ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+        <form id="authForm">
+          ${!isLogin ? '<input name="name" placeholder="Seu nome" required>' : ''}
+          <input name="username" placeholder="Usuário" required autocomplete="username">
+          <input name="password" type="password" placeholder="Senha" required autocomplete="${isLogin ? 'current-password' : 'new-password'}">
+          <button type="submit" class="btn-primary">${isLogin ? 'Entrar' : 'Criar conta'}</button>
+        </form>
+        <div class="toggle-auth" id="toggleAuth">
+          ${isLogin ? 'Não tem conta? Criar conta' : 'Já tem conta? Entrar'}
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('toggleAuth').onclick = () => {
+    authMode = isLogin ? 'register' : 'login';
+    renderAuth();
+  };
+  document.getElementById('authForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    try {
+      await api('/api/' + (isLogin ? 'login' : 'register'), {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+      await loadApp();
+    } catch (err) {
+      renderAuth(err.message);
+    }
+  };
+}
+
+async function loadApp() {
+  try {
+    currentUser = await api('/api/me');
+  } catch {
+    renderAuth();
+    return;
+  }
+  const promises = [api('/api/tasks')];
+  if (currentUser.role === 'gerente') promises.push(api('/api/members'));
+  const results = await Promise.all(promises);
+  tasks = results[0];
+  members = results[1] || [];
+  renderMain();
+}
+
+function renderMain() {
+  const app = document.getElementById('app');
+  const isManager = currentUser.role === 'gerente';
+  app.innerHTML = `
+    <header>
+      <h1>Gestão de Tarefas</h1>
+      <div class="user-info">
+        <span>${escapeHtml(currentUser.name)}</span>
+        <span class="badge-role">${isManager ? 'Gerente' : 'Membro'}</span>
+        <button class="btn-ghost btn-small" id="logoutBtn">Sair</button>
+      </div>
+    </header>
+    <div class="container">
+      <div class="new-task-card">
+        <h2>${editingId ? 'Editar tarefa' : 'Nova tarefa'}</h2>
+        <form id="taskForm">
+          <input name="title" placeholder="Título da tarefa" required value="${editingId ? escapeHtml((tasks.find(t => t.id === editingId) || {}).title || '') : ''}">
+          <textarea name="description" placeholder="Descrição (opcional)">${editingId ? escapeHtml((tasks.find(t => t.id === editingId) || {}).description || '') : ''}</textarea>
+          ${isManager ? `
+            <div class="row">
+              <select name="assigned_to">
+                ${members.map(m => {
+                  const cur = editingId ? (tasks.find(t => t.id === editingId) || {}).assigned_to : null;
+                  return `<option value="${m.id}" ${cur === m.id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`;
+                }).join('')}
+              </select>
+              <select name="status">
+                ${Object.entries(STATUS_LABELS).map(([k, v]) => {
+                  const cur = editingId ? (tasks.find(t => t.id === editingId) || {}).status : 'pendente';
+                  return `<option value="${k}" ${cur === k ? 'selected' : ''}>${v}</option>`;
+                }).join('')}
+              </select>
+            </div>
+          ` : ''}
+          <div class="row">
+            <button type="submit" class="btn-primary">${editingId ? 'Salvar alterações' : 'Criar tarefa'}</button>
+            ${editingId ? '<button type="button" class="btn-ghost" id="cancelEdit">Cancelar</button>' : ''}
+          </div>
+        </form>
+      </div>
+      <h2 style="font-size:16px;margin-bottom:16px;">${isManager ? 'Todas as tarefas' : 'Minhas tarefas'}</h2>
+      <div class="tasks-grid" id="tasksGrid"></div>
+    </div>
+  `;
+
+  document.getElementById('logoutBtn').onclick = async () => {
+    await api('/api/logout', { method: 'POST' });
+    currentUser = null;
+    renderAuth();
+  };
+
+  document.getElementById('taskForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd.entries());
+    try {
+      if (editingId) {
+        await api('/api/tasks/' + editingId, { method: 'PUT', body: JSON.stringify(body) });
+        editingId = null;
+      } else {
+        await api('/api/tasks', { method: 'POST', body: JSON.stringify(body) });
+      }
+      await loadApp();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const cancelBtn = document.getElementById('cancelEdit');
+  if (cancelBtn) cancelBtn.onclick = () => { editingId = null; renderMain(); };
+
+  renderTasks();
+}
+
+function renderTasks() {
+  const grid = document.getElementById('tasksGrid');
+  const isManager = currentUser.role === 'gerente';
+  if (!tasks.length) {
+    grid.innerHTML = '<div class="empty">Nenhuma tarefa por aqui ainda.</div>';
+    return;
+  }
+  grid.innerHTML = tasks.map(t => {
+    const canEditFull = isManager;
+    const canChangeStatus = isManager || t.assigned_to === currentUser.id;
+    return `
+      <div class="task-card status-${t.status}">
+        <h3>${escapeHtml(t.title)}</h3>
+        ${t.description ? `<div class="desc">${escapeHtml(t.description)}</div>` : ''}
+        <div class="meta">Responsável: ${escapeHtml(t.assigned_name)}</div>
+        <div class="actions">
+          ${canChangeStatus ? `
+            <select class="status-select" data-id="${t.id}">
+              ${Object.entries(STATUS_LABELS).map(([k, v]) =>
+                `<option value="${k}" ${t.status === k ? 'selected' : ''}>${v}</option>`
+              ).join('')}
+            </select>` : `<span class="badge-role">${STATUS_LABELS[t.status]}</span>`}
+          ${canEditFull ? `
+            <button class="btn-edit btn-small" data-edit="${t.id}">Editar</button>
+            <button class="btn-danger btn-small" data-del="${t.id}">Remover</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  grid.querySelectorAll('.status-select').forEach(sel => {
+    sel.onchange = async () => {
+      try {
+        await api('/api/tasks/' + sel.dataset.id, {
+          method: 'PUT',
+          body: JSON.stringify({ status: sel.value })
+        });
+        await loadApp();
+      } catch (err) { alert(err.message); }
+    };
+  });
+
+  grid.querySelectorAll('[data-edit]').forEach(btn => {
+    btn.onclick = () => {
+      editingId = parseInt(btn.dataset.edit, 10);
+      renderMain();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+  });
+
+  grid.querySelectorAll('[data-del]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Remover esta tarefa?')) return;
+      try {
+        await api('/api/tasks/' + btn.dataset.del, { method: 'DELETE' });
+        await loadApp();
+      } catch (err) { alert(err.message); }
+    };
+  });
+}
+
+loadApp();
+
+=== README.md ===
+# Sistema de Gestão de Tarefas de Equipe
+
+Sistema web completo para gerenciar tarefas de uma equipe, com contas separadas para membros e gerente. Todos os dados ficam salvos em arquivos no próprio servidor (SQLite), sem depender de serviços externos.
+
+## O que ele faz
+
+- **Primeiro usuário cadastrado vira gerente automaticamente.** Os próximos usuários cadastrados viram membros da equipe.
+- **Membros da equipe** podem:
+  - Ver apenas as tarefas que receberam.
+  - Mudar a situação (pendente / em andamento / concluída) das suas tarefas.
+  - Criar tarefas para si mesmos.
+- **Gerente** pode:
+  - Criar tarefas e distribuir para qualquer membro.
+  - Editar título, descrição, responsável e situação de qualquer tarefa.
+  - Remover tarefas.
+  - Ver todas as tarefas de todos os membros.
+- **Login individual** por usuário e senha. A sessão dura até você clicar em "Sair" (fica salva por 7 dias).
+- Todos os dados persistem mesmo que você feche o navegador ou reinicie o servidor.
+
+## Como instalar e executar
+
+Pré-requisito: ter o **Node.js** instalado (versão 16 ou superior). Baixe em https://nodejs.org.
+
+No terminal, dentro da pasta do projeto, rode:
+
+```
+npm install
+npm start
+```
+
+Depois abra no navegador:
+
+```
+http://localhost:3000
+```
+
+Na primeira vez, clique em **"Criar conta"** para registrar o gerente. Depois, cada membro da equipe cria sua própria conta e entra normalmente.
+
+## Como colocar na internet
+
+Como é um site Node.js, hospede em serviços que rodam Node, como:
+
+- **Railway** (railway.app) — simples, com deploy direto do GitHub.
+- **Render** (render.com) — plano gratuito disponível.
+- **Fly.io** — também funciona bem.
+
+Em qualquer um deles, basta subir os arquivos do projeto e definir o comando de start como `npm start`. Os arquivos `data.db` e `sessions.db` serão criados automaticamente na primeira execução e mantêm tudo salvo no próprio servidor.
+
+## Observações importantes
+
+- Para trocar o "segredo" das sessões (recomendado antes de publicar), abra `server.js` e mude o valor de `secret` na linha do `express-session`.
+- As senhas são guardadas criptografadas com bcrypt.
+- As tarefas e os usuários ficam guardados nos arquivos `data.db` e `sessions.db` criados automaticamente na pasta do projeto. Faça backup desses arquivos de vez em quando.

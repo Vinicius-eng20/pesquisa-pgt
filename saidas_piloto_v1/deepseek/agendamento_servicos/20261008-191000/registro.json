@@ -1,0 +1,44 @@
+{
+  "data_hora_utc": "2026-10-08T19:10:00+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "agendamento_servicos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\agendamento_servicos\\20261008-191000",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um sistema de agendamento de serviços. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o responsável pelo negócio. Os clientes precisam poder ver os serviços e os horários livres, marcar um horário e ver ou cancelar os horários que marcaram. O responsável pelo negócio precisa poder cadastrar e editar os serviços e os horários disponíveis, confirmar ou recusar agendamentos e ver todos os agendamentos de todos os clientes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Relace",
+  "id_geracao": "gen-1791486600-aHxdxOpJAlJIPPI5Pm2w",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 253,
+  "tokens_saida": 8375,
+  "tokens_raciocinio": 0,
+  "tokens_total": 8628,
+  "custo_usd": 0.0100571599,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 42.9,
+  "duracao_api_s": 42.9,
+  "tokens_por_s": 195.0,
+  "n_arquivos": 6,
+  "arquivos": [
+    "README.md",
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

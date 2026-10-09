@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Equipe • Gestão de Tarefas</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#3f7a5f" />
+<link rel="icon" href="icons/icon.svg" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<style>
+  :root{
+    --bg:#eef1f4;
+    --bg2:#e6ebee;
+    --surface:#ffffff;
+    --surface2:#f7f9fb;
+    --ink:#1f262b;
+    --ink-soft:#4a565f;
+    --muted:#7c8891;
+    --line:#dde4ea;
+    --line2:#e9eef2;
+    --brand:#2f7d5b;
+    --brand-dark:#256349;
+    --brand-soft:#e4f1ea;
+    --accent:#2f6f9e;
+    --danger:#c0473b;
+    --danger-soft:#f7e6e3;
+    --shadow-sm:0 1px 2px rgba(20,30,40,.06),0 1px 3px rgba(20,30,40,.08);
+    --shadow:0 6px 24px rgba(20,30,40,.10);
+    --shadow-lg:0 18px 60px rgba(20,30,40,.22);
+    --radius:14px;
+    --radius-lg:20px;
+    --font-display:'Georgia','Times New Roman',serif;
+    --font-body:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-body);
+    color:var(--ink);
+    background:var(--bg);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+    overflow-x:hidden;
+  }
+  /* Background ambilight */
+  .bg-layer{
+    position:fixed;inset:0;z-index:-2;pointer-events:none;
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(47,125,91,.16), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(47,111,158,.14), transparent 55%),
+      radial-gradient(900px 900px at 50% 120%, rgba(47,125,91,.10), transparent 60%);
+    animation:drift 26s ease-in-out infinite alternate;
+  }
+  @keyframes drift{
+    from{transform:translate3d(0,0,0) scale(1);}
+    to{transform:translate3d(-2%,1.5%,0) scale(1.06);}
+  }
+  .grain{
+    position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.4;mix-blend-mode:soft-light;
+    background-image:radial-gradient(rgba(0,0,0,.35) .5px, transparent .5px);
+    background-size:3px 3px;
+  }
+
+  /* ===== AUTH ===== */
+  .auth{
+    min-height:100vh;display:grid;grid-template-columns:1fr 1fr;
+  }
+  .auth__side{
+    position:relative;overflow:hidden;color:#fff;
+    background:linear-gradient(150deg,#20563f 0%, #2f7d5b 45%, #356b8f 100%);
+    display:flex;flex-direction:column;justify-content:space-between;padding:clamp(28px,4vw,56px);
+  }
+  .auth__side::before{
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(500px 300px at 20% 20%, rgba(255,255,255,.18), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 34px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 34px);
+  }
+  .brandmark{display:flex;align-items:center;gap:12px;position:relative;z-index:1;}
+  .brandmark__logo{
+    width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.16);
+    display:grid;place-items:center;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.25);
+  }
+  .brandmark__name{font-family:var(--font-display);font-size:1.35rem;letter-spacing:.5px;}
+  .auth__hero{position:relative;z-index:1;}
+  .auth__hero h1{
+    font-family:var(--font-display);font-weight:600;
+    font-size:clamp(2rem,4.6vw,3.4rem);line-height:1.05;margin:0 0 18px;letter-spacing:-.5px;
+  }
+  .auth__hero p{font-size:1.05rem;max-width:34ch;color:rgba(255,255,255,.85);margin:0 0 28px;}
+  .feature-list{list-style:none;padding:0;margin:0;display:grid;gap:14px;}
+  .feature-list li{display:flex;gap:12px;align-items:flex-start;font-size:.98rem;color:rgba(255,255,255,.9);}
+  .feature-list .ficon{
+    width:30px;height:30px;flex:none;border-radius:9px;background:rgba(255,255,255,.16);
+    display:grid;place-items:center;border:1px solid rgba(255,255,255,.22);
+  }
+  .auth__foot{position:relative;z-index:1;font-size:.82rem;color:rgba(255,255,255,.7);}
+
+  .auth__main{
+    display:flex;align-items:center;justify-content:center;padding:clamp(20px,5vw,60px);
+    background:var(--surface);
+  }
+  .auth__card{width:100%;max-width:400px;}
+  .auth__card h2{font-family:var(--font-display);font-size:1.7rem;margin:0 0 4px;letter-spacing:-.3px;}
+  .auth__card .sub{color:var(--muted);margin:0 0 24px;font-size:.95rem;}
+  .tabs{display:flex;gap:6px;background:var(--surface2);padding:5px;border-radius:12px;margin-bottom:22px;border:1px solid var(--line2);}
+  .tab{
+    flex:1;border:none;background:transparent;padding:10px 12px;border-radius:9px;cursor:pointer;
+    font-family:var(--font-body);font-size:.92rem;font-weight:600;color:var(--ink-soft);
+    transition:all .2s ease;
+  }
+  .tab.is-active{background:var(--surface);color:var(--brand-dark);box-shadow:var(--shadow-sm);}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:.82rem;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+  .input{
+    width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;
+    font-size:1rem;font-family:var(--font-body);background:var(--surface);color:var(--ink);
+    transition:border-color .18s ease, box-shadow .18s ease;
+  }
+  .input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px rgba(47,125,91,.12);}
+  select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237c8891' d='M6 8 0 0h12z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px;}
+  .auth__err{color:var(--danger);font-size:.85rem;min-height:1.1em;margin:-4px 0 12px;}
+
+  /* Buttons */
+  .btn{
+    border:none;cursor:pointer;font-family:var(--font-body);font-weight:600;font-size:.95rem;
+    padding:12px 18px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .btn:active{transform:translateY(1px) scale(.99);}
+  .btn--primary{background:var(--brand);color:#fff;box-shadow:0 6px 16px rgba(47,125,91,.28);}
+  .btn--primary:hover{background:var(--brand-dark);box-shadow:0 10px 24px rgba(47,125,91,.36);}
+  .btn--ghost{background:var(--surface);color:var(--ink);border:1.5px solid var(--line);}
+  .btn--ghost:hover{border-color:var(--brand);color:var(--brand-dark);background:var(--brand-soft);}
+  .btn--danger{background:var(--danger);color:#fff;}
+  .btn--danger:hover{filter:brightness(.94);}
+  .btn--block{width:100%;}
+  .btn--sm{padding:8px 12px;font-size:.85rem;border-radius:9px;}
+  .btn--icon{padding:9px;border-radius:10px;background:var(--surface2);border:1px solid var(--line2);color:var(--ink-soft);}
+  .btn--icon:hover{background:var(--brand-soft);color:var(--brand-dark);border-color:transparent;}
+  .btn--icon.is-danger:hover{background:var(--danger-soft);color:var(--danger);border-color:transparent;}
+
+  /* ===== APP SHELL ===== */
+  .app{min-height:100vh;display:flex;flex-direction:column;}
+  .topbar{
+    position:sticky;top:0;z-index:40;background:rgba(255,255,255,.82);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);
+  }
+  .topbar__in{
+    max-width:1200px;margin:0 auto;padding:12px clamp(14px,3vw,28px);
+    display:flex;align-items:center;gap:16px;
+  }
+  .topbar .brandmark__logo{width:40px;height:40px;background:var(--brand-soft);border:1px solid var(--line);}
+  .topbar .brandmark__name{font-family:var(--font-display);font-size:1.2rem;color:var(--ink);}
+  .topbar__spacer{flex:1;}
+  .userchip{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface);}
+  .avatar{
+    width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.85rem;color:#fff;
+    background:linear-gradient(140deg,var(--brand),var(--accent));
+  }
+  .userchip .who{font-size:.85rem;line-height:1.15;}
+  .userchip .who b{display:block;font-size:.9rem;}
+  .userchip .who span{color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.4px;}
+  .icon-btn{
+    width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--surface);
+    display:grid;place-items:center;cursor:pointer;color:var(--ink-soft);transition:all .18s ease;
+  }
+  .icon-btn:hover{color:var(--brand-dark);background:var(--brand-soft);border-color:transparent;}
+
+  .layout{max-width:1200px;margin:0 auto;width:100%;padding:clamp(18px,3vw,32px) clamp(14px,3vw,28px) 60px;display:grid;grid-template-columns:240px 1fr;gap:26px;align-items:start;}
+  .sidebar{position:sticky;top:84px;display:grid;gap:8px;}
+  .nav-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);padding:6px 10px 2px;font-weight:700;}
+  .nav-item{
+    display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;cursor:pointer;
+    color:var(--ink-soft);font-weight:600;font-size:.94rem;border:1px solid transparent;transition:all .18s ease;
+  }
+  .nav-item:hover{background:var(--surface);color:var(--ink);}
+  .nav-item.is-active{background:var(--surface);color:var(--brand-dark);border-color:var(--line);box-shadow:var(--shadow-sm);}
+  .nav-item .nicon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--surface2);color:var(--muted);flex:none;}
+  .nav-item.is-active .nicon{background:var(--brand-soft);color:var(--brand-dark);}
+  .nav-item .count{margin-left:auto;font-size:.72rem;font-weight:700;background:var(--brand-soft);color:var(--brand-dark);padding:2px 8px;border-radius:999px;}
+  .sidebar .foot{padding:12px 10px 4px;color:var(--muted);font-size:.74rem;line-height:1.5;}
+
+  /* ===== MAIN ===== */
+  .main{min-width:0;}
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px;flex-wrap:wrap;}
+  .page-head .eyebrow{font-size:.74rem;text-transform:uppercase;letter-spacing:.8px;color:var(--brand-dark);font-weight:700;margin-bottom:4px;}
+  .page-head h2{font-family:var(--font-display);font-size:clamp(1.6rem,3vw,2.1rem);margin:0;letter-spacing:-.4px;}
+  .page-head .sub{color:var(--muted);font-size:.92rem;margin:2px 0 0;}
+
+  .controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;align-items:center;}
+  .search{position:relative;flex:1;min-width:200px;}
+  .search input{width:100%;padding:11px 14px 11px 40px;border:1.5px solid var(--line);border-radius:11px;font-size:.94rem;background:var(--surface);}
+  .search input:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 4px rgba(47,125,91,.12);}
+  .search svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);}
+  .chip{
+    display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;font-size:.85rem;font-weight:600;
+    background:var(--surface);border:1.5px solid var(--line);color:var(--ink-soft);cursor:pointer;transition:all .16s ease;
+  }
+  .chip:hover{border-color:var(--brand);}
+  .chip.is-active{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .chips-row{display:flex;gap:8px;flex-wrap:wrap;}
+
+  /* Stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+  .stat{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden;
+    box-shadow:var(--shadow-sm);
+  }
+  .stat .num{font-family:var(--font-display);font-size:2.4rem;line-height:1;letter-spacing:-1px;}
+  .stat .lbl{color:var(--muted);font-size:.85rem;margin-top:6px;font-weight:600;}
+  .stat .bar{height:6px;border-radius:999px;background:var(--line2);margin-top:14px;overflow:hidden;}
+  .stat .bar > i{display:block;height:100%;background:var(--brand);border-radius:999px;transition:width .8s cubic-bezier(.2,.7,.2,1);}
+  .stat .spark{position:absolute;right:14px;top:16px;color:var(--brand-soft);}
+
+  /* Sections / boards */
+  .board{display:grid;gap:22px;}
+  .board--grouped{grid-template-columns:1fr;}
+  .section{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm);overflow:hidden;}
+  .section__head{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line2);}
+  .section__head h3{font-family:var(--font-display);font-size:1.15rem;margin:0;letter-spacing:-.2px;}
+  .section__head .pill{font-size:.76rem;font-weight:700;color:var(--brand-dark);background:var(--brand-soft);padding:3px 10px;border-radius:999px;}
+  .section__head .spacer{flex:1;}
+  .section__list{display:grid;}
+  .section--empty{padding:40px;text-align:center;color:var(--muted);}
+  .section--empty .big{font-family:var(--font-display);font-size:1.3rem;color:var(--ink-soft);margin-bottom:6px;}
+
+  /* Task card */
+  .task{
+    display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:15px 20px;
+    border-bottom:1px solid var(--line2);position:relative;transition:background .18s ease;
+    animation:taskIn .45s cubic-bezier(.2,.7,.2,1) both;
+  }
+  @keyframes taskIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+  .task:last-child{border-bottom:none;}
+  .task:hover{background:var(--surface2);}
+  .task.is-done .task__title{text-decoration:line-through;color:var(--muted);}
+  .task__check{
+    width:26px;height:26px;border-radius:8px;border:2px solid var(--line);background:var(--surface);cursor:pointer;
+    display:grid;place-items:center;color:transparent;transition:all .18s ease;flex:none;
+  }
+  .task__check:hover{border-color:var(--brand);color:var(--brand);}
+  .task.is-done .task__check{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .task__body{min-width:0;}
+  .task__title{font-weight:600;font-size:.98rem;margin:0 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .task__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:.8rem;}
+  .tag{display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:600;background:var(--surface2);border:1px solid var(--line2);color:var(--ink-soft);}
+  .tag .dot{width:7px;height:7px;border-radius:50%;}
+  .dot--alta{background:#d94b3a;}
+  .dot--media{background:#d99a2b;}
+  .dot--baixa{background:#3fa877;}
+  .task__due{display:inline-flex;align-items:center;gap:5px;}
+  .task__due.is-over{color:var(--danger);font-weight:600;}
+  .task__actions{display:flex;gap:6px;}
+  .mini-av{width:22px;height:22px;border-radius:50%;font-size:.62rem;font-weight:700;color:#fff;display:grid;place-items:center;background:linear-gradient(140deg,var(--accent),var(--brand));margin-left:2px;}
+
+  .assignee{display:inline-flex;align-items:center;gap:7px;}
+  .assignee .mini-av{margin-left:0;}
+  .assignee.unset{color:var(--muted);font-style:italic;}
+
+  /* Modal */
+  .modal-wrap{position:fixed;inset:0;z-index:100;display:none;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto;}
+  .modal-wrap.is-open{display:flex;}
+  .modal-scrim{position:fixed;inset:0;background:rgba(20,30,40,.45);backdrop-filter:blur(3px);animation:fade .25s ease;}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+  .modal{
+    position:relative;background:var(--surface);border-radius:var(--radius-lg);width:100%;max-width:520px;margin:30px auto;
+    box-shadow:var(--shadow-lg);border:1px solid var(--line);animation:pop .3s cubic-bezier(.2,.8,.25,1);
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(16px) scale(.98);}to{opacity:1;transform:none;}}
+  .modal__head{display:flex;align-items:center;gap:12px;padding:20px 22px;border-bottom:1px solid var(--line2);}
+  .modal__head h3{font-family:var(--font-display);font-size:1.3rem;margin:0;letter-spacing:-.2px;}
+  .modal__head .x{margin-left:auto;}
+  .modal__body{padding:22px;}
+  .modal__foot{display:flex;gap:10px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--line2);background:var(--surface2);border-radius:0 0 var(--radius-lg) var(--radius-lg);}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+  /* Toast */
+  .toasts{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:200;display:grid;gap:10px;width:min(92vw,380px);}
+  .toast{
+    background:var(--ink);color:#fff;padding:13px 16px;border-radius:12px;box-shadow:var(--shadow-lg);
+    font-size:.9rem;display:flex;gap:10px;align-items:center;animation:toastIn .3s ease;
+  }
+  .toast.is-leaving{animation:toastOut .3s ease forwards;}
+  @keyframes toastIn{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
+  @keyframes toastOut{to{opacity:0;transform:translateY(16px);}}
+  .toast .ti{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--brand);}
+  .toast.warn .ti{background:#d99a2b;}
+  .toast.err .ti{background:var(--danger);}
+
+  /* Progress ring */
+  .ring{transform:rotate(-90deg);}
+  .ring circle{fill:none;stroke-width:6;}
+  .ring .track{stroke:var(--line2);}
+  .ring .prog{stroke:var(--brand);stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.2,.7,.2,1);}
+
+  .member-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line2);}
+  .member-row:last-child{border-bottom:none;}
+  .member-row .avatar{width:38px;height:38px;}
+  .member-row .m-name{font-weight:600;font-size:.95rem;}
+  .member-row .m-sub{color:var(--muted);font-size:.8rem;}
+  .member-row .m-nums{margin-left:auto;display:flex;gap:16px;text-align:right;}
+  .member-row .m-nums b{display:block;font-family:var(--font-display);font-size:1.2rem;line-height:1;}
+  .member-row .m-nums span{font-size:.72rem;color:var(--muted);}
+  .member-row .m-nums.done b{color:var(--brand-dark);}
+  .member-row .m-nums.open b{color:var(--accent);}
+
+  .empty-hero{text-align:center;padding:50px 20px;}
+  .empty-hero .eh-ic{width:64px;height:64px;margin:0 auto 16px;border-radius:18px;background:var(--brand-soft);display:grid;place-items:center;color:var(--brand);}
+  .empty-hero h3{font-family:var(--font-display);font-size:1.4rem;margin:0 0 6px;}
+  .empty-hero p{color:var(--muted);margin:0 0 20px;}
+
+  .reveal{opacity:0;transform:translateY(14px);}
+  .reveal.in{opacity:1;transform:none;transition:opacity .6s ease, transform .6s cubic-bezier(.2,.7,.2,1);}
+
+  .fab{
+    position:fixed;bottom:24px;right:24px;z-index:50;width:58px;height:58px;border-radius:16px;border:none;
+    background:var(--brand);color:#fff;font-size:28px;cursor:pointer;box-shadow:0 12px 30px rgba(47,125,91,.4);
+    display:grid;place-items:center;transition:transform .15s ease, background .2s ease;
+  }
+  .fab:hover{background:var(--brand-dark);transform:translateY(-2px) rotate(90deg);}
+
+  @media(max-width:900px){
+    .auth{grid-template-columns:1fr;}
+    .auth__side{display:none;}
+    .layout{grid-template-columns:1fr;gap:16px;}
+    .sidebar{position:static;top:0;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));}
+    .nav-label,.sidebar .foot{display:none;}
+    .stats{grid-template-columns:repeat(2,1fr);}
+    .form-row{grid-template-columns:1fr;}
+  }
+  @media(max-width:560px){
+    .task{grid-template-columns:auto 1fr;grid-template-rows:auto auto;}
+    .task__actions{grid-column:1 / -1;justify-content:flex-end;padding-top:4px;}
+    .userchip .who{display:none;}
+    .topbar .brandmark__name{display:none;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important;}
+    .reveal{opacity:1;transform:none;}
+  }
+</style>
+</head>
+<body>
+<div class="bg-layer"></div>
+<div class="grain"></div>
+
+<!-- ============ AUTH ============ -->
+<div id="auth" class="auth" hidden>
+  <div class="auth__side">
+    <div class="brandmark">
+      <div class="brandmark__logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <div class="brandmark__name">Equipe</div>
+    </div>
+    <div class="auth__hero">
+      <h1>Suas tarefas,<br>da forma simples.</h1>
+      <p>Uma base única para a equipe. Crie, distribua e acompanhe o trabalho de todo o time sem complicação.</p>
+      <ul class="feature-list">
+        <li><span class="ficon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span> Gerente distribui tarefas para cada membro</li>
+        <li><span class="ficon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-6 0v4"/><rect x="2" y="9" width="20" height="12" rx="2"/></svg></span> Cada pessoa tem a sua conta e a sua senha</li>
+        <li><span class="ficon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></span> Painel com progresso da equipe em tempo real</li>
+      </ul>
+    </div>
+    <div class="auth__foot">Dados salvos no seu navegador • 100% dentro do próprio site</div>
+  </div>
+
+  <div class="auth__main">
+    <div class="auth__card">
+      <h2 id="authTitle">Entrar</h2>
+      <p class="sub" id="authSub">Bem-vindo de volta. Entre com sua conta.</p>
+      <div class="tabs">
+        <button class="tab is-active" data-tab="login">Entrar</button>
+        <button class="tab" data-tab="register">Criar conta</button>
+      </div>
+      <div class="auth__err" id="authErr"></div>
+      <form id="authForm">
+        <div class="field">
+          <label for="uName">Nome de usuário</label>
+          <input class="input" id="uName" autocomplete="username" placeholder="ex.: joao" required />
+        </div>
+        <div class="field">
+          <label for="uPass">Senha</label>
+          <input class="input" id="uPass" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        </div>
+        <div class="field" id="roleField" hidden>
+          <label for="uRole">Perfil</label>
+          <select class="input" id="uRole">
+            <option value="member">Membro de equipe</option>
+            <option value="manager">Gerente</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn--primary btn--block" id="authSubmit">Entrar</button>
+      </form>
+      <p class="sub" style="margin-top:16px;text-align:center;font-size:.85rem" id="authSwitch">
+        Não tem conta? <a href="#" id="switchLink" style="color:var(--brand-dark);font-weight:600;text-decoration:none">Criar agora</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="topbar__in">
+      <div class="brandmark">
+        <div class="brandmark__logo">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <div class="brandmark__name">Equipe</div>
+      </div>
+      <div class="topbar__spacer"></div>
+      <div class="userchip">
+        <div class="avatar" id="topAvatar">A</div>
+        <div class="who"><b id="topName">—</b><span id="topRole">—</span></div>
+      </div>
+      <button class="icon-btn" id="logoutBtn" title="Sair">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar"></nav>
+    <main class="main" id="main"></main>
+  </div>
+
+  <button class="fab" id="fab" title="Nova tarefa" hidden>
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+  </button>
+</div>
+
+<div id="modalWrap" class="modal-wrap">
+  <div class="modal-scrim" data-close></div>
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal__head">
+      <h3 id="modalTitle">Tarefa</h3>
+      <button class="icon-btn x" data-close title="Fechar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal__body" id="modalBody"></div>
+    <div class="modal__foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ Storage ============ */
+  var DB_KEY = "equipe.db.v1";
+  var SESSION_KEY = "equipe.session.v1";
+  var store = {
+    get: function(){
+      try{ return JSON.parse(localStorage.getItem(DB_KEY)) || {users:[],tasks:[]}; }
+      catch(e){ return {users:[],tasks:[]}; }
+    },
+    save: function(db){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+  };
+  var DB = store.get();
+
+  /* ============ Helpers ============ */
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function esc(s){ return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];}); }
+  function initials(n){ var p=String(n).trim().split(/\s+/); return ((p[0][0]||"")+(p[1]?p[1][0]:"")).toUpperCase(); }
+  function todayStr(){ var d=new Date(); d.setHours(0,0,0,0); return d.toISOString().slice(0,10); }
+  function addDays(n){ var d=new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+  function daysUntil(dateStr){
+    if(!dateStr) return null;
+    var t=new Date(); t.setHours(0,0,0,0);
+    var d=new Date(dateStr+"T00:00:00");
+    return Math.round((d-t)/86400000);
+  }
+  function fmtDate(dateStr){
+    if(!dateStr) return "";
+    var d=new Date(dateStr+"T00:00:00");
+    return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
+  }
+  function relDate(dateStr){
+    var diff = daysUntil(dateStr);
+    if(diff===null) return "";
+    if(diff===0) return "Hoje";
+    if(diff===1) return "Amanhã";
+    if(diff===-1) return "Ontem";
+    if(diff>0) return "Em "+diff+" dias";
+    return "Há "+Math.abs(diff)+" dias";
+  }
+  function hashPass(s){ var h=0; for(var i=0;i<s.length;i++){h=(h<<5)-h+s.charCodeAt(i);h|=0;} return "h"+(h>>>0).toString(16); }
+
+  /* ============ Auth state ============ */
+  var session = null;
+  try{ session = JSON.parse(localStorage.getItem(SESSION_KEY)); }catch(e){}
+  function saveSession(s){ if(s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); }
+  function currentUser(){ if(!session) return null; return DB.users.find(function(u){return u.id===session.id;}) || null; }
+  function isManager(){ var u=currentUser(); return u && u.role==="manager"; }
+
+  /* ============ Toast ============ */
+  function toast(msg, type){
+    var wrap=document.getElementById("toasts");
+    var el=document.createElement("div");
+    el.className="toast"+(type?(" "+type):"");
+    el.innerHTML='<span class="ti"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span><span>'+esc(msg)+'</span>';
+    wrap.appendChild(el);
+    setTimeout(function(){ el.classList.add("is-leaving"); setTimeout(function(){el.remove();},300); }, 3200);
+  }
+
+  /* ============ Reveal on scroll ============ */
+  function observeReveals(root){
+    if(!("IntersectionObserver" in window)){
+      (root||document).querySelectorAll(".reveal").forEach(function(e){e.classList.add("in");});
+      return;
+    }
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); } });
+    },{threshold:.08});
+    (root||document).querySelectorAll(".reveal:not(.in)").forEach(function(e){ io.observe(e); });
+  }
+
+  /* ============ View state ============ */
+  var view = { name:"me", search:"", status:"", priority:"", assignee:"" };
+
+  /* =========================================================
+     RENDER: APP SHELL
+  ========================================================= */
+  function renderApp(){
+    document.getElementById("auth").hidden = true;
+    document.getElementById("app").hidden = false;
+    var u = currentUser();
+    document.getElementById("topAvatar").textContent = initials(u.name);
+    document.getElementById("topName").textContent = u.name;
+    document.getElementById("topRole").textContent = u.role==="manager" ? "Gerente" : "Membro";
+    renderSidebar();
+    document.getElementById("fab").hidden = !isManager();
+    renderMain();
+  }
+
+  function sidebarConfig(){
+    if(isManager()){
+      return [
+        {name:"all", label:"Todas as tarefas", icon:'<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>'},
+        {name:"member", label:"Meu trabalho", icon:'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'},
+        {name:"team", label:"Painel da equipe", icon:'<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'}
+      ];
+    }
+    return [
+      {name:"me", label:"Minhas tarefas", icon:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>'},
+      {name:"overview", label:"Visão geral", icon:'<path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>'}
+    ];
+  }
+
+  function renderSidebar(){
+    var nav=document.getElementById("sidebar");
+    var items=sidebarConfig();
+    var html='<div class="nav-label">Menu</div>';
+    items.forEach(function(it){
+      var active = view.name===it.name ? " is-active":"";
+      var count = it.name==="member"||it.name==="me" ? myTasksCount() : (isManager()? DB.tasks.length : 0);
+      html += '<div class="nav-item'+active+'" data-nav="'+it.name+'">'+
+        '<span class="nicon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+it.icon+'</svg></span>'+
+        '<span>'+it.label+'</span>'+
+        (count? '<span class="count">'+count+'</span>':'')+
+      '</div>';
+    });
+    html += '<div class="foot">Os dados ficam salvos neste navegador. Para limpar tudo, apague o cache.</div>';
+    nav.innerHTML=html;
+    nav.querySelectorAll("[data-nav]").forEach(function(el){
+      el.addEventListener("click",function(){ view.name=el.getAttribute("data-nav"); view.search="";view.status="";view.priority="";view.assignee=""; renderMain(); });
+    });
+  }
+
+  function myTasksCount(){
+    var u=currentUser();
+    return DB.tasks.filter(function(t){ return t.assignee===u.id; }).length;
+  }
+
+  /* =========================================================
+     RENDER: MAIN (per view)
+  ========================================================= */
+  function renderMain(){
+    var main=document.getElementById("main");
+    if(isManager()){
+      if(view.name==="all") main.innerHTML = renderAllTasks();
+      else if(view.name==="member") main.innerHTML = renderMyBoard();
+      else main.innerHTML = renderTeam();
+    } else {
+      if(view.name==="me") main.innerHTML = renderMyBoard();
+      else main.innerHTML = renderOverview();
+    }
+    bindMainEvents();
+    observeReveals(main);
+    runStatBars(main);
+  }
+
+  function taskCard(t, opts){
+    opts=opts||{};
+    var u=currentUser();
+    var canToggle = opts.canToggle; // gerente sempre; membro só se for dele
+    var days = daysUntil(t.due);
+    var over = t.status!=="done" && days!==null && days<0;
+    var prio = t.priority || "media";
+    var assignee = DB.users.find(function(x){return x.id===t.assignee;});
+    var statusTxt = t.status==="done" ? "Concluída" : t.status==="doing" ? "Em andamento" : "A fazer";
+    var actions="";
+    if(opts.allowEdit){
+      actions += '<button class="icon-btn" data-act="edit" data-id="'+t.id+'" title="Editar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>';
+    }
+    if(opts.allowDelete){
+      actions += '<button class="icon-btn is-danger" data-act="del" data-id="'+t.id+'" title="Excluir"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
+    }
+    var check = canToggle
+      ? '<div class="task__check" data-act="toggle" data-id="'+t.id+'" title="Marcar concluída"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>'
+      : '<div class="task__check" style="cursor:default;pointer-events:none"></div>';
+
+    var assigneeHtml = opts.showAssignee
+      ? (assignee ? '<span class="assignee"><span class="mini-av">'+initials(assignee.name)+'</span> '+esc(assignee.name)+'</span>'
+                  : '<span class="assignee unset">Sem responsável</span>')
+      : "";
+
+    return '<div class="task'+(t.status==="done"?" is-done":"")+'" data-id="'+t.id+'">'+
+      check +
+      '<div class="task__body">'+
+        '<h4 class="task__title" data-act="'+(opts.allowEdit?"edit":"noop")+'" data-id="'+t.id+'">'+esc(t.title)+'</h4>'+
+        '<div class="task__meta">'+
+          '<span class="tag"><span class="dot dot--'+prio+'"></span>'+({alta:"Alta",media:"Média",baixa:"Baixa"}[prio])+'</span>'+
+          '<span class="tag">'+statusTxt+'</span>'+
+          (t.due?'<span class="task__due'+(over?" is-over":"")+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>'+relDate(t.due)+(over?" (atrasada)":"")+'</span>':'')+
+          assigneeHtml +
+        '</div>'+
+      '</div>'+
+      (actions?'<div class="task__actions">'+actions+'</div>':'')+
+    '</div>';
+  }
+
+  function emptyState(msg, cta){
+    return '<div class="empty-hero"><div class="eh-ic"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div><h3>Nada por aqui</h3><p>'+msg+'</p>'+ (cta||"") +'</div>';
+  }
+
+  function renderMyBoard(){
+    var u=currentUser();
+    var mine=DB.tasks.filter(function(t){return t.assignee===u.id;});
+    var order={todo:0,doing:1,done:2};
+    mine.sort(function(a,b){ return (order[a.status]-order[b.status]) || ((b.due||"9999")>(a.due||"9999")?1:-1); });
+    var groups=[
+      {key:"todo",title:"A fazer",icon:'<circle cx="12" cy="12" r="9"/>'},
+      {key:"doing",title:"Em andamento",icon:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>'},
+      {key:"done",title:"Concluídas",icon:'<path d="M20 6 9 17l-5-5"/>'}
+    ];
+    var html='<div class="page-head"><div><div class="eyebrow">Sua lista</div><h2>Minhas tarefas</h2><p class="sub">'+mine.length+' tarefa'+(mine.length!==1?"s":"")+' no total</p></div>'+
+      '<button class="btn btn--primary" data-new="mine"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Nova tarefa</button></div>'+
+      '<div class="board">';
+    if(mine.length===0){
+      html+='<div class="section">'+emptyState("Você ainda não tem tarefas. Crie uma para si mesmo.",'<button class="btn btn--primary" data-new="mine">Criar tarefa</button>')+'</div>';
+    } else {
+      groups.forEach(function(g){
+        var items=mine.filter(function(t){return t.status===g.key;});
+        html+='<div class="section reveal"><div class="section__head">'+
+          '<h3>'+g.title+'</h3><span class="pill">'+items.length+'</span>'+
+          '<span class="spacer"></span>'+
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--brand)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+g.icon+'</svg>'+
+          '</div>';
+        if(items.length===0){
+          html+='<div class="section__list"><div class="section--empty">Sem tarefas aqui.</div></div>';
+        } else {
+          html+='<div class="section__list">'+items.map(function(t){return taskCard(t,{canToggle:true,allowEdit:true,allowDelete:true});}).join("")+'</div>';
+        }
+        html+='</div>';
+      });
+    }
+    html+='</div>';
+    return html;
+  }
+
+  function renderAllTasks(){
+    var q=(view.search||"").toLowerCase();
+    var tasks=DB.tasks.slice();
+    if(view.status) tasks=tasks.filter(function(t){return t.status===view.status;});
+    if(view.priority) tasks=tasks.filter(function(t){return t.priority===view.priority;});
+    if(view.assignee) tasks=tasks.filter(function(t){return t.assignee===view.assignee;});
+    if(q) tasks=tasks.filter(function(t){return t.title.toLowerCase().indexOf(q)>=0;});
+    var html='<div class="page-head"><div><div class="eyebrow">Visão geral</div><h2>Todas as tarefas</h2><p class="sub">'+DB.tasks.length+' tarefas da equipe</p></div>'+
+      '<button class="btn btn--primary" data-new="general"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Nova tarefa</button></div>'+
+      '<div class="controls">'+
+        '<div class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><input id="searchInput" placeholder="Buscar tarefa..." value="'+esc(view.search)+'"></div>'+
+      '</div>'+
+      '<div class="chips-row" style="margin-bottom:16px">'+
+        chip("status","",'Todas')+chip("status","todo","A fazer")+chip("status","doing","Em andamento")+chip("status","done","Concluídas")+
+      '</div>'+
+      '<div class="chips-row" style="margin-bottom:20px">'+
+        chip("priority","",'Todas as prioridades')+chip("priority","alta","Alta")+chip("priority","media","Média")+chip("priority","baixa","Baixa")+
+      '</div>'+
+      '<div class="chips-row" style="margin-bottom:20px">'+
+        chip("assignee","",'Todos os responsáveis')+DB.users.filter(function(x){return x.role!=="manager";}).map(function(x){return chip("assignee",x.id,x.name);}).join("")+
+      '</div>';
+
+    if(tasks.length===0){
+      html+='<div class="section">'+emptyState(view.search||view.status||view.priority||view.assignee ? "Nenhuma tarefa combina com o filtro." : "Nenhuma tarefa ainda. Crie a primeira.","<button class='btn btn--primary' data-new='general'>Criar tarefa</button>")+'</div>';
+    } else {
+      html+='<div class="section reveal"><div class="section__head"><h3>Lista</h3><span class="pill">'+tasks.length+'</span></div><div class="section__list">'+
+        tasks.map(function(t){return taskCard(t,{canToggle:true,allowEdit:true,allowDelete:true,showAssignee:true});}).join("")+
+      '</div></div>';
+    }
+    html+='</div>';
+    return html;
+  }
+  function chip(group,val,label){
+    var active = view[group]===val ? " is-active":"";
+    return '<button class="chip'+active+'" data-chip="'+group+'" data-val="'+val+'">'+esc(label)+'</button>';
+  }
+
+  function renderTeam(){
+    var members=DB.users.filter(function(x){return x.role!=="manager";});
+    var done=DB.tasks.filter(function(t){return t.status==="done";}).length;
+    var pct=DB.tasks.length?Math.round(done/DB.tasks.length*100):0;
+    var open=DB.tasks.filter(function(t){return t.status!=="done";}).length;
+    var over=DB.tasks.filter(function(t){return t.status!=="done"&&daysUntil(t.due)<0;}).length;
+
+    var html='<div class="page-head"><div><div class="eyebrow">Equipe</div><h2>Painel da equipe</h2><p class="sub">Acompanhe o progresso de cada pessoa</p></div></div>'+
+      '<div class="stats">'+
+        statCard(String(DB.tasks.length),"Total de tarefas","<path d='M9 12l2 2 4-4'/><circle cx='12' cy='12' r='9'/>")+
+        statCard(String(open),"Em aberto","<circle cx='12' cy='12' r='9'/><circle cx='12' cy='12' r='3'/>")+
+        statCard(String(over),"Atrasadas",'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M12 9v4M12 17h.01"/>')+
+        statCard(pct+"%","Concluídas","<path d='M3 3v18h18'/><path d='m19 9-5 5-4-4-3 3'/>")+
+      '</div>';
+
+    // progress ring summary
+    var r=42, c=2*Math.PI*r;
+    html+='<div class="section reveal" style="margin-bottom:22px"><div class="section__head"><h3>Progresso geral</h3><span class="spacer"></span><span class="pill">'+done+' de '+DB.tasks.length+'</span></div>'+
+      '<div style="display:flex;align-items:center;gap:20px;padding:20px">'+
+        '<svg class="ring" width="104" height="104" viewBox="0 0 104 104"><circle class="track" cx="52" cy="52" r="'+r+'"/><circle class="prog" cx="52" cy="52" r="'+r+'" style="stroke-dasharray:'+c+';stroke-dashoffset:'+c+'" data-off="'+(c*(1-pct/100))+'"/></svg>'+
+        '<div><div style="font-family:var(--font-display);font-size:1.4rem">'+pct+'% concluído</div>'+
+        '<div style="color:var(--muted);font-size:.88rem">'+over+' tarefa'+(over!==1?"s":"")+' atrasada'+(over!==1?"s":"")+' • atualize as situações para o painel se mover.</div></div>'+
+      '</div></div>';
+
+    if(members.length===0){
+      html+='<div class="section">'+emptyState("Ainda não há membros de equipe.","Crie contas de membros na tela de login.")+'</div>';
+      return html;
+    }
+    html+='<div class="section reveal"><div class="section__head"><h3>Membros</h3><span class="spacer"></span><span class="pill">'+members.length+'</span></div><div style="padding:8px 20px 16px">';
+    members.forEach(function(m){
+      var mt=DB.tasks.filter(function(t){return t.assignee===m.id;});
+      var md=mt.filter(function(t){return t.status==="done";}).length;
+      html+='<div class="member-row">'+
+        '<div class="avatar">'+initials(m.name)+'</div>'+
+        '<div><div class="m-name">'+esc(m.name)+'</div><div class="m-sub">Membro de equipe</div></div>'+
+        '<div class="m-nums"><div class="open"><b>'+mt.length+'</b><span>abertas</span></div><div class="done"><b>'+md+'</b><span>feitas</span></div></div>'+
+      '</div>';
+    });
+    html+='</div></div>';
+    return html;
+  }
+  function statCard(num,lbl,icon){
+    return '<div class="stat reveal"><div class="spark"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+icon+'</svg></div>'+
+      '<div class="num" data-count="'+num+'">0</div><div class="lbl">'+lbl+'</div></div>';
+  }
+
+  function renderOverview(){
+    var u=currentUser();
+    var mine=DB.tasks.filter(function(t){return t.assignee===u.id;});
+    var done=mine.filter(function(t){return t.status==="done";}).length;
+    var pct=mine.length?Math.round(done/mine.length*100):0;
+    var over=mine.filter(function(t){return t.status!=="done"&&daysUntil(t.due)<0;}).length;
+    var today=mine.filter(function(t){return t.status!=="done"&&daysUntil(t.due)===0;}).length;
+
+    var r=42,c=2*Math.PI*r;
+    var html='<div class="page-head"><div><div class="eyebrow">Resumo</div><h2>Visão geral</h2><p class="sub">Seu progresso hoje</p></div></div>'+
+      '<div class="stats">'+
+        statCard(String(mine.length),"Minhas tarefas","<circle cx='12' cy='12' r='9'/><path d='M9 12l2 2 4-4'/>")+
+        statCard(String(done),"Concluídas","<path d='M20 6 9 17l-5-5'/>")+
+        statCard(String(today),"Para hoje","<circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/>")+
+        statCard(String(over),"Atrasadas","<rect x='3' y='4' width='18' height='18' rx='2'/><path d='M12 9v4M12 17h.01'/>")+
+      '</div>'+
+      '<div class="section reveal"><div class="section__head"><h3>Seu progresso</h3><span class="spacer"></span><span class="pill">'+done+' de '+mine.length+'</span></div>'+
+      '<div style="display:flex;align-items:center;gap:20px;padding:20px">'+
+        '<svg class="ring" width="104" height="104" viewBox="0 0 104 104"><circle class="track" cx="52" cy="52" r="'+r+'"/><circle class="prog" cx="52" cy="52" r="'+r+'" style="stroke-dasharray:'+c+';stroke-dashoffset:'+c+'" data-off="'+(c*(1-pct/100))+'"/></svg>'+
+        '<div><div style="font-family:var(--font-display);font-size:1.4rem">'+pct+'% concluído</div>'+
+        '<div style="color:var(--muted);font-size:.88rem">'+(today? 'Você tem '+today+' tarefa'+(today!==1?"s":"")+' para hoje.':'Nenhuma tarefa para hoje. Bom trabalho!')+'</div></div>'+
+      '</div></div>';
+    return html;
+  }
+
+  function runStatBars(root){
+    // animate numbers
+    root.querySelectorAll(".num[data-count]").forEach(function(el){
+      var target=el.getAttribute("data-count");
+      var isPct=target.indexOf("%")>=0;
+      var num=parseInt(target,10)||0;
+      var start=0,t0=null;
+      function step(ts){ if(!t0)t0=ts; var p=Math.min((ts-t0)/700,1); var v=Math.round(start+(num-start)*p); el.textContent=v+(isPct?"%":""); if(p<1) requestAnimationFrame(step); }
+      requestAnimationFrame(step);
+    });
+    // animate rings
+    root.querySelectorAll(".ring .prog[data-off]").forEach(function(el){
+      var off=el.getAttribute("data-off");
+      setTimeout(function(){ el.style.strokeDashoffset=off; },80);
+    });
+  }
+
+  function bindMainEvents(){
+    var main=document.getElementById("main");
+    main.querySelectorAll("[data-act]").forEach(function(el){
+      el.addEventListener("click",function(ev){
+        ev.stopPropagation();
+        var act=el.getAttribute("data-act");
+        var id=el.getAttribute("data-id");
+        if(act==="toggle") toggleTask(id);
+        else if(act==="edit") openTaskModal("edit",id);
+        else if(act==="del") deleteTask(id);
+      });
+    });
+    main.querySelectorAll("[data-new]").forEach(function(el){
+      el.addEventListener("click",function(){ openTaskModal("new", el.getAttribute("data-new")); });
+    });
+    main.querySelectorAll("[data-chip]").forEach(function(el){
+      el.addEventListener("click",function(){
+        var g=el.getAttribute("data-chip"), v=el.getAttribute("data-val");
+        view[g]=(view[g]===v?"":v); renderMain();
+      });
+    });
+    var si=main.querySelector("#searchInput");
+    if(si){ si.addEventListener("input",function(){ view.search=si.value; renderAllOnlyList(); }); }
+  }
+
+  function renderAllOnlyList(){
+    // lightweight: full re-render of main for all view
+    if(view.name==="all") renderMain();
+  }
+
+  /* ============ Task actions ============ */
+  function findTask(id){ return DB.tasks.find(function(t){return t.id===id;}); }
+  function toggleTask(id){
+    var t=findTask(id); if(!t)return;
+    t.status = t.status==="done" ? "todo" : "done";
+    DB=store.get(); var t2=findTask(id); if(!t2)return; t2.status=t.status; store.save(DB);
+    // re-read fresh
+    t=findTask(id);
+    toast(t.status==="done" ? "Tarefa concluída ✔" : "Tarefa reaberta", t.status==="done"?"":"warn");
+    renderApp();
+  }
+  function deleteTask(id){
+    var t=findTask(id); if(!t)return;
+    if(!confirm('Excluir a tarefa "'+t.title+'"?\nEssa ação não pode ser desfeita.')) return;
+    DB.tasks=DB.tasks.filter(function(x){return x.id!==id;});
+    store.save(DB);
+    toast("Tarefa excluída","warn");
+    renderApp();
+  }
+
+  /* =========================================================
+     TASK MODAL
+  ========================================================= */
+  function memberOptions(selected){
+    var ms=DB.users.filter(function(x){return x.role!=="manager";});
+    return ms.map(function(m){return '<option value="'+m.id+'"'+(m.id===selected?" selected":"")+'>'+esc(m.name)+'</option>';}).join("");
+  }
+
+  function openTaskModal(mode, ctx){
+    var t = (mode==="edit") ? findTask(ctx) : null;
+    document.getElementById("modalTitle").textContent = mode==="edit" ? "Editar tarefa" : "Nova tarefa";
+    var body=document.getElementById("modalBody");
+    var foot=document.getElementById("modalFoot");
+
+    // determine default assignee
+    var defAssign="";
+    if(mode==="edit") defAssign=t.assignee;
+    else if(ctx==="mine") defAssign=currentUser().id;
+    else if(isManager()) defAssign = DB.users.filter(function(x){return x.role!=="manager";})[0] ? "" : "";
+    // for manager general: no default (allow none)
+    var showAssignee = isManager() && (ctx==="general" || mode==="edit");
+
+    body.innerHTML =
+      '<div class="field"><label for="fTitle">Título da tarefa</label>'+
+        '<input class="input" id="fTitle" placeholder="ex.: Preparar relatório mensal" value="'+(t?esc(t.title):"")+'" required></div>'+
+      '<div class="field"><label for="fDesc">Descrição (opcional)</label>'+
+        '<textarea class="input" id="fDesc" rows="3" placeholder="Detalhes, links, critérios...">'+(t?esc(t.desc||""):"")+'</textarea></div>'+
+      (showAssignee ? '<div class="field"><label for="fAssignee">Responsável</label><select class="input" id="fAssignee"><option value="">Sem responsável</option>'+memberOptions(defAssign)+'</select></div>':'')+
+      '<div class="form-row">'+
+        '<div class="field"><label for="fPriority">Prioridade</label><select class="input" id="fPriority">'+
+          '<option value="alta"'+(t&&t.priority==="alta"?" selected":"")+'>Alta</option>'+
+          '<option value="media"'+((t&&t.priority==="media")||(!t&&ctx==="mine")?" selected":"")+'>Média</option>'+
+          '<option value="baixa"'+(t&&t.priority==="baixa"?" selected":"")+'>Baixa</option>'+
+        '</select></div>'+
+        '<div class="field"><label for="fDue">Prazo (opcional)</label><input class="input" id="fDue" type="date" value="'+(t&&t.due?t.due:addDays(3))+'"></div>'+
+      '</div>'+
+      '<div class="field"><label for="fStatus">Situação</label><select class="input" id="fStatus">'+
+        '<option value="todo"'+(t&&t.status==="todo"?" selected":"")+'>A fazer</option>'+
+        '<option value="doing"'+(t&&t.status==="doing"?" selected":"")+'>Em andamento</option>'+
+        '<option value="done"'+(t&&t.status==="done"?" selected":"")+'>Concluída</option>'+
+      '</select></div>';
+
+    foot.innerHTML =
+      '<button class="btn btn--ghost" data-close>Cancelar</button>'+
+      '<button class="btn btn--primary" id="saveTask">'+(mode==="edit"?"Salvar alterações":"Criar tarefa")+'</button>';
+
+    openModal();
+    document.getElementById("saveTask").addEventListener("click",function(){
+      var title=document.getElementById("fTitle").value.trim();
+      if(!title){ toast("Dê um título para a tarefa","err"); return; }
+      var data={
+        title:title,
+        desc:document.getElementById("fDesc").value.trim(),
+        priority:document.getElementById("fPriority").value,
+        due:document.getElementById("fDue").value||"",
+        status:document.getElementById("fStatus").value
+      };
+      if(showAssignee) data.assignee=document.getElementById("fAssignee").value;
+      if(mode==="edit"){
+        Object.assign(t,data);
+      } else {
+        if(!isManager() || ctx==="mine") data.assignee=currentUser().id;
+        if(isManager() && ctx==="general" && !data.assignee) data.assignee=undefined;
+        data.id=uid();
+        data.created=Date.now();
+        DB.tasks.unshift(data);
+      }
+      store.save(DB);
+      toast(mode==="edit"?"Tarefa atualizada":"Tarefa criada");
+      closeModal();
+      renderApp();
+    });
+    setTimeout(function(){ document.getElementById("fTitle").focus(); },60);
+  }
+
+  /* ============ Modal open/close ============ */
+  function openModal(){ document.getElementById("modalWrap").classList.add("is-open"); }
+  function closeModal(){ document.getElementById("modalWrap").classList.remove("is-open"); }
+  document.getElementById("modalWrap").addEventListener("click",function(e){
+    if(e.target.hasAttribute("data-close")) closeModal();
+  });
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeModal(); });
+
+  /* ============ FAB ============ */
+  document.getElementById("fab").addEventListener("click",function(){
+    openTaskModal("new","general");
+  });
+
+  /* ============ Logout ============ */
+  document.getElementById("logoutBtn").addEventListener("click",function(){
+    saveSession(null);
+    location.reload();
+  });
+
+  /* =========================================================
+     AUTH SCREEN LOGIC
+  ========================================================= */
+  var authMode="login";
+  var authTabs=document.querySelectorAll(".tab");
+  var roleField=document.getElementById("roleField");
+  var authSubmit=document.getElementById("authSubmit");
+  var authTitle=document.getElementById("authTitle");
+  var authSub=document.getElementById("authSub");
+  var authErr=document.getElementById("authErr");
+
+  function setAuthMode(m){
+    authMode=m;
+    authTabs.forEach(function(t){ t.classList.toggle("is-active", t.getAttribute("data-tab")===m); });
+    if(m==="login"){
+      authTitle.textContent="Entrar";
+      authSub.textContent="Bem-vindo de volta. Entre com sua conta.";
+      roleField.hidden=true;
+      authSubmit.textContent="Entrar";
+      document.getElementById("uPass").setAttribute("autocomplete","current-password");
+      document.getElementById("switchLink").parentElement.innerHTML='Não tem conta? <a href="#" id="switchLink" style="color:var(--brand-dark);font-weight:600;text-decoration:none">Criar agora</a>';
+    } else {
+      authTitle.textContent="Criar conta";
+      authSub.textContent="Leva menos de um minuto para começar.";
+      roleField.hidden=false;
+      authSubmit.textContent="Criar minha conta";
+      document.getElementById("uPass").setAttribute("autocomplete","new-password");
+      document.getElementById("switchLink").parentElement.innerHTML='Já tem conta? <a href="#" id="switchLink" style="color:var(--brand-dark);font-weight:600;text-decoration:none">Entrar</a>';
+    }
+    authErr.textContent="";
+    bindSwitch();
+  }
+  function bindSwitch(){
+    var a=document.getElementById("switchLink");
+    if(a) a.addEventListener("click",function(e){e.preventDefault(); setAuthMode(authMode==="login"?"register":"login");});
+  }
+  authTabs.forEach(function(t){ t.addEventListener("click",function(){ setAuthMode(t.getAttribute("data-tab")); }); });
+  bindSwitch();
+
+  document.getElementById("authForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    authErr.textContent="";
+    var name=document.getElementById("uName").value.trim();
+    var pass=document.getElementById("uPass").value;
+    if(!name||!pass){ authErr.textContent="Preencha nome e senha."; return; }
+    if(authMode==="login"){
+      var u=DB.users.find(function(x){return x.name.toLowerCase()===name.toLowerCase();});
+      if(!u){ authErr.textContent="Conta não encontrada."; return; }
+      if(u.pass!==hashPass(pass)){ authErr.textContent="Senha incorreta."; return; }
+      session={id:u.id}; saveSession(session);
+      location.reload();
+    } else {
+      var exists=DB.users.some(function(x){return x.name.toLowerCase()===name.toLowerCase();});
+      if(exists){ authErr.textContent="Já existe uma conta com esse nome. Use outro."; return; }
+      var role=document.getElementById("uRole").value;
+      var nu={id:uid(),name:name,pass:hashPass(pass),role:role};
+      DB.users.push(nu); store.save(DB);
+      session={id:nu.id}; saveSession(session);
+      location.reload();
+    }
+  });
+
+  /* =========================================================
+     BOOT
+  ========================================================= */
+  function boot(){
+    var u=currentUser();
+    if(u){ renderApp(); }
+    else {
+      document.getElementById("app").hidden=true;
+      document.getElementById("auth").hidden=false;
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

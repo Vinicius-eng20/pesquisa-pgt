@@ -1,16 +1,26 @@
-from gerar_app import corrigir_aplicacao
+from gerar_app import corrigir_aplicacao, continuar_aplicacao, reenviar_pedido
 
-# Rodada de reparo: comente a linha gerar_aplicacao acima, cole o erro do
-# terminal sem alterações e aponte para o resposta.txt da rodada anterior
-# (a geração original ou o reparo anterior).
+action = "reenviar"
+MODELO = 'qwen'
+CONTEXTO = r"saidas\qwen\agendamento_servicos\20261008-002233\resposta.txt"
 
-MODELO = 'kimi'
-ERRO = """
-Só veio o README
-"""
+if action == 'corrigir':
+    ERRO = """
+    Erro
+    """
 
-corrigir_aplicacao(
-    ERRO,
-    MODELO,
-    r"saidas/kimi/despesas_pessoais/20261007-210647/resposta.txt",
-)
+    corrigir_aplicacao(
+        ERRO,
+        MODELO,
+        CONTEXTO,
+    )
+elif action == 'continuar':
+    continuar_aplicacao(
+        MODELO,
+        CONTEXTO
+    )
+elif action == 'reenviar':
+    reenviar_pedido(
+        MODELO,
+        CONTEXTO
+    )

@@ -1,0 +1,867 @@
+=== package.json ===
+{
+  "name": "restaurante-pedidos",
+  "version": "1.0.0",
+  "description": "Sistema de pedidos de restaurante",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Banco de dados
+const db = new Database('restaurante.db');
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  senha TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'cliente'
+);
+CREATE TABLE IF NOT EXISTS pratos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  descricao TEXT NOT NULL DEFAULT '',
+  preco REAL NOT NULL,
+  categoria TEXT NOT NULL DEFAULT 'Principal',
+  disponivel INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS pedidos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Pendente',
+  total REAL NOT NULL,
+  criado_em TEXT NOT NULL,
+  FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
+);
+CREATE TABLE IF NOT EXISTS itens_pedido (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pedido_id INTEGER NOT NULL,
+  prato_id INTEGER NOT NULL,
+  nome_prato TEXT NOT NULL,
+  preco REAL NOT NULL,
+  quantidade INTEGER NOT NULL,
+  FOREIGN KEY(pedido_id) REFERENCES pedidos(id)
+);
+`);
+
+// Gerente padrão
+const gerenteExiste = db.prepare("SELECT id FROM usuarios WHERE tipo='gerente' LIMIT 1").get();
+if (!gerenteExiste) {
+  db.prepare('INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)')
+    .run('Gerente', 'gerente@restaurante.com', bcrypt.hashSync('admin123', 10), 'gerente');
+  console.log('Gerente criado: gerente@restaurante.com / admin123');
+}
+
+// Pratos exemplo
+const qtdPratos = db.prepare('SELECT COUNT(*) as c FROM pratos').get().c;
+if (qtdPratos === 0) {
+  const ins = db.prepare('INSERT INTO pratos (nome, descricao, preco, categoria) VALUES (?, ?, ?, ?)');
+  ins.run('Frango Grelhado', 'Frango grelhado com legumes', 32.90, 'Principal');
+  ins.run('Feijoada', 'Feijoada completa com arroz e couve', 45.00, 'Principal');
+  ins.run('Salada Caesar', 'Salada com frango e molho caesar', 24.50, 'Entrada');
+  ins.run('Pudim de Leite', 'Pudim caseiro', 12.00, 'Sobremesa');
+  ins.run('Suco Natural', 'Suco natural de laranja', 8.00, 'Bebida');
+}
+
+app.use(express.json());
+app.use(session({
+  secret: 'restaurante-segredo-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function requerLogin(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Faça login' });
+  next();
+}
+function requerGerente(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Faça login' });
+  if (req.session.usuario.tipo !== 'gerente') return res.status(403).json({ erro: 'Apenas gerente' });
+  next();
+}
+
+// Auth
+app.post('/api/cadastro', (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  try {
+    const hash = bcrypt.hashSync(senha, 10);
+    const info = db.prepare('INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)').run(nome, email.toLowerCase(), hash, 'cliente');
+    req.session.usuario = { id: info.lastInsertRowid, nome, email: email.toLowerCase(), tipo: 'cliente' };
+    res.json(req.session.usuario);
+  } catch (e) {
+    res.status(400).json({ erro: 'Email já cadastrado' });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  const u = db.prepare('SELECT * FROM usuarios WHERE email = ?').get((email || '').toLowerCase());
+  if (!u || !bcrypt.compareSync(senha, u.senha)) return res.status(401).json({ erro: 'Email ou senha incorretos' });
+  req.session.usuario = { id: u.id, nome: u.nome, email: u.email, tipo: u.tipo };
+  res.json(req.session.usuario);
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  res.json(req.session.usuario || null);
+});
+
+// Pratos
+app.get('/api/pratos', (req, res) => {
+  const pratos = db.prepare('SELECT * FROM pratos ORDER BY categoria, nome').all();
+  res.json(pratos);
+});
+
+app.post('/api/pratos', requerGerente, (req, res) => {
+  const { nome, descricao, preco, categoria, disponivel } = req.body;
+  if (!nome || preco == null) return res.status(400).json({ erro: 'Nome e preço são obrigatórios' });
+  const info = db.prepare('INSERT INTO pratos (nome, descricao, preco, categoria, disponivel) VALUES (?, ?, ?, ?, ?)')
+    .run(nome, descricao || '', Number(preco), categoria || 'Principal', disponivel ? 1 : 1);
+  res.json(db.prepare('SELECT * FROM pratos WHERE id = ?').get(info.lastInsertRowid));
+});
+
+app.put('/api/pratos/:id', requerGerente, (req, res) => {
+  const { nome, descricao, preco, categoria, disponivel } = req.body;
+  db.prepare('UPDATE pratos SET nome=?, descricao=?, preco=?, categoria=?, disponivel=? WHERE id=?')
+    .run(nome, descricao || '', Number(preco), categoria || 'Principal', disponivel ? 1 : 0, req.params.id);
+  res.json(db.prepare('SELECT * FROM pratos WHERE id = ?').get(req.params.id));
+});
+
+app.delete('/api/pratos/:id', requerGerente, (req, res) => {
+  db.prepare('DELETE FROM pratos WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// Pedidos
+app.post('/api/pedidos', requerLogin, (req, res) => {
+  const { itens } = req.body;
+  if (!Array.isArray(itens) || itens.length === 0) return res.status(400).json({ erro: 'Pedido vazio' });
+  let total = 0;
+  const itensFinal = [];
+  for (const it of itens) {
+    const prato = db.prepare('SELECT * FROM pratos WHERE id = ?').get(it.prato_id);
+    if (!prato || !prato.disponivel) return res.status(400).json({ erro: 'Prato indisponível' });
+    const qtd = Number(it.quantidade) || 1;
+    total += prato.preco * qtd;
+    itensFinal.push({ prato_id: prato.id, nome_prato: prato.nome, preco: prato.preco, quantidade: qtd });
+  }
+  const agora = new Date().toISOString();
+  const pedidoInfo = db.prepare('INSERT INTO pedidos (usuario_id, status, total, criado_em) VALUES (?, ?, ?, ?)')
+    .run(req.session.usuario.id, 'Pendente', total, agora);
+  const pedidoId = pedidoInfo.lastInsertRowid;
+  const insItem = db.prepare('INSERT INTO itens_pedido (pedido_id, prato_id, nome_prato, preco, quantidade) VALUES (?, ?, ?, ?, ?)');
+  for (const it of itensFinal) insItem.run(pedidoId, it.prato_id, it.nome_prato, it.preco, it.quantidade);
+  res.json({ id: pedidoId });
+});
+
+function pedidoCompleto(p) {
+  const itens = db.prepare('SELECT * FROM itens_pedido WHERE pedido_id = ?').all(p.id);
+  return { ...p, itens };
+}
+
+app.get('/api/meus-pedidos', requerLogin, (req, res) => {
+  const pedidos = db.prepare('SELECT * FROM pedidos WHERE usuario_id = ? ORDER BY id DESC').all(req.session.usuario.id);
+  res.json(pedidos.map(pedidoCompleto));
+});
+
+app.get('/api/pedidos', requerGerente, (req, res) => {
+  const pedidos = db.prepare(`
+    SELECT p.*, u.nome as cliente_nome, u.email as cliente_email
+    FROM pedidos p JOIN usuarios u ON u.id = p.usuario_id
+    ORDER BY p.id DESC
+  `).all();
+  res.json(pedidos.map(pedidoCompleto));
+});
+
+app.put('/api/pedidos/:id/status', requerGerente, (req, res) => {
+  const { status } = req.body;
+  const permitidos = ['Pendente', 'Preparando', 'Pronto', 'Entregue', 'Cancelado'];
+  if (!permitidos.includes(status)) return res.status(400).json({ erro: 'Status inválido' });
+  db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () => {
+  console.log('Servidor rodando em http://localhost:' + PORT);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Restaurante - Sistema de Pedidos</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>🍽️ Restaurante</h1>
+  <div id="userArea"></div>
+</header>
+
+<div id="authScreen" class="screen">
+  <div class="card">
+    <h2>Entrar</h2>
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginSenha" placeholder="Senha">
+    <button onclick="login()">Entrar</button>
+    <p class="hint">Gerente padrão: gerente@restaurante.com / admin123</p>
+    <hr>
+    <h3>Criar conta (cliente)</h3>
+    <input type="text" id="cadNome" placeholder="Nome">
+    <input type="email" id="cadEmail" placeholder="Email">
+    <input type="password" id="cadSenha" placeholder="Senha">
+    <button onclick="cadastrar()">Cadastrar</button>
+    <p id="authMsg" class="msg"></p>
+  </div>
+</div>
+
+<div id="clienteScreen" class="screen hidden">
+  <nav class="tabs">
+    <button onclick="mostrarTab('cardapio')" class="tab-active" data-tab="cardapio">Cardápio</button>
+    <button onclick="mostrarTab('carrinho')" data-tab="carrinho">Carrinho (<span id="cartCount">0</span>)</button>
+    <button onclick="mostrarTab('meusPedidos')" data-tab="meusPedidos">Meus Pedidos</button>
+  </nav>
+
+  <section id="tab-cardapio" class="tab-content">
+    <h2>Cardápio</h2>
+    <div id="listaPratos" class="grid"></div>
+  </section>
+
+  <section id="tab-carrinho" class="tab-content hidden">
+    <h2>Seu Carrinho</h2>
+    <div id="carrinhoItens"></div>
+    <div id="carrinhoTotal"></div>
+    <button id="btnFinalizar" onclick="finalizarPedido()" class="primary">Finalizar Pedido</button>
+  </section>
+
+  <section id="tab-meusPedidos" class="tab-content hidden">
+    <h2>Meus Pedidos</h2>
+    <div id="meusPedidos"></div>
+  </section>
+</div>
+
+<div id="gerenteScreen" class="screen hidden">
+  <nav class="tabs">
+    <button onclick="mostrarTabG('pedidos')" class="tab-active" data-tab="pedidos">Todos os Pedidos</button>
+    <button onclick="mostrarTabG('cardapioG')" data-tab="cardapioG">Gerenciar Cardápio</button>
+  </nav>
+
+  <section id="tab-pedidos" class="tab-content">
+    <h2>Pedidos dos Clientes</h2>
+    <div id="todosPedidos"></div>
+  </section>
+
+  <section id="tab-cardapioG" class="tab-content hidden">
+    <h2>Gerenciar Cardápio</h2>
+    <div class="card">
+      <h3 id="formTitulo">Adicionar Prato</h3>
+      <input type="hidden" id="pratoId">
+      <input type="text" id="pratoNome" placeholder="Nome do prato">
+      <input type="text" id="pratoDescricao" placeholder="Descrição">
+      <input type="number" step="0.01" id="pratoPreco" placeholder="Preço">
+      <select id="pratoCategoria">
+        <option>Entrada</option>
+        <option>Principal</option>
+        <option>Sobremesa</option>
+        <option>Bebida</option>
+      </select>
+      <label><input type="checkbox" id="pratoDisponivel" checked> Disponível</label>
+      <button onclick="salvarPrato()" class="primary">Salvar</button>
+      <button onclick="limparFormPrato()">Cancelar</button>
+    </div>
+    <div id="listaPratosG" class="grid"></div>
+  </section>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, Arial, sans-serif;
+  background: #f4f5f7;
+  color: #222;
+  min-height: 100vh;
+}
+
+header {
+  background: #c0392b;
+  color: #fff;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+header h1 { font-size: 22px; }
+#userArea { display: flex; gap: 12px; align-items: center; font-size: 14px; }
+
+.screen { padding: 24px; max-width: 1100px; margin: 0 auto; }
+.hidden { display: none !important; }
+
+.card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+input, select {
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 100%;
+}
+
+button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  background: #555;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+button:hover { background: #333; }
+button.primary { background: #c0392b; }
+button.primary:hover { background: #a93226; }
+button.danger { background: #c0392b; padding: 6px 10px; font-size: 12px; }
+button.small { padding: 6px 10px; font-size: 12px; background: #666; }
+
+h2 { margin-bottom: 16px; color: #333; }
+h3 { margin-bottom: 8px; }
+
+.msg { color: #c0392b; font-size: 13px; min-height: 18px; }
+.hint { font-size: 12px; color: #888; }
+hr { border: none; border-top: 1px solid #eee; margin: 8px 0; }
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #ddd;
+}
+.tabs button {
+  background: transparent;
+  color: #555;
+  border-radius: 0;
+  padding: 12px 16px;
+  border-bottom: 3px solid transparent;
+}
+.tabs button:hover { background: #eee; }
+.tabs button.tab-active {
+  color: #c0392b;
+  border-bottom-color: #c0392b;
+  font-weight: bold;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.prato-card {
+  background: #fff;
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prato-card h4 { font-size: 16px; color: #222; }
+.prato-card .categoria {
+  display: inline-block;
+  background: #f0ad4e;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  align-self: flex-start;
+}
+.prato-card .preco { font-weight: bold; color: #c0392b; font-size: 16px; }
+.prato-card .descricao { font-size: 13px; color: #666; }
+.prato-card .indisponivel { color: #999; font-style: italic; font-size: 13px; }
+
+.pedido-card {
+  background: #fff;
+  padding: 16px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  margin-bottom: 14px;
+}
+.pedido-header {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
+.pedido-header strong { color: #333; }
+.status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+}
+.status.Pendente { background: #f0ad4e; }
+.status.Preparando { background: #3498db; }
+.status.Pronto { background: #27ae60; }
+.status.Entregue { background: #7f8c8d; }
+.status.Cancelado { background: #c0392b; }
+
+.itens-lista { list-style: none; font-size: 14px; color: #555; }
+.itens-lista li { padding: 4px 0; }
+.total { font-weight: bold; color: #c0392b; margin-top: 8px; font-size: 16px; }
+
+.carrinho-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+.carrinho-item .nome { flex: 1; }
+.carrinho-item .qtd-ctrl { display: flex; gap: 6px; align-items: center; }
+
+#carrinhoTotal {
+  font-size: 20px;
+  font-weight: bold;
+  color: #c0392b;
+  margin: 16px 0;
+  text-align: right;
+}
+
+.gerente-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.gerente-acoes select { width: auto; padding: 6px 10px; font-size: 13px; }
+
+@media (max-width: 600px) {
+  .screen { padding: 12px; }
+  header { padding: 12px; }
+  .grid { grid-template-columns: 1fr; }
+}
+
+=== public/app.js ===
+let usuarioAtual = null;
+let pratosCache = [];
+let carrinho = JSON.parse(localStorage.getItem('carrinho') || '[]');
+
+function salvarCarrinho() {
+  localStorage.setItem('carrinho', JSON.stringify(carrinho));
+  atualizarCartCount();
+}
+function atualizarCartCount() {
+  const total = carrinho.reduce((s, i) => s + i.quantidade, 0);
+  const el = document.getElementById('cartCount');
+  if (el) el.textContent = total;
+}
+
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+async function carregarUsuario() {
+  usuarioAtual = await api('/api/eu');
+  renderizarTela();
+}
+
+function renderizarTela() {
+  const auth = document.getElementById('authScreen');
+  const cli = document.getElementById('clienteScreen');
+  const ger = document.getElementById('gerenteScreen');
+  const userArea = document.getElementById('userArea');
+  auth.classList.add('hidden');
+  cli.classList.add('hidden');
+  ger.classList.add('hidden');
+
+  if (!usuarioAtual) {
+    auth.classList.remove('hidden');
+    userArea.innerHTML = '';
+    return;
+  }
+  userArea.innerHTML = `<span>Olá, ${usuarioAtual.nome}</span> <button class="small" onclick="logout()">Sair</button>`;
+  if (usuarioAtual.tipo === 'gerente') {
+    ger.classList.remove('hidden');
+    carregarPratosGerente();
+    carregarTodosPedidos();
+  } else {
+    cli.classList.remove('hidden');
+    carregarCardapio();
+    carregarMeusPedidos();
+    atualizarCartCount();
+  }
+}
+
+// AUTH
+async function login() {
+  const email = document.getElementById('loginEmail').value;
+  const senha = document.getElementById('loginSenha').value;
+  try {
+    usuarioAtual = await api('/api/login', { method: 'POST', body: { email, senha } });
+    document.getElementById('authMsg').textContent = '';
+    renderizarTela();
+  } catch (e) {
+    document.getElementById('authMsg').textContent = e.message;
+  }
+}
+async function cadastrar() {
+  const nome = document.getElementById('cadNome').value;
+  const email = document.getElementById('cadEmail').value;
+  const senha = document.getElementById('cadSenha').value;
+  try {
+    usuarioAtual = await api('/api/cadastro', { method: 'POST', body: { nome, email, senha } });
+    document.getElementById('authMsg').textContent = '';
+    renderizarTela();
+  } catch (e) {
+    document.getElementById('authMsg').textContent = e.message;
+  }
+}
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  usuarioAtual = null;
+  carrinho = [];
+  salvarCarrinho();
+  renderizarTela();
+}
+
+// TABS
+function mostrarTab(tab) {
+  document.querySelectorAll('#clienteScreen .tab-content').forEach(s => s.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  document.querySelectorAll('#clienteScreen .tabs button').forEach(b => b.classList.remove('tab-active'));
+  document.querySelector(`#clienteScreen .tabs button[data-tab="${tab}"]`).classList.add('tab-active');
+}
+function mostrarTabG(tab) {
+  document.querySelectorAll('#gerenteScreen .tab-content').forEach(s => s.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  document.querySelectorAll('#gerenteScreen .tabs button').forEach(b => b.classList.remove('tab-active'));
+  document.querySelector(`#gerenteScreen .tabs button[data-tab="${tab}"]`).classList.add('tab-active');
+}
+
+// CARDAPIO
+async function carregarCardapio() {
+  pratosCache = await api('/api/pratos');
+  const el = document.getElementById('listaPratos');
+  el.innerHTML = pratosCache.map(p => `
+    <div class="prato-card">
+      <span class="categoria">${p.categoria}</span>
+      <h4>${p.nome}</h4>
+      <p class="descricao">${p.descricao || ''}</p>
+      <p class="preco">R$ ${p.preco.toFixed(2)}</p>
+      ${p.disponivel
+        ? `<button class="primary small" onclick="adicionarAoCarrinho(${p.id})">Adicionar</button>`
+        : `<p class="indisponivel">Indisponível</p>`}
+    </div>
+  `).join('');
+}
+
+function adicionarAoCarrinho(id) {
+  const prato = pratosCache.find(p => p.id === id);
+  if (!prato) return;
+  const item = carrinho.find(i => i.prato_id === id);
+  if (item) item.quantidade++;
+  else carrinho.push({ prato_id: id, nome: prato.nome, preco: prato.preco, quantidade: 1 });
+  salvarCarrinho();
+  renderizarCarrinho();
+  alert(prato.nome + ' adicionado ao carrinho!');
+}
+
+function renderizarCarrinho() {
+  const el = document.getElementById('carrinhoItens');
+  if (carrinho.length === 0) {
+    el.innerHTML = '<p>Seu carrinho está vazio.</p>';
+    document.getElementById('carrinhoTotal').textContent = '';
+    return;
+  }
+  el.innerHTML = carrinho.map((i, idx) => `
+    <div class="carrinho-item">
+      <span class="nome">${i.nome} - R$ ${i.preco.toFixed(2)}</span>
+      <div class="qtd-ctrl">
+        <button class="small" onclick="alterarQtd(${idx}, -1)">-</button>
+        <span>${i.quantidade}</span>
+        <button class="small" onclick="alterarQtd(${idx}, 1)">+</button>
+        <button class="danger" onclick="removerItem(${idx})">Remover</button>
+      </div>
+    </div>
+  `).join('');
+  const total = carrinho.reduce((s, i) => s + i.preco * i.quantidade, 0);
+  document.getElementById('carrinhoTotal').textContent = 'Total: R$ ' + total.toFixed(2);
+}
+
+function alterarQtd(idx, delta) {
+  carrinho[idx].quantidade += delta;
+  if (carrinho[idx].quantidade <= 0) carrinho.splice(idx, 1);
+  salvarCarrinho();
+  renderizarCarrinho();
+}
+function removerItem(idx) {
+  carrinho.splice(idx, 1);
+  salvarCarrinho();
+  renderizarCarrinho();
+}
+
+async function finalizarPedido() {
+  if (carrinho.length === 0) return alert('Carrinho vazio');
+  try {
+    await api('/api/pedidos', {
+      method: 'POST',
+      body: { itens: carrinho.map(i => ({ prato_id: i.prato_id, quantidade: i.quantidade })) }
+    });
+    carrinho = [];
+    salvarCarrinho();
+    renderizarCarrinho();
+    alert('Pedido realizado com sucesso!');
+    carregarMeusPedidos();
+    mostrarTab('meusPedidos');
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+async function carregarMeusPedidos() {
+  const pedidos = await api('/api/meus-pedidos');
+  const el = document.getElementById('meusPedidos');
+  if (pedidos.length === 0) {
+    el.innerHTML = '<p>Você ainda não fez nenhum pedido.</p>';
+    return;
+  }
+  el.innerHTML = pedidos.map(p => `
+    <div class="pedido-card">
+      <div class="pedido-header">
+        <strong>Pedido #${p.id}</strong>
+        <span class="status ${p.status}">${p.status}</span>
+        <span>${new Date(p.criado_em).toLocaleString('pt-BR')}</span>
+      </div>
+      <ul class="itens-lista">
+        ${p.itens.map(it => `<li>${it.quantidade}x ${it.nome_prato} - R$ ${(it.preco * it.quantidade).toFixed(2)}</li>`).join('')}
+      </ul>
+      <div class="total">Total: R$ ${p.total.toFixed(2)}</div>
+    </div>
+  `).join('');
+}
+
+// GERENTE
+async function carregarPratosGerente() {
+  const pratos = await api('/api/pratos');
+  pratosCache = pratos;
+  const el = document.getElementById('listaPratosG');
+  el.innerHTML = pratos.map(p => `
+    <div class="prato-card">
+      <span class="categoria">${p.categoria}</span>
+      <h4>${p.nome}</h4>
+      <p class="descricao">${p.descricao || ''}</p>
+      <p class="preco">R$ ${p.preco.toFixed(2)}</p>
+      ${p.disponivel ? '' : '<p class="indisponivel">Indisponível</p>'}
+      <div class="gerente-acoes">
+        <button class="small" onclick='editarPrato(${JSON.stringify(p).replace(/'/g, "&apos;")})'>Editar</button>
+        <button class="danger" onclick="removerPrato(${p.id})">Remover</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function editarPrato(p) {
+  document.getElementById('formTitulo').textContent = 'Editar Prato';
+  document.getElementById('pratoId').value = p.id;
+  document.getElementById('pratoNome').value = p.nome;
+  document.getElementById('pratoDescricao').value = p.descricao || '';
+  document.getElementById('pratoPreco').value = p.preco;
+  document.getElementById('pratoCategoria').value = p.categoria;
+  document.getElementById('pratoDisponivel').checked = !!p.disponivel;
+  window.scrollTo(0, 0);
+}
+
+function limparFormPrato() {
+  document.getElementById('formTitulo').textContent = 'Adicionar Prato';
+  document.getElementById('pratoId').value = '';
+  document.getElementById('pratoNome').value = '';
+  document.getElementById('pratoDescricao').value = '';
+  document.getElementById('pratoPreco').value = '';
+  document.getElementById('pratoCategoria').value = 'Principal';
+  document.getElementById('pratoDisponivel').checked = true;
+}
+
+async function salvarPrato() {
+  const id = document.getElementById('pratoId').value;
+  const body = {
+    nome: document.getElementById('pratoNome').value,
+    descricao: document.getElementById('pratoDescricao').value,
+    preco: parseFloat(document.getElementById('pratoPreco').value),
+    categoria: document.getElementById('pratoCategoria').value,
+    disponivel: document.getElementById('pratoDisponivel').checked
+  };
+  if (!body.nome || isNaN(body.preco)) return alert('Preencha nome e preço');
+  try {
+    if (id) {
+      await api('/api/pratos/' + id, { method: 'PUT', body });
+    } else {
+      await api('/api/pratos', { method: 'POST', body });
+    }
+    limparFormPrato();
+    carregarPratosGerente();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+async function removerPrato(id) {
+  if (!confirm('Remover este prato?')) return;
+  await api('/api/pratos/' + id, { method: 'DELETE' });
+  carregarPratosGerente();
+}
+
+async function carregarTodosPedidos() {
+  const pedidos = await api('/api/pedidos');
+  const el = document.getElementById('todosPedidos');
+  if (pedidos.length === 0) {
+    el.innerHTML = '<p>Nenhum pedido ainda.</p>';
+    return;
+  }
+  el.innerHTML = pedidos.map(p => `
+    <div class="pedido-card">
+      <div class="pedido-header">
+        <strong>Pedido #${p.id}</strong>
+        <span class="status ${p.status}">${p.status}</span>
+        <span>${p.cliente_nome} (${p.cliente_email})</span>
+        <span>${new Date(p.criado_em).toLocaleString('pt-BR')}</span>
+      </div>
+      <ul class="itens-lista">
+        ${p.itens.map(it => `<li>${it.quantidade}x ${it.nome_prato} - R$ ${(it.preco * it.quantidade).toFixed(2)}</li>`).join('')}
+      </ul>
+      <div class="total">Total: R$ ${p.total.toFixed(2)}</div>
+      <div class="gerente-acoes">
+        <label>Status:</label>
+        <select onchange="mudarStatus(${p.id}, this.value)">
+          ${['Pendente','Preparando','Pronto','Entregue','Cancelado'].map(s =>
+            `<option value="${s}" ${s === p.status ? 'selected' : ''}>${s}</option>`
+          ).join('')}
+        </select>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function mudarStatus(id, status) {
+  try {
+    await api('/api/pedidos/' + id + '/status', { method: 'PUT', body: { status } });
+    carregarTodosPedidos();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// INICIALIZAÇÃO
+renderizarCarrinho();
+carregarUsuario();
+
+// Enter para login
+document.getElementById('loginSenha').addEventListener('keypress', e => {
+  if (e.key === 'Enter') login();
+});
+
+=== README.md ===
+# Sistema de Pedidos para Restaurante
+
+Site completo com cadastro de clientes, cardápio, pedidos e painel do gerente. Tudo salvo em banco de dados local (SQLite), sem depender de serviços externos.
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (baixe em https://nodejs.org).
+
+1. Abra o terminal (Prompt de Comando ou Terminal) na pasta do projeto.
+2. Instale as dependências:
+
+```
+npm install
+```
+
+3. Inicie o servidor:
+
+```
+npm start
+```
+
+4. Abra o navegador em:
+
+```
+http://localhost:3000
+```
+
+## Contas
+
+- **Gerente padrão** (criado automaticamente):
+  - Email: `gerente@restaurante.com`
+  - Senha: `admin123`
+
+- **Clientes**: crie a conta na tela inicial (aba de cadastro).
+
+## O que cada um pode fazer
+
+**Cliente:**
+- Ver o cardápio
+- Adicionar pratos ao carrinho e finalizar pedido
+- Acompanhar o status de seus pedidos
+
+**Gerente:**
+- Cadastrar, editar e remover pratos do cardápio
+- Ver todos os pedidos de todos os clientes
+- Alterar a situação de qualquer pedido (Pendente, Preparando, Pronto, Entregue, Cancelado)
+
+## Colocar na internet
+
+Para publicar na internet de verdade, hospede em serviços como Render, Railway ou Fly.io (todos aceitam projetos Node.js). O arquivo `restaurante.db` guarda todos os dados permanentemente. Em produção, recomenda-se usar um disco persistente para manter o banco.

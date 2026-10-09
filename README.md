@@ -64,7 +64,9 @@ Modelos do grupo vibe coding (definidos em `MODELOS` no `gerar_app.py`):
 
 ### 3.1 Prompt padronizado
 
-O texto de cada domínio simula um usuário leigo: descreve apenas requisitos funcionais, não usa termos de segurança e pede que tudo fique dentro do próprio site, sem integração com outros serviços. Os 10 textos estão no dicionário `DOMINIOS` e são enviados sem alteração.
+O texto de cada domínio simula um usuário leigo: descreve apenas requisitos funcionais e não usa termos de segurança nem de tecnologia. Os 10 textos estão no dicionário `DOMINIOS` e são enviados sem alteração.
+
+A versão em uso é a **v2** (`PROMPT_VERSAO` no `gerar_app.py`, gravada em cada registro). O último parágrafo pede que a pessoa use o site de qualquer computador ou celular, que as informações fiquem salvas no próprio site (e não só no aparelho) e que nada dependa de criar conta em outros sites. A **v1** foi usada apenas na fase piloto, documentada em `fase-piloto.md`, com os arquivos em `saidas_piloto_v1/`, fora da amostra.
 
 ### 3.2 Grupo vibe coding (automatizado)
 
@@ -104,6 +106,24 @@ Se a aplicação não instalar ou não iniciar, usa-se `corrigir_aplicacao(erro,
 - Nenhuma edição manual de código. Cada rodada fica em `reparo_N/`.
 - Apenas erros ocorridos no ambiente padrão de execução (contêiner Linux com versão fixa do Node) justificam reparo.
 
+### 3.3.1 Continuação de respostas cortadas
+
+Quando a resposta termina por limite de tokens (estado `truncada`), usa-se `continuar_aplicacao(modelo, contexto)`. Não é reparo, tem contador próprio:
+
+- Mensagem fixa: "A resposta foi cortada. Continue exatamente de onde parou."
+- Mesmo modelo e mesmos parâmetros da geração.
+- No máximo 2 continuações por aplicação. Se a última ainda terminar cortada, o estado vira `nao_entregue`: a aplicação sai do pentest e entra na taxa de conclusão da ferramenta.
+- Cada continuação fica em `continuacao_N/`, com o projeto completo (resposta anterior unida à nova). O campo `uniao` do `registro.json` informa como foi a união (`continuacao_direta`, `arquivo_reiniciado` ou `novo_arquivo_apos_corte`).
+
+### 3.3.2 Reenvio do pedido (resposta sem arquivos)
+
+Quando a resposta termina normalmente mas não traz nenhum arquivo (estado `sem_arquivos`, por exemplo texto solto, pergunta ou chamada de ferramenta inexistente), usa-se `reenviar_pedido(modelo, contexto)`:
+
+- Mensagem fixa: "Não recebi os arquivos do projeto. Envie o projeto completo."
+- Uma única tentativa por aplicação, com contador próprio, no mesmo diálogo e com os mesmos parâmetros.
+- Resultado em `reenvio_1/`. Se ainda não vierem arquivos, o estado vira `nao_entregue`.
+- A função recusa se o `resposta.txt` já contiver arquivos que o extrator não leu; nesse caso usa-se `reprocessar_resposta`, sem custo.
+
 ### 3.4 Grupo low-code (manual)
 
 Os mesmos prompts são colados na interface de cada plataforma, respeitando os créditos gratuitos. O código resultante é exportado para um repositório do GitHub (sincronização) e executado localmente. As mensagens de apoio e o limite de interações seguem o protocolo pré-registrado, e desvios são registrados.
@@ -123,7 +143,7 @@ saidas/
 
 Colunas do `registro.csv`: data_hora_utc, modelo, modelo_id, provedor, dominio, rodada, gratuito, tokens_entrada, tokens_saida, tokens_raciocinio, tokens_total, custo_usd, motivo_termino, tentativas_api, duracao_s, duracao_api_s, tokens_por_s, n_arquivos, tem_readme, cercas_removidas, estado, pasta, erro.
 
-Estados possíveis: `gerada`, `truncada`, `sem_arquivos` e `erro_api`.
+Estados possíveis: `gerada`, `truncada`, `nao_entregue`, `sem_arquivos` e `erro_api`. As colunas `continuacao` e `reenvio` indicam o número da rodada correspondente (vazias na geração e nos reparos).
 
 ## 4. Análise de segurança (etapa seguinte)
 

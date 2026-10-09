@@ -1,0 +1,2010 @@
+=== package.json ===
+{
+  "name": "restaurante-pedidos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de pedidos para restaurante com clientes e gerente",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cookie-parser": "^1.4.6",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_DIR = __dirname;
+const DB_FILE = path.join(DATA_DIR, 'data.json');
+const SALT_ROUNDS = 10;
+const JWT_SECRET = process.env.JWT_SECRET || 'restaurante-troque-este-segredo';
+const TOKEN_TTL = '12h';
+
+app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
+
+/* ============================================================
+   Persistência (arquivo data.json)
+   ============================================================ */
+let db = { accounts: [], dishes: [], orders: [] };
+let saveTimer = null;
+
+function loadDb() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const raw = fs.readFileSync(DB_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      db = Object.assign({ accounts: [], dishes: [], orders: [] }, parsed);
+    }
+  } catch (e) {
+    console.error('Erro ao carregar dados:', e.message);
+  }
+}
+
+function saveDb() {
+  try {
+    const tmp = DB_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2));
+    fs.renameSync(tmp, DB_FILE);
+  } catch (e) {
+    console.error('Erro ao salvar dados:', e.message);
+  }
+}
+
+function scheduleSave() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveDb();
+  }, 250);
+}
+
+function genId() {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+/* ============================================================
+   Dados iniciais (primeira execução)
+   ============================================================ */
+function seed() {
+  if (db.accounts.length === 0) {
+    const gerentePass = bcrypt.hashSync('1234', SALT_ROUNDS);
+    const clientePass = bcrypt.hashSync('1234', SALT_ROUNDS);
+    db.accounts.push({
+      id: genId(),
+      name: 'Gerente',
+      email: 'gerente@restaurante.com',
+      passwordHash: gerentePass,
+      role: 'gerente',
+      createdAt: Date.now()
+    });
+    db.accounts.push({
+      id: genId(),
+      name: 'Cliente',
+      email: 'cliente@restaurante.com',
+      passwordHash: clientePass,
+      role: 'cliente',
+      createdAt: Date.now()
+    });
+  }
+
+  if (db.dishes.length === 0) {
+    const categorias = ['Entradas', 'Principais', 'Bebidas', 'Sobremesas'];
+    db.dishes = [
+      { id: genId(), name: 'Bolinho de Costela', description: 'Bolinho crocante recheado de costela desfiada', price: 28, category: 'Entradas', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Pão de Alho', description: 'Pão de alho amanteigado grelhado na chapa', price: 14, category: 'Entradas', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Feijoada', description: 'Feijoada completa com couve, laranja e farofa', price: 52, category: 'Principais', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Bife de Costela', description: 'Bife grelhado com arroz, feijão e fritas', price: 58, category: 'Principais', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Frango Grelhado', description: 'Sobrecoxa grelhada com arroz, vinagrete e purê', price: 42, category: 'Principais', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Refrigerante', description: 'Lata 350ml', price: 8, category: 'Bebidas', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Suco Natural', description: 'Laranja, limão ou abacaxi (500ml)', price: 12, category: 'Bebidas', available: true, createdAt: Date.now() },
+      { id: genId(), name: 'Pudim', description: 'Pudim de leite condensado com calda de caramelo', price: 16, category: 'Sobremesas', available: true, createdAt: Date.now() }
+    ];
+    saveDb();
+  }
+}
+
+/* ============================================================
+   Autenticação
+   ============================================================ */
+function readToken(req) {
+  const cookieToken = req.cookies && req.cookies.token;
+  const header = req.headers['authorization'];
+  if (cookieToken) return cookieToken;
+  if (header && header.startsWith('Bearer ')) return header.slice(7);
+  return null;
+}
+
+function getCurrentUser(req) {
+  const token = readToken(req);
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    return db.accounts.find(a => a.id === payload.id) || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function signToken(user) {
+  return jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+}
+
+function publicUser(user) {
+  return { id: user.id, name: user.name, email: user.email, role: user.role };
+}
+
+function requireAuth(req, res, next) {
+  const user = getCurrentUser(req);
+  if (!user) {
+    res.status(401).json({ error: 'Não autenticado. Faça login.' });
+    return;
+  }
+  req.user = user;
+  next();
+}
+
+function requireRole(roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      res.status(403).json({ error: 'Você não tem permissão para essa ação.' });
+      return;
+    }
+    next();
+  };
+}
+
+/* ============================================================
+   Rotas de autenticação
+   ============================================================ */
+app.post('/api/auth/register', (req, res) => {
+  const { name, email, password } = req.body || {};
+  const cleanEmail = (email || '').trim().toLowerCase();
+
+  if (!name || !cleanEmail || !password) {
+    return res.status(400).json({ error: 'Preencha nome, e-mail e senha.' });
+  }
+  if (password.length < 4) {
+    return res.status(400).json({ error: 'A senha precisa ter pelo menos 4 caracteres.' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return res.status(400).json({ error: 'E-mail inválido.' });
+  }
+  if (db.accounts.some(a => a.email.toLowerCase() === cleanEmail)) {
+    return res.status(409).json({ error: 'Já existe uma conta com esse e-mail.' });
+  }
+
+  const user = {
+    id: genId(),
+    name: name.trim(),
+    email: cleanEmail,
+    passwordHash: bcrypt.hashSync(password, SALT_ROUNDS),
+    role: 'cliente',
+    createdAt: Date.now()
+  };
+  db.accounts.push(user);
+  scheduleSave();
+
+  const token = signToken(user);
+  res.cookie('token', token, { httpOnly: true, maxAge: 12 * 60 * 60 * 1000, sameSite: 'lax' });
+  res.status(201).json({ user: publicUser(user), token });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const user = db.accounts.find(a => a.email.toLowerCase() === cleanEmail);
+  if (!user) {
+    return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+  }
+  const ok = bcrypt.compareSync(password || '', user.passwordHash);
+  if (!ok) {
+    return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+  }
+  const token = signToken(user);
+  res.cookie('token', token, { httpOnly: true, maxAge: 12 * 60 * 60 * 1000, sameSite: 'lax' });
+  res.json({ user: publicUser(user), token });
+});
+
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ user: publicUser(req.user) });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ ok: true });
+});
+
+/* ============================================================
+   Cardápio
+   ============================================================ */
+app.get('/api/dishes', (req, res) => {
+  res.json(db.dishes);
+});
+
+app.post('/api/dishes', requireAuth, requireRole(['gerente']), (req, res) => {
+  const { name, description, price, category, available } = req.body || {};
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'O nome do prato é obrigatório.' });
+  }
+  const p = Number(price);
+  if (isNaN(p) || p < 0) {
+    return res.status(400).json({ error: 'Preço inválido.' });
+  }
+  const dish = {
+    id: genId(),
+    name: name.trim(),
+    description: (description || '').trim(),
+    price: p,
+    category: (category || 'Outros').trim() || 'Outros',
+    available: available !== false,
+    createdAt: Date.now()
+  };
+  db.dishes.push(dish);
+  scheduleSave();
+  res.status(201).json(dish);
+});
+
+app.put('/api/dishes/:id', requireAuth, requireRole(['gerente']), (req, res) => {
+  const dish = db.dishes.find(d => d.id === req.params.id);
+  if (!dish) return res.status(404).json({ error: 'Prato não encontrado.' });
+  const { name, description, price, category, available } = req.body || {};
+  if (name !== undefined && name.trim() === '') {
+    return res.status(400).json({ error: 'O nome do prato é obrigatório.' });
+  }
+  if (name !== undefined) dish.name = name.trim();
+  if (description !== undefined) dish.description = description.trim();
+  if (price !== undefined) {
+    const p = Number(price);
+    if (isNaN(p) || p < 0) return res.status(400).json({ error: 'Preço inválido.' });
+    dish.price = p;
+  }
+  if (category !== undefined) dish.category = category.trim() || 'Outros';
+  if (available !== undefined) dish.available = !!available;
+  scheduleSave();
+  res.json(dish);
+});
+
+app.delete('/api/dishes/:id', requireAuth, requireRole(['gerente']), (req, res) => {
+  const idx = db.dishes.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Prato não encontrado.' });
+  db.dishes.splice(idx, 1);
+  scheduleSave();
+  res.json({ ok: true });
+});
+
+/* ============================================================
+   Pedidos
+   ============================================================ */
+const SITUACOES = ['novo', 'preparando', 'pronto', 'entregue', 'cancelado'];
+const SITUACAO_LABEL = {
+  novo: 'Novo',
+  preparando: 'Em preparo',
+  pronto: 'Pronto',
+  entregue: 'Entregue',
+  cancelado: 'Cancelado'
+};
+
+function serializeOrder(order) {
+  return {
+    id: order.id,
+    items: order.items,
+    situation: order.situation,
+    total: order.total,
+    note: order.note,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
+    customerName: order.customerName,
+    customerEmail: order.customerEmail,
+    history: order.history
+  };
+}
+
+app.get('/api/orders', requireAuth, (req, res) => {
+  let orders = db.orders;
+  if (req.user.role === 'gerente') {
+    orders = orders.slice().sort((a, b) => b.createdAt - a.createdAt);
+  } else {
+    orders = orders
+      .filter(o => o.customerId === req.user.id)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+  res.json(orders.map(serializeOrder));
+});
+
+app.post('/api/orders', requireAuth, (req, res) => {
+  const { items, note } = req.body || {};
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Seu carrinho está vazio.' });
+  }
+
+  const serializedItems = [];
+  let total = 0;
+  for (const it of items) {
+    const dish = db.dishes.find(d => d.id === it.dishId);
+    if (!dish) {
+      return res.status(400).json({ error: 'Um dos itens do carrinho não é mais válido.' });
+    }
+    const qty = Math.max(1, parseInt(it.qty, 10) || 1);
+    const subtotal = dish.price * qty;
+    total += subtotal;
+    serializedItems.push({
+      dishId: dish.id,
+      name: dish.name,
+      price: dish.price,
+      qty: qty,
+      subtotal: subtotal
+    });
+  }
+
+  const order = {
+    id: genId(),
+    customerId: req.user.id,
+    customerName: req.user.name,
+    customerEmail: req.user.email,
+    items: serializedItems,
+    situation: 'novo',
+    total: total,
+    note: (note || '').trim(),
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    history: [
+      { situation: 'novo', at: Date.now(), by: req.user.name }
+    ]
+  };
+  db.orders.push(order);
+  scheduleSave();
+  res.status(201).json(serializeOrder(order));
+});
+
+app.put('/api/orders/:id/situation', requireAuth, requireRole(['gerente']), (req, res) => {
+  const order = db.orders.find(o => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Pedido não encontrado.' });
+  const { situation } = req.body || {};
+  if (!SITUACOES.includes(situation)) {
+    return res.status(400).json({ error: 'Situação inválida.' });
+  }
+  order.situation = situation;
+  order.updatedAt = Date.now();
+  order.history.push({
+    situation: situation,
+    at: Date.now(),
+    by: req.user.name
+  });
+  scheduleSave();
+  res.json(serializeOrder(order));
+});
+
+/* ============================================================
+   SPA fallback
+   ============================================================ */
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Inicializa e sobe
+loadDb();
+seed();
+saveDb();
+
+app.listen(PORT, () => {
+  console.log(`\n🍽️  Restaurante pronto em: http://localhost:${PORT}\n`);
+  console.log('Contas iniciais (troque-as pela interface):');
+  console.log('  Gerente : gerente@restaurante.com / 1234');
+  console.log('  Cliente : cliente@restaurante.com / 1234\n');
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bella Cucina — Sistema de Pedidos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Splash inicial -->
+    <div id="splash" class="splash">
+      <div class="splash-brand">
+        <span class="logo-dot"></span>
+        <span>Bella Cucina</span>
+      </div>
+      <div class="splash-status" id="splash-status">Preparando sua visita…</div>
+    </div>
+
+    <!-- TELA: LOGIN / CADASTRO -->
+    <section id="screen-auth" class="screen screen-auth" hidden>
+      <div class="auth-illustration">
+        <div class="plate">
+          <div class="plate-ring"></div>
+          <div class="plate-glow"></div>
+          <div class="plate-emoji">🍽️</div>
+        </div>
+        <div class="side-notes">
+          <div class="note-chip">Feijoada <b>R$ 52</b></div>
+          <div class="note-chip">Bife de Costela <b>R$ 58</b></div>
+          <div class="note-chip">Pudim <b>R$ 16</b></div>
+        </div>
+      </div>
+
+      <div class="auth-panel">
+        <div class="auth-brand">
+          <span class="logo-dot"></span>
+          <span>Bella Cucina</span>
+        </div>
+        <h1 class="auth-title">Bem-vindo de volta</h1>
+        <p class="auth-sub">Acesse para ver o cardápio, fazer pedidos e acompanhar tudo em tempo real.</p>
+
+        <div class="auth-tabs">
+          <button class="tab active" data-tab="login">Entrar</button>
+          <button class="tab" data-tab="register">Criar conta</button>
+        </div>
+
+        <form id="form-login" class="auth-form" data-form="login">
+          <label class="field">
+            <span>E-mail</span>
+            <input type="email" name="email" placeholder="voce@exemplo.com" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input type="password" name="password" placeholder="Sua senha" autocomplete="current-password" required />
+          </label>
+          <button type="submit" class="btn btn-primary btn-lg">Entrar</button>
+          <div class="form-error" data-error></div>
+        </form>
+
+        <form id="form-register" class="auth-form" data-form="register" hidden>
+          <label class="field">
+            <span>Seu nome</span>
+            <input type="text" name="name" placeholder="Como podemos te chamar?" required />
+          </label>
+          <label class="field">
+            <span>E-mail</span>
+            <input type="email" name="email" placeholder="voce@exemplo.com" required />
+          </label>
+          <label class="field">
+            <span>Senha</span>
+            <input type="password" name="password" placeholder="Mínimo 4 caracteres" required />
+          </label>
+          <button type="submit" class="btn btn-primary btn-lg">Criar minha conta</button>
+          <div class="form-error" data-error></div>
+        </form>
+
+        <div class="auth-hint">
+          <strong>Contas de exemplo:</strong><br/>
+          Gerente: <code>gerente@restaurante.com</code> · senha <code>1234</code><br/>
+          Cliente: <code>cliente@restaurante.com</code> · senha <code>1234</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- TELA: APLICAÇÃO -->
+    <section id="screen-app" class="screen screen-app" hidden>
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="logo-dot"></span>
+          <span>Bella Cucina</span>
+        </div>
+        <nav class="topbar-nav" id="nav"></nav>
+        <div class="topbar-right">
+          <div class="user-chip">
+            <span class="avatar" id="user-avatar"></span>
+            <div class="user-info">
+              <span class="user-name" id="user-name"></span>
+              <span class="user-role" id="user-role"></span>
+            </div>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-logout">Sair</button>
+        </div>
+      </header>
+
+      <main class="content" id="content"></main>
+    </section>
+
+    <!-- Toast -->
+    <div class="toast-wrap" id="toast-wrap"></div>
+    <!-- Modal -->
+    <div class="modal-backdrop" id="modal" hidden></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+  --bg: #faf6f1;
+  --surface: #ffffff;
+  --surface-2: #fdf9f4;
+  --ink: #1c1a17;
+  --ink-soft: #5a544c;
+  --ink-mute: #8b8378;
+  --line: #ece5db;
+  --line-strong: #ddd3c5;
+  --accent: #c2502e;
+  --accent-dark: #9e3c20;
+  --accent-soft: #fbe9e2;
+  --green: #2f8f5b;
+  --green-soft: #e0f1e8;
+  --amber: #d98a2b;
+  --amber-soft: #fdeed6;
+  --red: #d1402e;
+  --red-soft: #fbe0db;
+  --blue: #2f6db5;
+  --blue-soft: #dde9f7;
+  --shadow: 0 6px 24px rgba(58, 38, 25, 0.08);
+  --shadow-lg: 0 14px 44px rgba(58, 38, 25, 0.14);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --font-display: 'Fraunces', serif;
+  --font-body: 'Manrope', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #f3e6d8 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, #f1e3d3 0%, transparent 55%),
+    var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { min-height: 100%; }
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ============ SPLASH ============ */
+.splash {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px;
+}
+.splash-brand { display: flex; align-items: center; gap: 12px; font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; }
+.splash-status { color: var(--ink-mute); font-size: 0.95rem; letter-spacing: 0.01em; }
+
+/* logo */
+.logo-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+  display: inline-block;
+}
+
+/* ============ AUTH ============ */
+.screen-auth.active {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100vh;
+}
+.auth-illustration {
+  position: relative;
+  background: linear-gradient(135deg, #e9d8c6 0%, #f4e8db 100%);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.auth-illustration::before {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(300px 300px at 30% 40%, rgba(194, 80, 46, 0.18), transparent 70%),
+    radial-gradient(260px 260px at 70% 65%, rgba(217, 138, 43, 0.18), transparent 70%);
+}
+.plate {
+  position: relative;
+  width: min(56vw, 320px);
+  height: min(56vw, 320px);
+  display: grid;
+  place-items: center;
+  animation: bob 6s ease-in-out infinite;
+}
+.plate-ring {
+  position: absolute; inset: 8%;
+  border-radius: 50%;
+  border: 2px dashed rgba(158, 60, 32, 0.35);
+  animation: spin 40s linear infinite;
+}
+.plate-glow {
+  position: absolute; inset: 18%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #fff, #f3e6d8);
+  box-shadow: var(--shadow-lg);
+}
+.plate-emoji {
+  position: relative;
+  font-size: min(22vw, 120px);
+  line-height: 1;
+}
+.side-notes {
+  position: absolute;
+  right: 6%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.note-chip {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  animation: bob 6s ease-in-out infinite;
+}
+.note-chip:nth-child(2) { animation-delay: 0.6s; }
+.note-chip:nth-child(3) { animation-delay: 1.2s; }
+.note-chip b { color: var(--accent); }
+
+.auth-panel {
+  padding: 48px 8vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.auth-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 1.25rem; }
+.auth-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  margin: 28px 0 10px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.auth-sub { color: var(--ink-soft); margin: 0 0 28px; max-width: 46ch; }
+
+.auth-tabs {
+  display: inline-flex;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+  margin-bottom: 22px;
+  width: fit-content;
+}
+.tab {
+  border: none;
+  background: transparent;
+  padding: 9px 20px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink-mute);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.tab.active { background: var(--ink); color: #fff; }
+
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field span { font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); }
+.field input {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.auth-hint {
+  margin-top: 26px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+.auth-hint code {
+  background: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  font-size: 0.75rem;
+}
+
+/* ============ BOTÕES ============ */
+.btn {
+  font-family: inherit;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 11px 20px;
+  font-size: 0.95rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: 0 8px 20px rgba(194, 80, 46, 0.32); }
+.btn-primary:hover { background: var(--accent-dark); }
+.btn-ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--line-strong); }
+.btn-ghost:hover { background: var(--surface-2); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #b0301f; }
+.btn-lg { padding: 14px 26px; font-size: 1rem; }
+.btn-sm { padding: 7px 14px; font-size: 0.85rem; }
+
+.form-error { color: var(--red); font-size: 0.88rem; min-height: 1.1em; font-weight: 600; }
+
+/* ============ TOPBAR ============ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 5vw;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 800; font-size: 1.2rem; }
+.topbar-nav { display: flex; gap: 6px; }
+.nav-link {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--ink-soft);
+  padding: 9px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.18s;
+  position: relative;
+}
+.nav-link:hover { background: var(--surface-2); color: var(--ink); }
+.nav-link.active { color: var(--accent); background: var(--accent-soft); }
+.nav-badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  padding: 2px 7px;
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.user-chip { display: flex; align-items: center; gap: 10px; }
+.avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.user-info { display: flex; flex-direction: column; line-height: 1.2; }
+.user-name { font-weight: 700; font-size: 0.92rem; }
+.user-role { font-size: 0.75rem; color: var(--ink-mute); text-transform: capitalize; }
+
+/* ============ CONTENT ============ */
+.content { padding: 36px 5vw 80px; max-width: 1240px; margin: 0 auto; }
+
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 26px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.section-head h2 {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.section-head p { margin: 6px 0 0; color: var(--ink-soft); }
+
+/* ============ CARDÁPIO ============ */
+.menu-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.search-input {
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: var(--surface);
+  min-width: 200px;
+}
+.cat-pill {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--ink-soft);
+  transition: all 0.18s;
+}
+.cat-pill:hover { border-color: var(--accent); color: var(--accent); }
+.cat-pill.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 18px;
+}
+.dish-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
+  position: relative;
+}
+.dish-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); border-color: var(--line-strong); }
+.dish-card.out { opacity: 0.6; }
+.dish-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+.dish-name {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.dish-desc { color: var(--ink-soft); font-size: 0.9rem; flex: 1; line-height: 1.5; }
+.dish-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4px; }
+.dish-price { font-weight: 800; font-size: 1.1rem; color: var(--ink); }
+.dish-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--red-soft);
+  color: var(--red);
+}
+.dish-add {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  transition: background 0.15s, transform 0.15s;
+}
+.dish-add:hover { background: var(--accent-dark); transform: scale(1.03); }
+.dish-add:disabled { background: var(--line-strong); cursor: not-allowed; transform: none; }
+
+.qty-stepper { display: inline-flex; align-items: center; gap: 8px; background: var(--surface-2); border-radius: 999px; padding: 3px; }
+.qty-stepper button {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 1rem;
+}
+.qty-stepper .qty-val { min-width: 24px; text-align: center; font-weight: 700; }
+
+/* ============ CARRINHO / FLUTUANTE ============ */
+.cart-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  background: var(--ink);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 16px 26px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.95rem;
+  box-shadow: var(--shadow-lg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 30;
+  transition: transform 0.2s;
+}
+.cart-fab:hover { transform: translateY(-3px); }
+.cart-count {
+  background: var(--accent);
+  border-radius: 999px;
+  min-width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  padding: 0 8px;
+}
+
+/* ============ PEDIDOS / TABELA ============ */
+.filter-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+.stat-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+.stat-card {
+  flex: 1;
+  min-width: 150px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.stat-label { font-size: 0.78rem; color: var(--ink-mute); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+.stat-value { font-family: var(--font-display); font-size: 2rem; font-weight: 800; margin-top: 6px; }
+.stat-sub { font-size: 0.8rem; color: var(--ink-soft); margin-top: 2px; }
+
+.order-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px;
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+.order-card:hover { box-shadow: var(--shadow-lg); }
+.order-main { display: flex; flex-direction: column; gap: 12px; }
+.order-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.order-id { font-weight: 800; font-family: var(--font-display); font-size: 1.15rem; }
+.order-items { display: flex; flex-direction: column; gap: 8px; }
+.order-line { display: flex; justify-content: space-between; gap: 12px; font-size: 0.92rem; color: var(--ink-soft); }
+.order-line b { color: var(--ink); font-weight: 700; }
+.order-note {
+  background: var(--amber-soft);
+  border-left: 3px solid var(--amber);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.order-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.order-total { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; }
+.order-meta { font-size: 0.78rem; color: var(--ink-mute); text-align: right; line-height: 1.4; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.badge .dot { width: 7px; height: 7px; border-radius: 50%; }
+.badge.novo { background: var(--blue-soft); color: var(--blue); }
+.badge.novo .dot { background: var(--blue); animation: pulse 1.6s infinite; }
+.badge.preparando { background: var(--amber-soft); color: var(--amber); }
+.badge.preparando .dot { background: var(--amber); animation: pulse 1.6s infinite; }
+.badge.pronto { background: var(--green-soft); color: var(--green); }
+.badge.pronto .dot { background: var(--green); }
+.badge.entregue { background: var(--green-soft); color: var(--ink-mute); }
+.badge.entregue .dot { background: var(--ink-mute); }
+.badge.cancelado { background: var(--red-soft); color: var(--red); }
+.badge.cancelado .dot { background: var(--red); }
+
+.sit-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.sit-btn {
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-soft);
+  transition: all 0.15s;
+}
+.sit-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.sit-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sit-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--ink-mute);
+}
+.empty-state .emoji { font-size: 3rem; margin-bottom: 12px; }
+.empty-state h3 { font-family: var(--font-display); font-size: 1.4rem; color: var(--ink); margin: 0 0 8px; }
+
+/* ============ GERENTE: FORM PRATO ============ */
+.dish-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--shadow);
+  align-items: end;
+}
+.dish-form-actions { display: flex; gap: 10px; align-items: end; }
+
+.dish-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.dish-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-mute);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.dish-table td { padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 0.92rem; vertical-align: middle; }
+.dish-table tr:last-child td { border-bottom: none; }
+.dish-table tr:hover td { background: var(--surface-2); }
+.dish-table .name-cell { font-weight: 700; }
+.table-actions { display: flex; gap: 8px; }
+.icon-btn {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.15s;
+}
+.icon-btn:hover { border-color: var(--accent); background: var(--accent-soft); }
+.icon-btn.danger:hover { border-color: var(--red); background: var(--red-soft); }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.switch input { accent-color: var(--green); width: 16px; height: 16px; }
+
+/* ============ MODAL ============ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 26, 23, 0.55);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+  padding: 20px;
+  animation: fade 0.2s;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+  background: var(--surface);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: auto;
+  box-shadow: var(--shadow-lg);
+  animation: pop 0.25s;
+}
+.modal-head {
+  padding: 22px 26px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-head h3 { font-family: var(--font-display); font-size: 1.5rem; margin: 0; font-weight: 800; }
+.modal-body { padding: 8px 26px 16px; display: flex; flex-direction: column; gap: 14px; }
+.modal-foot { padding: 12px 26px 24px; display: flex; justify-content: flex-end; gap: 10px; }
+.close-x {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: var(--ink-mute);
+  line-height: 1;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.cart-item:last-child { border-bottom: none; }
+.cart-item-name { font-weight: 700; flex: 1; }
+.cart-item-price { color: var(--ink-soft); font-size: 0.88rem; }
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 14px;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+/* ============ TOAST ============ */
+.toast-wrap {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 60;
+  align-items: center;
+}
+.toast {
+  background: var(--ink);
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-lg);
+  animation: rise 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toast.success { background: var(--green); }
+.toast.error { background: var(--red); }
+.toast.leaving { animation: fall 0.3s forwards; }
+
+/* ============ ANIMAÇÕES ============ */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fall { to { opacity: 0; transform: translateY(12px); } }
+
+/* stagger reveal */
+.reveal { animation: rise 0.5s both; }
+
+/* ============ RESPONSIVO ============ */
+@media (max-width: 820px) {
+  .screen-auth.active { grid-template-columns: 1fr; }
+  .auth-illustration { display: none; }
+  .auth-panel { padding: 32px 24px; justify-content: flex-start; }
+  .topbar { flex-wrap: wrap; padding: 12px 4vw; }
+  .topbar-nav { order: 3; width: 100%; margin-top: 8px; overflow-x: auto; }
+  .content { padding: 24px 4vw 90px; }
+  .order-card { grid-template-columns: 1fr; }
+  .order-side { align-items: flex-start; }
+  .order-meta { text-align: left; }
+  .sit-actions { justify-content: flex-start; }
+  .cart-fab { right: 16px; bottom: 16px; padding: 13px 20px; }
+}
+
+=== public/app.js ===
+// ===== Estado global =====
+let currentUser = null;
+let route = 'menu';
+let dishes = [];
+let orders = [];
+let cart = {};          // { dishId: qty }
+let cartOpen = false;
+let lastPoll = 0;
+
+// Situações ordenadas para transição
+const SITUACOES = ['novo', 'preparando', 'pronto', 'entregue', 'cancelado'];
+const SITUACAO_LABEL = {
+  novo: 'Novo', preparando: 'Em preparo', pronto: 'Pronto',
+  entregue: 'Entregue', cancelado: 'Cancelado'
+};
+const SITUACAO_ICONE = {
+  novo: '🆕', preparando: '👨‍🍳', pronto: '✅', entregue: '📦', cancelado: '❌'
+};
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+
+// ===== Helpers =====
+function money(v) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+}
+function initials(name) {
+  return (name || '?').split(' ').filter(Boolean).slice(0, 2).map(s => s[0]).join('').toUpperCase();
+}
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return 'agora mesmo';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `há ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `há ${h} h`;
+  const d = Math.floor(h / 24);
+  return `há ${d} d`;
+}
+function shortId(id) {
+  return '#' + (id || '').slice(0, 6).toUpperCase();
+}
+function esc(s) {
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function toast(msg, type = '') {
+  const wrap = $('#toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+// ===== API =====
+async function api(path, opts = {}) {
+  const res = await fetch('/api' + path, {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    credentials: 'same-origin'
+  });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const err = new Error((data && data.error) || 'Erro inesperado.');
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+// ===== Auth =====
+function setAuth(user) {
+  currentUser = user;
+}
+
+function showScreen(name) {
+  $$('.screen').forEach(s => s.classList.remove('active'));
+  const map = { auth: 'screen-auth', app: 'screen-app' };
+  const el = $('#' + map[name]);
+  if (el) el.classList.add('active');
+  $('#splash').hidden = true;
+}
+
+function renderChrome() {
+  if (!currentUser) return;
+  $('#user-avatar').textContent = initials(currentUser.name);
+  $('#user-name').textContent = currentUser.name;
+  $('#user-role').textContent = currentUser.role === 'gerente' ? 'Gerente' : 'Cliente';
+
+  const nav = $('#nav');
+  const links = currentUser.role === 'gerente'
+    ? [{ k: 'menu', t: 'Cardápio' }, { k: 'orders', t: 'Pedidos' }, { k: 'manage', t: 'Cardápio (Gerenciar)' }]
+    : [{ k: 'menu', t: 'Cardápio' }, { k: 'orders', t: 'Meus Pedidos' }];
+  nav.innerHTML = links.map(l =>
+    `<button class="nav-link ${route === l.k ? 'active' : ''}" data-route="${l.k}">${l.t}</button>`
+  ).join('');
+  $$('#nav .nav-link').forEach(b => b.onclick = () => navigate(b.dataset.route));
+}
+
+async function login(email, password) {
+  return api('/auth/login', { method: 'POST', body: { email, password } });
+}
+async function register(name, email, password) {
+  return api('/auth/register', { method: 'POST', body: { name, email, password } });
+}
+async function me() { return api('/auth/me'); }
+async function logout() { return api('/auth/logout', { method: 'POST' }); }
+
+async function enterApp() {
+  renderChrome();
+  showScreen('app');
+  await loadMenu();
+  if (currentUser.role === 'gerente') await loadAllOrders();
+  else await loadMyOrders();
+  navigate('menu');
+  startPolling();
+}
+
+// ===== Dados =====
+async function loadMenu() {
+  dishes = await api('/dishes');
+}
+async function loadAllOrders() { orders = await api('/orders'); }
+async function loadMyOrders() { orders = await api('/orders'); }
+
+function visibleOrders() {
+  if (currentUser.role === 'gerente') return orders;
+  return orders.filter(o => o.customerName === currentUser.name);
+}
+
+// ===== Navegação =====
+function navigate(r) {
+  route = r;
+  renderChrome();
+  const c = $('#content');
+  c.innerHTML = '';
+  if (r === 'menu') renderMenu(c);
+  else if (r === 'orders') renderOrders(c);
+  else if (r === 'manage') renderManage(c);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ===== CARDÁPIO =====
+function renderMenu(c) {
+  const isGerente = currentUser.role === 'gerente';
+  const cats = ['Todas', ...new Set(dishes.map(d => d.category))];
+  c.innerHTML = `
+    <div class="section-head">
+      <div>
+        <h2>Cardápio</h2>
+        <p>Escolha seus pratos favoritos e monte seu pedido.</p>
+      </div>
+      <div class="menu-controls">
+        <input class="search-input" id="menu-search" placeholder="🔍 Buscar prato…" />
+        <div id="cat-pills" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+    <div id="menu-filter" style="display:none;margin-bottom:16px;font-size:.85rem;color:var(--ink-mute)"></div>
+    <div id="menu-grid" class="menu-grid"></div>
+  `;
+
+  const pills = $('#cat-pills');
+  pills.innerHTML = cats.map((cat, i) =>
+    `<button class="cat-pill ${i === 0 ? 'active' : ''}" data-cat="${esc(cat)}">${esc(cat)}</button>`
+  ).join('');
+
+  const state = { cat: cats[0], q: '' };
+
+  function draw() {
+    const grid = $('#menu-grid');
+    const list = dishes.filter(d =>
+      (state.cat === 'Todas' || d.category === state.cat) &&
+      (!state.q || d.name.toLowerCase().includes(state.q.toLowerCase()))
+    );
+    if (list.length === 0) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="emoji">🍽️</div><h3>Nenhum prato encontrado</h3><p>Tente outra busca.</p></div>`;
+      return;
+    }
+    grid.innerHTML = list.map((d, i) => dishCard(d, i)).join('');
+    bindDishButtons();
+  }
+
+  function dishCard(d, i) {
+    const qty = cart[d.id] || 0;
+    const out = !d.available;
+    let action;
+    if (qty > 0) {
+      action = `<div class="qty-stepper">
+        <button data-act="dec" data-id="${d.id}">−</button>
+        <span class="qty-val">${qty}</span>
+        <button data-act="inc" data-id="${d.id}">+</button>
+      </div>`;
+    } else if (out) {
+      action = `<button class="dish-add" disabled>Esgotado</button>`;
+    } else {
+      action = `<button class="dish-add" data-act="inc" data-id="${d.id}">+ Adicionar</button>`;
+    }
+    return `<div class="dish-card reveal ${out ? 'out' : ''}" style="animation-delay:${Math.min(i * 40, 300)}ms">
+      <span class="dish-tag">${esc(d.category)}</span>
+      <div class="dish-name">${esc(d.name)}</div>
+      ${d.description ? `<div class="dish-desc">${esc(d.description)}</div>` : `<div class="dish-desc" style="visibility:hidden">&nbsp;</div>`}
+      <div class="dish-foot">
+        <span class="dish-price">${money(d.price)}</span>
+        ${action}
+      </div>
+    </div>`;
+  }
+
+  function bindDishButtons() {
+    $$('#menu-grid [data-act]').forEach(btn => {
+      btn.onclick = () => {
+        const id = btn.dataset.id;
+        const dish = dishes.find(d => d.id === id);
+        if (!dish) return;
+        if (!dish.available) return;
+        if (btn.dataset.act === 'inc') cart[id] = (cart[id] || 0) + 1;
+        else cart[id] = Math.max(0, (cart[id] || 0) - 1);
+        if (cart[id] === 0) delete cart[id];
+        draw();
+        updateFab();
+      };
+    });
+  }
+
+  pills.querySelectorAll('.cat-pill').forEach(p => p.onclick = () => {
+    pills.querySelectorAll('.cat-pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    state.cat = p.dataset.cat;
+    draw();
+  });
+  $('#menu-search').oninput = e => {
+    state.q = e.target.value;
+    draw();
+  };
+
+  draw();
+  updateFab();
+}
+
+function cartCount() { return Object.values(cart).reduce((a, b) => a + b, 0); }
+function cartTotal() {
+  return Object.entries(cart).reduce((sum, [id, q]) => {
+    const d = dishes.find(x => x.id === id);
+    return sum + (d ? d.price * q : 0);
+  }, 0);
+}
+function updateFab() {
+  let fab = $('.cart-fab');
+  if (route !== 'menu') { if (fab) fab.remove(); return; }
+  if (!fab) {
+    fab = document.createElement('button');
+    fab.className = 'cart-fab';
+    fab.innerHTML = `🛒 Pedir <span class="cart-count" id="cart-count">0</span> <span id="cart-total"></span>`;
+    fab.onclick = openCart;
+    document.body.appendChild(fab);
+  }
+  const n = cartCount();
+  $('#cart-count', fab).textContent = n;
+  const t = $('#cart-total', fab);
+  if (t) t.textContent = n ? money(cartTotal()) : '';
+  if (n === 0) fab.style.display = 'none'; else fab.style.display = 'flex';
+}
+
+function openCart() {
+  const entries = Object.entries(cart).map(([id, q]) => {
+    const d = dishes.find(x => x.id === id);
+    return { ...d, qty: q };
+  }).filter(x => x && x.name);
+  const html = entries.map(e => `
+    <div class="cart-item">
+      <div>
+        <div class="cart-item-name">${e.qty}× ${esc(e.name)}</div>
+        <div class="cart-item-price">${money(e.price)} un.</div>
+      </div>
+      <div class="qty-stepper">
+        <button data-act="dec" data-id="${e.id}">−</button>
+        <span class="qty-val">${e.qty}</span>
+        <button data-act="inc" data-id="${e.id}">+</button>
+      </div>
+    </div>`).join('');
+
+  const total = entries.reduce((s, e) => s + e.price * e.qty, 0);
+  openModal(`
+    <div class="modal-head"><h3>Seu pedido</h3><button class="close-x" data-close>×</button></div>
+    <div class="modal-body">
+      ${entries.length === 0 ? `<p style="color:var(--ink-mute)">Seu carrinho está vazio.</p>` : html}
+      <label class="field" style="margin-top:8px">
+        <span>Obs. (opcional)</span>
+        <input type="text" id="order-note" placeholder="Ex.: sem cebola, ponto da carne…" maxlength="120" />
+      </label>
+      <div class="total-row"><span>Total</span><span id="modal-total">${money(total)}</span></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" data-close>Continuar</button>
+      <button class="btn btn-primary" id="btn-confirm" ${entries.length ? '' : 'disabled'}>Confirmar pedido</button>
+    </div>
+  `);
+
+  $$('#modal [data-act]').forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.id;
+    if (btn.dataset.act === 'inc') cart[id] = (cart[id] || 0) + 1;
+    else cart[id] = Math.max(0, (cart[id] || 0) - 1);
+    if (cart[id] === 0) delete cart[id];
+    openCart();
+    updateFab();
+  });
+  $('#btn-confirm').onclick = confirmOrder;
+}
+
+async function confirmOrder() {
+  const items = Object.entries(cart).map(([dishId, qty]) => ({ dishId, qty }));
+  if (items.length === 0) return;
+  const btn = $('#btn-confirm');
+  btn.disabled = true;
+  btn.textContent = 'Enviando…';
+  try {
+    await api('/orders', { method: 'POST', body: { items, note: $('#order-note').value } });
+    cart = {};
+    closeModal();
+    updateFab();
+    toast('Pedido enviado com sucesso! 🎉', 'success');
+    if (currentUser.role === 'gerente') await loadAllOrders();
+    await loadMyOrders();
+  } catch (e) {
+    toast(e.message, 'error');
+    btn.disabled = false;
+    btn.textContent = 'Confirmar pedido';
+  }
+}
+
+// ===== PEDIDOS =====
+function renderOrders(c) {
+  const isGerente = currentUser.role === 'gerente';
+  let list = visibleOrders();
+
+  c.innerHTML = `
+    <div class="section-head">
+      <div><h2>${isGerente ? 'Todos os Pedidos' : 'Meus Pedidos'}</h2>
+      <p>${isGerente ? 'Acompanhe e gerencie os pedidos dos clientes.' : 'Acompanhe o status dos seus pedidos.'}</p></div>
+    </div>
+    <div class="filter-row" id="order-filters"></div>
+    <div id="order-list"></div>
+  `;
+
+  const filters = [
+    { k: 'todos', t: 'Todos' },
+    { k: 'ativo', t: 'Em andamento' },
+    { k: 'entregue', t: 'Entregues' },
+    { k: 'cancelado', t: 'Cancelados' }
+  ];
+  $('#order-filters').innerHTML = filters.map((f, i) =>
+    `<button class="cat-pill ${i === 0 ? 'active' : ''}" data-f="${f.k}">${f.t}</button>`
+  ).join('');
+
+  let state = { f: 'todos' };
+
+  function filtered() {
+    if (state.f === 'todos') return list;
+    if (state.f === 'ativo') return list.filter(o => ['novo', 'preparando', 'pronto'].includes(o.situation));
+    return list.filter(o => o.situation === state.f);
+  }
+
+  function draw() {
+    const wl = filtered();
+    const el = $('#order-list');
+    if (wl.length === 0) {
+      el.innerHTML = `<div class="empty-state"><div class="emoji">🧾</div><h3>Nenhum pedido por aqui</h3><p>Quando você fizer um pedido, ele aparece nesta lista.</p></div>`;
+      return;
+    }
+    el.innerHTML = wl.map((o, i) => orderCard(o, isGerente, i)).join('');
+    bindOrderActions();
+  }
+
+  function orderCard(o, gerente, i) {
+    const lines = o.items.map(it =>
+      `<div class="order-line"><span>${it.qty}× ${esc(it.name)}</span><b>${money(it.subtotal)}</b></div>`
+    ).join('');
+    const sitBtns = gerente ? SITUACOES.map(s =>
+      `<button class="sit-btn ${o.situation === s ? 'active' : ''}" data-sit="${s}" data-id="${o.id}">${SITUACAO_ICONE[s]} ${SITUACAO_LABEL[s]}</button>`
+    ).join('') : '';
+
+    return `<div class="order-card reveal" style="animation-delay:${Math.min(i * 40, 240)}ms">
+      <div class="order-main">
+        <div class="order-top">
+          <span class="order-id">${shortId(o.id)}</span>
+          <span class="badge ${o.situation}"><span class="dot"></span>${SITUACAO_ICONE[o.situation]} ${SITUACAO_LABEL[o.situation]}</span>
+          ${gerente ? `<span style="font-size:.85rem;color:var(--ink-mute)">👤 ${esc(o.customerName)}</span>` : ''}
+        </div>
+        <div class="order-items">${lines}</div>
+        ${o.note ? `<div class="order-note">📝 ${esc(o.note)}</div>` : ''}
+        ${gerente ? `<div class="sit-actions">${sitBtns}</div>` : ''}
+      </div>
+      <div class="order-side">
+        <div class="order-total">${money(o.total)}</div>
+        <div class="order-meta">${gerente ? esc(o.customerName) : ''}<br/>${timeAgo(o.createdAt)}</div>
+      </div>
+    </div>`;
+  }
+
+  function bindOrderActions() {
+    $$('#order-list .sit-btn').forEach(b => b.onclick = async () => {
+      try {
+        await api(`/orders/${b.dataset.id}/situation`, { method: 'PUT', body: { situation: b.dataset.sit } });
+        await loadAllOrders();
+        renderOrders(c);
+        toast(`Status: ${SITUACAO_LABEL[b.dataset.sit]}`, 'success');
+      } catch (e) { toast(e.message, 'error'); }
+    });
+  }
+
+  $$('#order-filters .cat-pill').forEach(p => p.onclick = () => {
+    $$('#order-filters .cat-pill').forEach(x => x.classList.remove('active'));
+    p.classList.add('active');
+    state.f = p.dataset.f;
+    draw();
+  });
+
+  draw();
+}
+
+// ===== GERENCIAR CARDÁPIO (gerente) =====
+function renderManage(c) {
+  c.innerHTML = `
+    <div class="section-head">
+      <div><h2>Gerenciar Cardápio</h2>
+      <p>Cadastre, edite e remova pratos. Mude a disponibilidade a qualquer momento.</p></div>
+      <button class="btn btn-primary" id="btn-new-dish">+ Novo prato</button>
+    </div>
+    <div class="dish-form-grid" id="dish-form" hidden></div>
+    <div id="dish-table-wrap"></div>
+  `;
+
+  const form = $('#dish-form');
+  const wrap = $('#dish-table-wrap');
+  let editing = null;
+
+  function showForm(d = null) {
+    editing = d;
+    form.hidden = false;
+    form.innerHTML = `
+      <label class="field"><span>Nome</span><input name="name" value="${esc(d ? d.name : '')}" placeholder="Ex.: Feijoada" required></label>
+      <label class="field"><span>Categoria</span><input name="category" value="${esc(d ? d.category : '')}" placeholder="Principais" list="cat-list"></label>
+      <label class="field"><span>Preço (R$)</span><input name="price" type="number" min="0" step="0.01" value="${d ? d.price : ''}" placeholder="0.00"></label>
+      <label class="field"><span>Descrição</span><input name="description" value="${esc(d ? d.description : '')}" placeholder="Breve descrição"></label>
+      <label class="field"><span>Disponível</span>
+        <div class="switch"><input type="checkbox" name="available" ${d ? (d.available ? 'checked' : '') : 'checked'}><span>${d ? (d.available ? 'Sim' : 'Não') : 'Sim'}</span></div>
+      </label>
+      <div class="dish-form-actions">
+        <button class="btn btn-primary" id="save-dish">${d ? 'Salvar' : 'Adicionar'}</button>
+        <button class="btn btn-ghost" id="cancel-dish">Cancelar</button>
+      </div>
+      <datalist id="cat-list">${[...new Set(dishes.map(d => d.category))].map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    `;
+    form.querySelectorAll('input, datalist');
+    const setAvail = form.querySelector('input[name=available]');
+    setAvail.onchange = () => setAvail.nextElementSibling.textContent = setAvail.checked ? 'Sim' : 'Não';
+    form.querySelector('#cancel-dish').onclick = () => { form.hidden = true; form.innerHTML = ''; };
+    form.querySelector('#save-dish').onclick = saveDish;
+  }
+
+  async function saveDish() {
+    const get = n => form.querySelector(`[name="${n}"]`).value.trim();
+    const body = {
+      name: get('name'),
+      category: get('category') || 'Outros',
+      price: Number(form.querySelector('[name=price]').value),
+      description: get('description'),
+      available: form.querySelector('[name=available]').checked
+    };
+    if (!body.name) return toast('Informe o nome do prato', 'error');
+    if (isNaN(body.price) || body.price < 0) return toast('Preço inválido', 'error');
+    try {
+      if (editing) {
+        await api('/dishes/' + editing.id, { method: 'PUT', body });
+        toast('Prato atualizado', 'success');
+      } else {
+        await api('/dishes', { method: 'POST', body });
+        toast('Prato adicionado', 'success');
+      }
+      form.hidden = true;
+      await loadMenu();
+      renderManage(c);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  function draw() {
+    const rows = dishes.map(d => `
+      <tr>
+        <td class="name-cell">${esc(d.name)}</td>
+        <td>${esc(d.category)}</td>
+        <td>${esc(d.description || '—')}</td>
+        <td><b>${money(d.price)}</b></td>
+        <td>
+          <label class="switch">
+            <input type="checkbox" data-avail="${d.id}" ${d.available ? 'checked' : ''}>
+            <span>${d.available ? 'Disponível' : 'Esgotado'}</span>
+          </label>
+        </td>
+        <td>
+          <div class="table-actions">
+            <button class="icon-btn" data-edit="${d.id}" title="Editar">✏️</button>
+            <button class="icon-btn danger" data-del="${d.id}" title="Remover">🗑️</button>
+          </div>
+        </td>
+      </tr>`).join('');
+    wrap.innerHTML = dishes.length === 0
+      ? `<div class="empty-state"><div class="emoji">🍳</div><h3>Cardápio vazio</h3><p>Clique em "Novo prato" para começar.</p></div>`
+      : `<table class="dish-table">
+          <thead><tr><th>Prato</th><th>Categoria</th><th>Descrição</th><th>Preço</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+
+    wrap.querySelectorAll('[data-avail]').forEach(cb => cb.onchange = async () => {
+      try {
+        await api('/dishes/' + cb.dataset.avail, { method: 'PUT', body: { available: cb.checked } });
+        await loadMenu();
+        renderManage(c);
+        toast(cb.checked ? 'Prato disponível' : 'Prato esgotado', 'success');
+      } catch (e) { toast(e.message, 'error'); }
+    });
+    wrap.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+      const d = dishes.find(x => x.id === b.dataset.edit);
+      showForm(d);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      const d = dishes.find(x => x.id === b.dataset.del);
+      if (!confirm(`Remover o prato "${d.name}"?`)) return;
+      try {
+        await api('/dishes/' + d.id, { method: 'DELETE' });
+        await loadMenu();
+        renderManage(c);
+        toast('Prato removido', 'success');
+      } catch (e) { toast(e.message, 'error'); }
+    });
+  }
+
+  $('#btn-new-dish').onclick = () => { showForm(null); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  draw();
+}
+
+// ===== MODAL =====
+function openModal(html) {
+  const m = $('#modal');
+  m.innerHTML = `<div class="modal">${html}</div>`;
+  m.hidden = false;
+  m.onclick = e => { if (e.target === m || e.target.closest('[data-close]')) closeModal(); };
+  $$('[data-close]', m).forEach(b => b.onclick = e => { e.stopPropagation(); closeModal(); });
+}
+function closeModal() {
+  const m = $('#modal');
+  m.hidden = true;
+  m.innerHTML = '';
+}
+
+// ===== POLLING (atualização em tempo real) =====
+function startPolling() {
+  clearInterval(window._poll);
+  window._poll = setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      await loadMyOrders();
+      if (route === 'orders') renderOrders($('#content'));
+    } catch (e) { /* silêncio */ }
+  }, 8000);
+}
+
+// ===== EVENTOS GLOBAIS =====
+function setupAuth() {
+  const tabs = $$('.auth-tabs .tab');
+  const forms = { login: $('#form-login'), register: $('#form-register') };
+  function switchTab(name) {
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    Object.entries(forms).forEach(([k, f]) => f.hidden = k !== name);
+    $$('[data-error]').forEach(e => e.textContent = '');
+  }
+  tabs.forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+
+  async function handle(err, data) {
+    const errEl = $('[data-error]', (document.querySelector('.auth-form:not([hidden])')));
+    if (err) { errEl.textContent = err; return; }
+    setAuth(data.user);
+    await enterApp();
+  }
+
+  forms.login.onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const data = await login(f.email.value, f.password.value);
+      await handle(null, data);
+    } catch (e2) { handle(e2.message); }
+  };
+  forms.register.onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const data = await register(f.name.value, f.email.value, f.password.value);
+      await handle(null, data);
+    } catch (e2) { handle(e2.message); }
+  };
+}
+
+function setupLogout() {
+  $('#btn-logout').onclick = async () => {
+    try { await logout(); } catch (e) {}
+    currentUser = null;
+    route = 'menu';
+    cart = {};
+    clearInterval(window._poll);
+    showScreen('auth');
+    $$('[data-error]').forEach(e => e.textContent = '');
+  };
+}
+
+// ===== BOOT =====
+(async function boot() {
+  setupAuth();
+  setupLogout();
+  window.addEventListener('beforeunload', saveDbHint);
+  try {
+    const data = await me();
+    setAuth(data.user);
+    await enterApp();
+  } catch (e) {
+    showScreen('auth');
+  }
+  $('#splash').hidden = true;
+})();
+
+function saveDbHint() {
+  // O backend já salva sozinho; isso é só um gancho de segurança.
+}
+
+=== .gitignore ===
+node_modules/
+data.json
+data.json.tmp
+.env
+
+=== README.md ===
+# 🍽️ Bella Cucina — Sistema de Pedidos para Restaurante
+
+Um site completo para o seu restaurante: **clientes** veem o cardápio, fazem pedidos e acompanham o status; o **gerente** cadastra/edita/remove pratos, muda a situação dos pedidos e vê tudo.
+
+**Tudo funciona dentro do próprio site.** Não precisa de internet fora do site, de bancos externos ou de integrações. Os dados ficam salvos em um arquivo na máquina do servidor e permanecem mesmo depois de fechar e reabrir.
+
+---
+
+## O que você precisa
+
+- **Node.js** instalado (a versão 18 ou mais nova).
+
+  Para verificar, abra o terminal e digite:
+  ```
+  node -v
+  ```
+  Se aparecer um número, está pronto. Se não tiver, baixe em: https://nodejs.org/ (escolha a versão LTS) e instale.
+
+---
+
+## Como instalar e executar
+
+1. Abra o terminal **na pasta do projeto** (onde está este arquivo `README.md`).
+
+2. Instale as dependências:
+   ```
+   npm install
+   ```
+
+3. Inicie o site:
+   ```
+   npm start
+   ```
+
+4. Abra no navegador:
+   ```
+   http://localhost:3000
+   ```
+
+   No terminal aparecerá algo como:
+   ```
+   🍽️  Restaurante pronto em: http://localhost:3000
+   ```
+
+---
+
+## Contas para você testar
+
+| Papel   | E-mail                        | Senha |
+|---------|-------------------------------|-------|
+| Gerente | `gerente@restaurante.com`    | `1234` |
+| Cliente | `cliente@restaurante.com`    | `1234` |
+
+- **Gerente** vê: Cardápio, **Todos os Pedidos** (pode mudar a situação) e **Gerenciar Cardápio** (cadastrar/editar/remover pratos).
+- **Cliente** vê: Cardápio (para pedir) e **Meus Pedidos** (acompanhamento).
+
+> ⚠️ **Troque a senha** de `gerente@restaurante.com` antes de usar de verdade. A senha `1234` é só para teste. (O site não tem tela para trocar a senha ainda — basta criar uma nova conta para você ou usar as contas de exemplo.)
+
+---
+
+## Como fica salvo?
+
+Os dados (contas, pratos e pedidos) são gravados em um arquivo chamado `data.json`, criado na pasta do projeto na primeira vez. Tudo fica salvo automaticamente e **não se perde** ao fechar o site. Para "zerar", apague o arquivo `data.json` e reinicie.
+
+---
+
+## Usar na internet (para o mundo de fora)
+
+### Opção 1 — Compartilhar na sua rede local (rápido)
+Depois de `npm start`, o site já funciona para quem está na mesma rede do seu computador. Descubra seu IP com `ipconfig` (Windows) ou `ifconfig` (Mac/Linux) e acesse `http://SEU-IP:3000` no celular.
+
+### Opção 2 — Hospedar na internet de verdade (recomendado)
+Para que **qualquer pessoa** acesse pela web, suba o projeto num serviço gratuito que roda Node.js:
+
+1. Crie uma conta gratuita em **Render** (https://render.com) ou **Railway** (https://railway.app).
+2. Coloque este projeto num repositório Git (ex.: crie um repositório no GitHub e envie os arquivos).
+3. No Render: **New → Web Service** → aponte para seu repositório.
+4. Adicione uma variável de ambiente `JWT_SECRET` com uma frase longa e aleatória.
+5. Deploy. Ele vai gerar um endereço tipo `https://seu-restaurante.onrender.com`.
+
+> 💡 **Importante para salvar:** no **Railway** os dados persistem (ótimo). No **Render** grátis, o disco pode ser zerado em deploys — para dados garantidos de verdade, prefira Railway ou um servidor próprio (VPS) com um `data.json` persistente.
+
+---
+
+## Comandos úteis
+
+| Comando       | O que faz                          |
+|---------------|------------------------------------|
+| `npm start`   | Inicia o site (porta 3000)        |
+| `npm run dev` | Inicia o site (mesma coisa)       |
+| `npm install` | Instala as dependências (1ª vez)  |
+
+Para mudar a porta, use: `PORT=5000 npm start`
+
+---
+
+## Estrutura do projeto
+
+```
+restaurante-pedidos/
+├── server.js        → servidor (salva dados, autentica, gerencia API)
+├── package.json
+├── data.json        → (gerado) onde ficam guardados os dados
+└── public/
+    ├── index.html   → páginas
+    ├── style.css    → visual
+    └── app.js       → comportamento (cardápio, pedidos, gerente)
+```
+
+Pronto! É só rodar. 🎉

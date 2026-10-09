@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping Online - Loja Virtual</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header id="cabecalho">
+  <div class="header-conteudo">
+    <div class="logo" onclick="irPara('home')">🛒 Shopping Online</div>
+    <div class="busca">
+      <input type="text" id="campoBusca" placeholder="Buscar produtos...">
+      <button onclick="buscarProdutos()">Buscar</button>
+    </div>
+    <div class="header-acoes" id="headerAcoes"></div>
+  </div>
+  <nav id="menuCategorias"></nav>
+</header>
+
+<main id="app"></main>
+
+<div id="toast" class="toast"></div>
+
+<div id="modalCarrinho" class="modal">
+  <div class="modal-conteudo">
+    <span class="fechar" onclick="fecharModal('modalCarrinho')">&times;</span>
+    <h2>Meu Carrinho</h2>
+    <div id="carrinhoConteudo"></div>
+  </div>
+</div>
+
+<div id="modalLogin" class="modal">
+  <div class="modal-conteudo">
+    <span class="fechar" onclick="fecharModal('modalLogin')">&times;</span>
+    <h2 id="tituloAuth">Entrar</h2>
+    <div class="abas">
+      <button id="abaLogin" onclick="mostrarAba('login')">Entrar</button>
+      <button id="abaRegistrar" onclick="mostrarAba('registrar')">Cadastrar</button>
+    </div>
+    <form id="formAuth" onsubmit="enviarAuth(event)">
+      <input type="text" id="authNome" name="nome" placeholder="Nome completo" style="display:none">
+      <input type="email" id="authEmail" name="email" placeholder="E-mail" required>
+      <input type="password" id="authSenha" name="senha" placeholder="Senha" required>
+      <button type="submit" id="botaoAuth">Entrar</button>
+    </form>
+    <p id="msgAuth" class="msg-erro"></p>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

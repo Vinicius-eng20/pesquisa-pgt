@@ -1,0 +1,1030 @@
+=== README.md ===
+# Controle de Despesas Pessoais
+
+Sistema web completo de controle de despesas pessoais com autenticação, categorias e painel administrativo.
+
+## Requisitos
+
+- Node.js 18 ou superior instalado no computador
+- Nenhum outro serviço externo é necessário (banco de dados fica em arquivo local)
+
+## Como instalar
+
+1. Abra o terminal (Prompt de Comando no Windows, Terminal no Mac/Linux) na pasta do projeto.
+2. Execute o comando abaixo para instalar as dependências:
+
+```
+npm install
+```
+
+## Como executar
+
+```
+npm start
+```
+
+Depois de executar, abra o navegador e acesse:
+
+```
+http://localhost:3000
+```
+
+## Usuário administrador padrão
+
+Na primeira vez que o site rodar, será criado automaticamente um administrador:
+
+- **E-mail:** admin@admin.com
+- **Senha:** admin123
+
+**Importante:** troque a senha do administrador após o primeiro acesso (você pode criar um novo admin e desativar o antigo, ou editar o arquivo `data/db.json`).
+
+## Como usar
+
+### Para quem controla os gastos
+1. Acesse a página inicial e clique em **Cadastrar**.
+2. Crie sua conta com e-mail e senha.
+3. Faça login e use o painel para:
+   - Registrar gastos (valor, descrição, categoria e data)
+   - Ver o total gasto no mês
+   - Ver gastos agrupados por categoria
+   - Excluir gastos lançados por engano
+
+### Para o administrador
+1. Faça login com a conta de administrador.
+2. No painel administrativo você pode:
+   - Cadastrar novas categorias de gasto
+   - Ativar/desativar usuários
+   - Ver o total de gastos de todos os usuários
+
+## Onde ficam os dados
+
+Todos os dados ficam salvos no arquivo `data/db.json` dentro da pasta do projeto. Isso significa que mesmo fechando o navegador ou desligando o computador, tudo continua salvo.
+
+Para colocar na internet, hospede este projeto em qualquer serviço que rode Node.js (Render, Railway, Fly.io, VPS, etc). O arquivo de dados persistirá enquanto o disco do servidor for persistente.
+
+## Estrutura
+
+- `server.js` — servidor principal (Express + API + páginas)
+- `data/db.json` — banco de dados em arquivo (criado automaticamente)
+- `public/` — arquivos estáticos (HTML, CSS, JS do navegador)
+- `package.json` — configuração do projeto
+
+
+=== package.json ===
+{
+  "name": "controle-despesas",
+  "version": "1.0.0",
+  "description": "Controle de despesas pessoais",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3"
+  }
+}
+
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_DIR = path.join(__dirname, 'data');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+// ---------- Banco de dados em arquivo ----------
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function loadDB() {
+  ensureDataDir();
+  if (!fs.existsSync(DB_FILE)) {
+    return { users: [], categories: [], expenses: [], nextUserId: 1, nextCategoryId: 1, nextExpenseId: 1 };
+  }
+  try {
+    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+  } catch (e) {
+    return { users: [], categories: [], expenses: [], nextUserId: 1, nextCategoryId: 1, nextExpenseId: 1 };
+  }
+}
+
+function saveDB(db) {
+  ensureDataDir();
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+}
+
+function seed() {
+  const db = loadDB();
+  let changed = false;
+
+  if (db.categories.length === 0) {
+    const defaultCats = ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Outros'];
+    for (const name of defaultCats) {
+      db.categories.push({ id: db.nextCategoryId++, name, active: true });
+    }
+    changed = true;
+  }
+
+  if (!db.users.find(u => u.role === 'admin')) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    db.users.push({
+      id: db.nextUserId++,
+      name: 'Administrador',
+      email: 'admin@admin.com',
+      password: hash,
+      role: 'admin',
+      active: true,
+      createdAt: new Date().toISOString()
+    });
+    changed = true;
+  }
+
+  if (changed) saveDB(db);
+}
+
+seed();
+
+// ---------- Middlewares ----------
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: 'troque-esta-chave-secreta-em-producao-123',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- Helpers de autenticação ----------
+function requireAuth(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Não autenticado' });
+  const db = loadDB();
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (!user || !user.active) {
+    req.session.destroy(() => {});
+    return res.status(401).json({ error: 'Conta inativa ou inexistente' });
+  }
+  req.user = user;
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso restrito ao administrador' });
+    next();
+  });
+}
+
+// ---------- API de autenticação ----------
+app.post('/api/register', (req, res) => {
+  const { name, email, password } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Preencha nome, e-mail e senha' });
+  if (password.length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres' });
+
+  const db = loadDB();
+  const exists = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (exists) return res.status(400).json({ error: 'Já existe uma conta com este e-mail' });
+
+  const hash = bcrypt.hashSync(password, 10);
+  const user = {
+    id: db.nextUserId++,
+    name,
+    email: email.toLowerCase(),
+    password: hash,
+    role: 'user',
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  db.users.push(user);
+  saveDB(db);
+
+  req.session.userId = user.id;
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Informe e-mail e senha' });
+
+  const db = loadDB();
+  const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return res.status(400).json({ error: 'E-mail ou senha incorretos' });
+  if (!user.active) return res.status(403).json({ error: 'Esta conta está desativada' });
+  if (!bcrypt.compareSync(password, user.password)) return res.status(400).json({ error: 'E-mail ou senha incorretos' });
+
+  req.session.userId = user.id;
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role });
+});
+
+// ---------- API de categorias ----------
+app.get('/api/categories', requireAuth, (req, res) => {
+  const db = loadDB();
+  const list = db.categories.filter(c => c.active || req.user.role === 'admin');
+  res.json(list);
+});
+
+app.post('/api/categories', requireAdmin, (req, res) => {
+  const { name } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Informe o nome da categoria' });
+  const db = loadDB();
+  const exists = db.categories.find(c => c.name.toLowerCase() === name.trim().toLowerCase());
+  if (exists) return res.status(400).json({ error: 'Já existe uma categoria com este nome' });
+  const cat = { id: db.nextCategoryId++, name: name.trim(), active: true };
+  db.categories.push(cat);
+  saveDB(db);
+  res.json(cat);
+});
+
+app.patch('/api/categories/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const db = loadDB();
+  const cat = db.categories.find(c => c.id === id);
+  if (!cat) return res.status(404).json({ error: 'Categoria não encontrada' });
+  if (typeof req.body.active === 'boolean') cat.active = req.body.active;
+  if (typeof req.body.name === 'string' && req.body.name.trim()) cat.name = req.body.name.trim();
+  saveDB(db);
+  res.json(cat);
+});
+
+// ---------- API de despesas ----------
+app.get('/api/expenses', requireAuth, (req, res) => {
+  const db = loadDB();
+  const list = db.expenses
+    .filter(e => e.userId === req.user.id)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  res.json(list);
+});
+
+app.post('/api/expenses', requireAuth, (req, res) => {
+  const { amount, description, categoryId, date } = req.body || {};
+  const value = parseFloat(amount);
+  if (!value || value <= 0) return res.status(400).json({ error: 'Informe um valor maior que zero' });
+  if (!date) return res.status(400).json({ error: 'Informe a data do gasto' });
+
+  const db = loadDB();
+  const cat = db.categories.find(c => c.id === parseInt(categoryId, 10));
+  if (!cat || !cat.active) return res.status(400).json({ error: 'Categoria inválida' });
+
+  const exp = {
+    id: db.nextExpenseId++,
+    userId: req.user.id,
+    amount: Math.round(value * 100) / 100,
+    description: (description || '').trim(),
+    categoryId: cat.id,
+    date,
+    createdAt: new Date().toISOString()
+  };
+  db.expenses.push(exp);
+  saveDB(db);
+  res.json(exp);
+});
+
+app.delete('/api/expenses/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const db = loadDB();
+  const idx = db.expenses.findIndex(e => e.id === id && e.userId === req.user.id);
+  if (idx === -1) return res.status(404).json({ error: 'Gasto não encontrado' });
+  db.expenses.splice(idx, 1);
+  saveDB(db);
+  res.json({ ok: true });
+});
+
+app.get('/api/summary', requireAuth, (req, res) => {
+  const db = loadDB();
+  const mine = db.expenses.filter(e => e.userId === req.user.id);
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  let totalMonth = 0;
+  const byCategory = {};
+  for (const e of mine) {
+    if ((e.date || '').startsWith(monthKey)) totalMonth += e.amount;
+    byCategory[e.categoryId] = (byCategory[e.categoryId] || 0) + e.amount;
+  }
+  const categories = db.categories.map(c => ({
+    id: c.id,
+    name: c.name,
+    total: Math.round((byCategory[c.id] || 0) * 100) / 100
+  }));
+
+  res.json({
+    totalMonth: Math.round(totalMonth * 100) / 100,
+    totalAll: Math.round(mine.reduce((s, e) => s + e.amount, 0) * 100) / 100,
+    count: mine.length,
+    byCategory: categories
+  });
+});
+
+// ---------- API de administração ----------
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const db = loadDB();
+  const users = db.users.map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    active: u.active,
+    createdAt: u.createdAt
+  }));
+  res.json(users);
+});
+
+app.patch('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const db = loadDB();
+  const u = db.users.find(x => x.id === id);
+  if (!u) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (u.id === req.user.id && req.body.active === false) {
+    return res.status(400).json({ error: 'Você não pode desativar sua própria conta' });
+  }
+  if (typeof req.body.active === 'boolean') u.active = req.body.active;
+  saveDB(db);
+  res.json({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active });
+});
+
+app.get('/api/admin/summary', requireAdmin, (req, res) => {
+  const db = loadDB();
+  const totalAll = db.expenses.reduce((s, e) => s + e.amount, 0);
+  const perUser = db.users.map(u => {
+    const total = db.expenses.filter(e => e.userId === u.id).reduce((s, e) => s + e.amount, 0);
+    return {
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      active: u.active,
+      total: Math.round(total * 100) / 100
+    };
+  });
+  res.json({
+    totalAll: Math.round(totalAll * 100) / 100,
+    totalUsers: db.users.length,
+    totalExpenses: db.expenses.length,
+    perUser
+  });
+});
+
+// ---------- Rotas de páginas ----------
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app.html')));
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+
+=== public/styles.css ===
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  margin: 0;
+  background: #f4f6f8;
+  color: #1f2937;
+}
+header {
+  background: #1e3a8a;
+  color: white;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+header h1 { font-size: 18px; margin: 0; }
+header nav a {
+  color: white;
+  text-decoration: none;
+  margin-left: 14px;
+  font-size: 14px;
+  cursor: pointer;
+}
+header nav a:hover { text-decoration: underline; }
+.container { max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin-bottom: 20px;
+}
+.card h2 { margin-top: 0; font-size: 18px; }
+.grid { display: grid; gap: 16px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+@media (max-width: 720px) {
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+}
+label { display: block; font-size: 13px; margin-bottom: 4px; color: #374151; }
+input, select, button, textarea {
+  font-size: 14px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  width: 100%;
+  font-family: inherit;
+}
+button {
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+button:hover { background: #172e6e; }
+button.secondary { background: #6b7280; }
+button.secondary:hover { background: #4b5563; }
+button.danger { background: #b91c1c; }
+button.danger:hover { background: #991b1b; }
+button.small { padding: 4px 8px; font-size: 12px; width: auto; }
+.row { display: flex; gap: 10px; align-items: end; }
+.row > div { flex: 1; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+th { background: #f9fafb; font-weight: 600; }
+.stat { text-align: center; padding: 16px; border-radius: 10px; background: #eef2ff; }
+.stat .value { font-size: 22px; font-weight: 700; color: #1e3a8a; }
+.stat .label { font-size: 12px; color: #6b7280; }
+.error { color: #b91c1c; font-size: 14px; margin-top: 8px; }
+.success { color: #166534; font-size: 14px; margin-top: 8px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.tabs button { background: #e5e7eb; color: #1f2937; }
+.tabs button.active { background: #1e3a8a; color: white; }
+.centerbox { max-width: 420px; margin: 60px auto; }
+.hidden { display: none; }
+.muted { color: #6b7280; font-size: 13px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+.badge.ok { background: #dcfce7; color: #166534; }
+.badge.off { background: #fee2e2; color: #991b1b; }
+.bar { background: #e5e7eb; border-radius: 6px; height: 10px; overflow: hidden; margin-top: 4px; }
+.bar > div { background: #1e3a8a; height: 100%; }
+
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Controle de Despesas</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <h1>💰 Controle de Despesas</h1>
+</header>
+
+<div class="container">
+  <div class="centerbox card">
+    <h2>Entrar</h2>
+    <div id="tabs" class="tabs">
+      <button id="tabLogin" class="active">Entrar</button>
+      <button id="tabRegister">Criar conta</button>
+    </div>
+
+    <div id="loginBox">
+      <label>E-mail</label>
+      <input id="loginEmail" type="email" />
+      <div style="height:8px"></div>
+      <label>Senha</label>
+      <input id="loginPassword" type="password" />
+      <div style="height:12px"></div>
+      <button id="btnLogin" style="width:100%">Entrar</button>
+      <div id="loginError" class="error"></div>
+    </div>
+
+    <div id="registerBox" class="hidden">
+      <label>Nome</label>
+      <input id="regName" />
+      <div style="height:8px"></div>
+      <label>E-mail</label>
+      <input id="regEmail" type="email" />
+      <div style="height:8px"></div>
+      <label>Senha (mínimo 6 caracteres)</label>
+      <input id="regPassword" type="password" />
+      <div style="height:12px"></div>
+      <button id="btnRegister" style="width:100%">Criar conta</button>
+      <div id="regError" class="error"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const tabLogin = document.getElementById('tabLogin');
+const tabRegister = document.getElementById('tabRegister');
+const loginBox = document.getElementById('loginBox');
+const registerBox = document.getElementById('registerBox');
+
+tabLogin.onclick = () => {
+  tabLogin.classList.add('active');
+  tabRegister.classList.remove('active');
+  loginBox.classList.remove('hidden');
+  registerBox.classList.add('hidden');
+};
+tabRegister.onclick = () => {
+  tabRegister.classList.add('active');
+  tabLogin.classList.remove('active');
+  registerBox.classList.remove('hidden');
+  loginBox.classList.add('hidden');
+};
+
+async function post(url, data) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || 'Erro');
+  return json;
+}
+
+document.getElementById('btnLogin').onclick = async () => {
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+  try {
+    const user = await post('/api/login', {
+      email: document.getElementById('loginEmail').value.trim(),
+      password: document.getElementById('loginPassword').value
+    });
+    window.location.href = user.role === 'admin' ? '/admin' : '/app';
+  } catch (e) {
+    err.textContent = e.message;
+  }
+};
+
+document.getElementById('btnRegister').onclick = async () => {
+  const err = document.getElementById('regError');
+  err.textContent = '';
+  try {
+    await post('/api/register', {
+      name: document.getElementById('regName').value.trim(),
+      email: document.getElementById('regEmail').value.trim(),
+      password: document.getElementById('regPassword').value
+    });
+    window.location.href = '/app';
+  } catch (e) {
+    err.textContent = e.message;
+  }
+};
+
+// Se já estiver logado, vai direto
+fetch('/api/me').then(r => r.ok ? r.json() : null).then(u => {
+  if (u) window.location.href = u.role === 'admin' ? '/admin' : '/app';
+});
+</script>
+</body>
+</html>
+
+
+=== public/app.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meus Gastos</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <h1>💰 Meus Gastos</h1>
+  <nav>
+    <span id="who" style="opacity:.85;font-size:14px"></span>
+    <a id="logout">Sair</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="grid grid-2">
+    <div class="card">
+      <h2>Registrar gasto</h2>
+      <label>Valor (R$)</label>
+      <input id="expAmount" type="number" step="0.01" min="0.01" />
+      <div style="height:8px"></div>
+      <label>Descrição</label>
+      <input id="expDesc" placeholder="Ex: Almoço no restaurante" />
+      <div style="height:8px"></div>
+      <label>Categoria</label>
+      <select id="expCategory"></select>
+      <div style="height:8px"></div>
+      <label>Data</label>
+      <input id="expDate" type="date" />
+      <div style="height:12px"></div>
+      <button id="btnAdd" style="width:100%">Adicionar gasto</button>
+      <div id="addMsg" class="error"></div>
+    </div>
+
+    <div class="card">
+      <h2>Resumo</h2>
+      <div class="grid grid-2">
+        <div class="stat">
+          <div class="value" id="totalMonth">R$ 0,00</div>
+          <div class="label">Gasto no mês atual</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="totalAll">R$ 0,00</div>
+          <div class="label">Total geral</div>
+        </div>
+      </div>
+      <div style="height:16px"></div>
+      <h3 style="font-size:14px;margin:0 0 8px 0">Por categoria</h3>
+      <div id="catList" class="muted">Sem dados ainda.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Meus gastos</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Descrição</th>
+          <th>Categoria</th>
+          <th style="text-align:right">Valor</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="expTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let categories = [];
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || 'Erro');
+  return json;
+}
+
+function money(v) {
+  return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+}
+
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+async function init() {
+  try {
+    const me = await api('/api/me');
+    document.getElementById('who').textContent = me.name;
+    if (me.role === 'admin') {
+      const a = document.createElement('a');
+      a.href = '/admin';
+      a.textContent = 'Painel Admin';
+      document.querySelector('header nav').insertBefore(a, document.getElementById('logout'));
+    }
+  } catch (e) {
+    window.location.href = '/';
+    return;
+  }
+
+  document.getElementById('expDate').value = todayISO();
+
+  categories = await api('/api/categories');
+  const sel = document.getElementById('expCategory');
+  sel.innerHTML = '<option value="">Selecione...</option>';
+  categories.filter(c => c.active).forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id;
+    o.textContent = c.name;
+    sel.appendChild(o);
+  });
+
+  await refresh();
+}
+
+function catName(id) {
+  const c = categories.find(x => x.id === id);
+  return c ? c.name : '—';
+}
+
+async function refresh() {
+  const expenses = await api('/api/expenses');
+  const tbody = document.getElementById('expTbody');
+  tbody.innerHTML = '';
+  if (expenses.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="muted">Nenhum gasto registrado.</td></tr>';
+  }
+  for (const e of expenses) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${e.date.split('-').reverse().join('/')}</td>
+      <td>${e.description || '—'}</td>
+      <td>${catName(e.categoryId)}</td>
+      <td style="text-align:right">${money(e.amount)}</td>
+      <td style="text-align:right"><button class="danger small" data-id="${e.id}">Excluir</button></td>
+    `;
+    tr.querySelector('button').onclick = async () => {
+      if (!confirm('Excluir este gasto?')) return;
+      await api('/api/expenses/' + e.id, { method: 'DELETE' });
+      refresh();
+    };
+    tbody.appendChild(tr);
+  }
+
+  const s = await api('/api/summary');
+  document.getElementById('totalMonth').textContent = money(s.totalMonth);
+  document.getElementById('totalAll').textContent = money(s.totalAll);
+
+  const catList = document.getElementById('catList');
+  const withValues = s.byCategory.filter(c => c.total > 0).sort((a, b) => b.total - a.total);
+  if (withValues.length === 0) {
+    catList.innerHTML = '<div class="muted">Sem dados ainda.</div>';
+  } else {
+    const max = withValues[0].total;
+    catList.innerHTML = withValues.map(c => `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:14px">
+          <span>${c.name}</span>
+          <strong>${money(c.total)}</strong>
+        </div>
+        <div class="bar"><div style="width:${(c.total / max * 100).toFixed(1)}%"></div></div>
+      </div>
+    `).join('');
+  }
+}
+
+document.getElementById('btnAdd').onclick = async () => {
+  const msg = document.getElementById('addMsg');
+  msg.textContent = '';
+  try {
+    await api('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: document.getElementById('expAmount').value,
+        description: document.getElementById('expDesc').value,
+        categoryId: document.getElementById('expCategory').value,
+        date: document.getElementById('expDate').value
+      })
+    });
+    document.getElementById('expAmount').value = '';
+    document.getElementById('expDesc').value = '';
+    refresh();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+};
+
+document.getElementById('logout').onclick = async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/';
+};
+
+init();
+</script>
+</body>
+</html>
+
+
+=== public/admin.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Painel Administrativo</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <h1>🛠️ Painel Administrativo</h1>
+  <nav>
+    <a href="/app">Meus Gastos</a>
+    <a id="logout">Sair</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="grid grid-3">
+    <div class="stat">
+      <div class="value" id="statTotal">R$ 0,00</div>
+      <div class="label">Total gasto (todos os usuários)</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statUsers">0</div>
+      <div class="label">Usuários cadastrados</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statExpenses">0</div>
+      <div class="label">Gastos registrados</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Cadastrar categoria</h2>
+    <div class="row">
+      <div>
+        <label>Nome da categoria</label>
+        <input id="catName" placeholder="Ex: Educação" />
+      </div>
+      <button id="btnAddCat" style="width:auto;padding:9px 18px">Cadastrar</button>
+    </div>
+    <div id="catMsg" class="error"></div>
+
+    <div style="height:16px"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="catTbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Usuários</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>E-mail</th>
+          <th>Perfil</th>
+          <th>Status</th>
+          <th style="text-align:right">Total gasto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="userTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || 'Erro');
+  return json;
+}
+
+function money(v) {
+  return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+}
+
+async function init() {
+  try {
+    const me = await api('/api/me');
+    if (me.role !== 'admin') { window.location.href = '/app'; return; }
+  } catch (e) {
+    window.location.href = '/';
+    return;
+  }
+  await loadAll();
+}
+
+async function loadAll() {
+  await loadStats();
+  await loadCategories();
+  await loadUsers();
+}
+
+async function loadStats() {
+  const s = await api('/api/admin/summary');
+  document.getElementById('statTotal').textContent = money(s.totalAll);
+  document.getElementById('statUsers').textContent = s.totalUsers;
+  document.getElementById('statExpenses').textContent = s.totalExpenses;
+}
+
+async function loadCategories() {
+  const cats = await api('/api/categories');
+  const tbody = document.getElementById('catTbody');
+  tbody.innerHTML = '';
+  cats.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.id}</td>
+      <td id="name-${c.id}">${c.name}</td>
+      <td>${c.active ? '<span class="badge ok">Ativa</span>' : '<span class="badge off">Inativa</span>'}</td>
+      <td style="text-align:right">
+        <button class="secondary small" data-act="rename" data-id="${c.id}">Renomear</button>
+        <button class="${c.active ? 'danger' : ''} small" data-act="toggle" data-id="${c.id}" data-active="${c.active}">
+          ${c.active ? 'Desativar' : 'Ativar'}
+        </button>
+      </td>
+    `;
+    tr.querySelectorAll('button').forEach(b => {
+      b.onclick = async () => {
+        const id = parseInt(b.dataset.id, 10);
+        if (b.dataset.act === 'rename') {
+          const novo = prompt('Novo nome da categoria:');
+          if (!novo || !novo.trim()) return;
+          await api('/api/categories/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: novo.trim() })
+          });
+        } else {
+          const novoStatus = b.dataset.active === 'true' ? false : true;
+          await api('/api/categories/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: novoStatus })
+          });
+        }
+        loadAll();
+      };
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadUsers() {
+  const users = await api('/api/admin/users');
+  const summary = await api('/api/admin/summary');
+  const totals = {};
+  summary.perUser.forEach(p => totals[p.id] = p.total);
+
+  const me = await api('/api/me');
+  const tbody = document.getElementById('userTbody');
+  tbody.innerHTML = '';
+  users.forEach(u => {
+    const tr = document.createElement('tr');
+    const isMe = u.id === me.id;
+    tr.innerHTML = `
+      <td>${u.id}</td>
+      <td>${u.name}${isMe ? ' <span class="muted">(você)</span>' : ''}</td>
+      <td>${u.email}</td>
+      <td>${u.role === 'admin' ? 'Administrador' : 'Usuário'}</td>
+      <td>${u.active ? '<span class="badge ok">Ativo</span>' : '<span class="badge off">Desativado</span>'}</td>
+      <td style="text-align:right">${money(totals[u.id] || 0)}</td>
+      <td style="text-align:right">
+        ${isMe ? '' : `<button class="${u.active ? 'danger' : ''} small" data-id="${u.id}" data-active="${u.active}">
+          ${u.active ? 'Desativar' : 'Ativar'}
+        </button>`}
+      </td>
+    `;
+    const btn = tr.querySelector('button');
+    if (btn) {
+      btn.onclick = async () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const novoStatus = btn.dataset.active === 'true' ? false : true;
+        if (novoStatus === false && !confirm('Desativar esta conta? O usuário não poderá mais entrar.')) return;
+        try {
+          await api('/api/admin/users/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: novoStatus })
+          });
+          loadAll();
+        } catch (e) {
+          alert(e.message);
+        }
+      };
+    }
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('btnAddCat').onclick = async () => {
+  const msg = document.getElementById('catMsg');
+  msg.textContent = '';
+  const name = document.getElementById('catName').value.trim();
+  if (!name) { msg.textContent = 'Informe o nome da categoria'; return; }
+  try {
+    await api('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    document.getElementById('catName').value = '';
+    loadAll();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+};
+
+document.getElementById('logout').onclick = async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/';
+};
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+PASTE AQUI a imagem PNG de 512x512.
+
+Como gerar:
+1. Converta o arquivo icons/icon.svg para PNG em 512x512.
+   Sugerido: https://www.svgto.png/ (cole ou envie o SVG, escolha 512x512,
+   baixe e salve como icon-512.png dentro da pasta "icons").
+2. Faça o mesmo para 192x192 e salve como icon-192.png.
+
+Sem esses dois PNGs o site continua funcionando normalmente.
+

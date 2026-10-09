@@ -1,0 +1,806 @@
+=== package.json ===
+{
+  "name": "biblioteca-digital",
+  "version": "1.0.0",
+  "description": "Biblioteca digital com empréstimo de itens",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const app = express();
+const db = new Database(path.join(__dirname, 'biblioteca.db'));
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    senha TEXT NOT NULL,
+    papel TEXT NOT NULL CHECK(papel IN ('leitor','bibliotecario'))
+  );
+
+  CREATE TABLE IF NOT EXISTS itens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    autor TEXT NOT NULL,
+    categoria TEXT NOT NULL,
+    ano INTEGER,
+    disponivel INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS emprestimos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    data_emprestimo TEXT NOT NULL,
+    data_prevista TEXT NOT NULL,
+    data_devolucao TEXT,
+    FOREIGN KEY(item_id) REFERENCES itens(id),
+    FOREIGN KEY(usuario_id) REFERENCES usuarios(id)
+  );
+`);
+
+// Cria bibliotecário padrão se não existir
+const adminExiste = db.prepare("SELECT id FROM usuarios WHERE papel='bibliotecario'").get();
+if (!adminExiste) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare("INSERT INTO usuarios (nome,email,senha,papel) VALUES (?,?,?,?)")
+    .run('Bibliotecário', 'admin@biblioteca.com', hash, 'bibliotecario');
+  console.log('Bibliotecário padrão criado: admin@biblioteca.com / admin123');
+}
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(session({
+  secret: 'biblioteca-secret-key-mude-se-quiser',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+function exigirLogin(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Faça login primeiro.' });
+  next();
+}
+
+function exigirBibliotecario(req, res, next) {
+  if (!req.session.usuario || req.session.usuario.papel !== 'bibliotecario')
+    return res.status(403).json({ erro: 'Apenas o bibliotecário pode fazer isso.' });
+  next();
+}
+
+// ===== AUTENTICAÇÃO =====
+app.post('/api/cadastro', (req, res) => {
+  const { nome, email, senha, papel } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos.' });
+  const p = papel === 'bibliotecario' ? 'bibliotecario' : 'leitor';
+  try {
+    const hash = bcrypt.hashSync(senha, 10);
+    const info = db.prepare("INSERT INTO usuarios (nome,email,senha,papel) VALUES (?,?,?,?)")
+      .run(nome, email.toLowerCase(), hash, p);
+    req.session.usuario = { id: info.lastInsertRowid, nome, email: email.toLowerCase(), papel: p };
+    res.json({ ok: true, usuario: req.session.usuario });
+  } catch (e) {
+    res.status(400).json({ erro: 'Este email já está cadastrado.' });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  const u = db.prepare("SELECT * FROM usuarios WHERE email=?").get((email || '').toLowerCase());
+  if (!u || !bcrypt.compareSync(senha || '', u.senha))
+    return res.status(401).json({ erro: 'Email ou senha incorretos.' });
+  req.session.usuario = { id: u.id, nome: u.nome, email: u.email, papel: u.papel };
+  res.json({ ok: true, usuario: req.session.usuario });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  res.json({ usuario: req.session.usuario || null });
+});
+
+// ===== ITENS DO ACERVO =====
+app.get('/api/itens', exigirLogin, (req, res) => {
+  const { busca } = req.query;
+  let itens;
+  if (busca) {
+    const b = `%${busca}%`;
+    itens = db.prepare("SELECT * FROM itens WHERE titulo LIKE ? OR autor LIKE ? OR categoria LIKE ? ORDER BY titulo")
+      .all(b, b, b);
+  } else {
+    itens = db.prepare("SELECT * FROM itens ORDER BY titulo").all();
+  }
+  res.json(itens);
+});
+
+app.post('/api/itens', exigirBibliotecario, (req, res) => {
+  const { titulo, autor, categoria, ano } = req.body;
+  if (!titulo || !autor || !categoria) return res.status(400).json({ erro: 'Preencha título, autor e categoria.' });
+  const info = db.prepare("INSERT INTO itens (titulo,autor,categoria,ano,disponivel) VALUES (?,?,?,?,1)")
+    .run(titulo, autor, categoria, ano || null);
+  res.json({ ok: true, id: info.lastInsertRowid });
+});
+
+app.put('/api/itens/:id', exigirBibliotecario, (req, res) => {
+  const { titulo, autor, categoria, ano } = req.body;
+  const item = db.prepare("SELECT * FROM itens WHERE id=?").get(req.params.id);
+  if (!item) return res.status(404).json({ erro: 'Item não encontrado.' });
+  db.prepare("UPDATE itens SET titulo=?, autor=?, categoria=?, ano=? WHERE id=?")
+    .run(titulo, autor, categoria, ano || null, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/itens/:id', exigirBibliotecario, (req, res) => {
+  const ativo = db.prepare("SELECT id FROM emprestimos WHERE item_id=? AND data_devolucao IS NULL").get(req.params.id);
+  if (ativo) return res.status(400).json({ erro: 'Item está emprestado no momento.' });
+  db.prepare("DELETE FROM itens WHERE id=?").run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ===== EMPRÉSTIMOS =====
+function temAtraso(usuarioId) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const atrasado = db.prepare(
+    "SELECT id FROM emprestimos WHERE usuario_id=? AND data_devolucao IS NULL AND data_prevista < ?"
+  ).get(usuarioId, hoje);
+  return !!atrasado;
+}
+
+app.post('/api/emprestimos', exigirLogin, (req, res) => {
+  const { item_id } = req.body;
+  const item = db.prepare("SELECT * FROM itens WHERE id=?").get(item_id);
+  if (!item) return res.status(404).json({ erro: 'Item não encontrado.' });
+  if (!item.disponivel) return res.status(400).json({ erro: 'Item indisponível.' });
+
+  if (temAtraso(req.session.usuario.id))
+    return res.status(403).json({ erro: 'Você tem empréstimos em atraso. Devolva-os antes de pegar novos.' });
+
+  const hoje = new Date();
+  const prevista = new Date();
+  prevista.setDate(hoje.getDate() + 14);
+
+  db.prepare("INSERT INTO emprestimos (item_id,usuario_id,data_emprestimo,data_prevista) VALUES (?,?,?,?)")
+    .run(item_id, req.session.usuario.id, hoje.toISOString().slice(0, 10), prevista.toISOString().slice(0, 10));
+  db.prepare("UPDATE itens SET disponivel=0 WHERE id=?").run(item_id);
+  res.json({ ok: true });
+});
+
+app.post('/api/emprestimos/:id/devolver', exigirLogin, (req, res) => {
+  const emp = db.prepare("SELECT * FROM emprestimos WHERE id=?").get(req.params.id);
+  if (!emp) return res.status(404).json({ erro: 'Empréstimo não encontrado.' });
+  if (emp.usuario_id !== req.session.usuario.id && req.session.usuario.papel !== 'bibliotecario')
+    return res.status(403).json({ erro: 'Sem permissão.' });
+  if (emp.data_devolucao) return res.status(400).json({ erro: 'Já devolvido.' });
+  db.prepare("UPDATE emprestimos SET data_devolucao=? WHERE id=?")
+    .run(new Date().toISOString().slice(0, 10), req.params.id);
+  db.prepare("UPDATE itens SET disponivel=1 WHERE id=?").run(emp.item_id);
+  res.json({ ok: true });
+});
+
+app.get('/api/meus-emprestimos', exigirLogin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.*, i.titulo, i.autor FROM emprestimos e
+    JOIN itens i ON i.id = e.item_id
+    WHERE e.usuario_id=? ORDER BY e.data_emprestimo DESC
+  `).all(req.session.usuario.id);
+  res.json(rows);
+});
+
+app.get('/api/emprestimos', exigirBibliotecario, (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.*, i.titulo, i.autor, u.nome AS leitor, u.email AS leitor_email
+    FROM emprestimos e
+    JOIN itens i ON i.id = e.item_id
+    JOIN usuarios u ON u.id = e.usuario_id
+    ORDER BY e.data_emprestimo DESC
+  `).all();
+  res.json(rows);
+});
+
+app.get('/api/usuarios', exigirBibliotecario, (req, res) => {
+  const rows = db.prepare("SELECT id,nome,email,papel FROM usuarios ORDER BY nome").all();
+  const hoje = new Date().toISOString().slice(0, 10);
+  const result = rows.map(u => {
+    const atrasados = db.prepare(
+      "SELECT COUNT(*) c FROM emprestimos WHERE usuario_id=? AND data_devolucao IS NULL AND data_prevista < ?"
+    ).get(u.id, hoje).c;
+    const ativos = db.prepare(
+      "SELECT COUNT(*) c FROM emprestimos WHERE usuario_id=? AND data_devolucao IS NULL"
+    ).get(u.id).c;
+    return { ...u, atrasados, ativos };
+  });
+  res.json(result);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biblioteca Digital</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f0f4f8;
+  color: #1a202c;
+  min-height: 100vh;
+}
+header {
+  background: #2c5282;
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+header h1 { font-size: 22px; }
+header .user-info { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  margin-bottom: 20px;
+}
+.card h2 { font-size: 18px; margin-bottom: 16px; color: #2c5282; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab {
+  padding: 10px 18px;
+  background: white;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+.tab.active { background: #2c5282; color: white; border-color: #2c5282; }
+input, select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+  font-family: inherit;
+}
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #4a5568; }
+button {
+  background: #2c5282;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+button:hover { background: #2a4365; }
+button.danger { background: #c53030; }
+button.danger:hover { background: #9b2c2c; }
+button.secondary { background: #718096; }
+button.small { padding: 6px 12px; font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.item {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+}
+.item h3 { font-size: 15px; margin-bottom: 4px; color: #1a202c; }
+.item .meta { font-size: 12px; color: #718096; margin-bottom: 10px; }
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.badge.ok { background: #c6f6d5; color: #22543d; }
+.badge.no { background: #fed7d7; color: #742a2a; }
+.badge.warn { background: #feebc8; color: #7b341e; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+th { background: #f7fafc; font-size: 12px; color: #4a5568; text-transform: uppercase; }
+tr:hover td { background: #f7fafc; }
+.msg { padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; }
+.msg.erro { background: #fed7d7; color: #742a2a; }
+.msg.ok { background: #c6f6d5; color: #22543d; }
+.login-box {
+  max-width: 400px;
+  margin: 80px auto;
+  background: white;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.login-box h1 { text-align: center; margin-bottom: 24px; color: #2c5282; font-size: 24px; }
+.toggle-auth { text-align: center; margin-top: 12px; font-size: 14px; }
+.toggle-auth a { color: #2c5282; cursor: pointer; text-decoration: underline; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row input { flex: 1; margin-bottom: 0; min-width: 200px; }
+.empty { text-align: center; color: #a0aec0; padding: 24px; font-size: 14px; }
+.hint { font-size: 12px; color: #718096; margin-top: 8px; text-align: center; }
+
+=== public/app.js ===
+const app = document.getElementById('app');
+let usuario = null;
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.erro || 'Erro na operação.');
+  return data;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+function msg(texto, tipo = 'erro') {
+  const el = document.createElement('div');
+  el.className = 'msg ' + tipo;
+  el.textContent = texto;
+  return el;
+}
+
+// ============ LOGIN / CADASTRO ============
+let modoCadastro = false;
+
+function renderLogin() {
+  app.innerHTML = `
+    <div class="login-box">
+      <h1>📚 Biblioteca Digital</h1>
+      <div id="msg-area"></div>
+      <h2 style="font-size:16px;margin-bottom:16px;color:#2c5282">
+        ${modoCadastro ? 'Criar conta' : 'Entrar'}
+      </h2>
+      ${modoCadastro ? `
+        <label>Nome completo</label>
+        <input id="nome" type="text" placeholder="Seu nome">
+      ` : ''}
+      <label>Email</label>
+      <input id="email" type="email" placeholder="seu@email.com">
+      <label>Senha</label>
+      <input id="senha" type="password" placeholder="••••••">
+      ${modoCadastro ? `
+        <label>Tipo de conta</label>
+        <select id="papel">
+          <option value="leitor">Leitor</option>
+          <option value="bibliotecario">Bibliotecário</option>
+        </select>
+      ` : ''}
+      <button style="width:100%" id="btn-entrar">
+        ${modoCadastro ? 'Cadastrar' : 'Entrar'}
+      </button>
+      <div class="toggle-auth">
+        ${modoCadastro ? 'Já tem conta?' : 'Não tem conta?'}
+        <a id="toggle">${modoCadastro ? 'Entrar' : 'Cadastre-se'}</a>
+      </div>
+      <div class="hint">Bibliotecário padrão: admin@biblioteca.com / admin123</div>
+    </div>
+  `;
+  document.getElementById('toggle').onclick = () => { modoCadastro = !modoCadastro; renderLogin(); };
+  document.getElementById('btn-entrar').onclick = async () => {
+    const area = document.getElementById('msg-area');
+    area.innerHTML = '';
+    const email = document.getElementById('email').value;
+    const senha = document.getElementById('senha').value;
+    try {
+      let data;
+      if (modoCadastro) {
+        const nome = document.getElementById('nome').value;
+        const papel = document.getElementById('papel').value;
+        data = await api('/api/cadastro', { method: 'POST', body: { nome, email, senha, papel } });
+      } else {
+        data = await api('/api/login', { method: 'POST', body: { email, senha } });
+      }
+      usuario = data.usuario;
+      renderApp();
+    } catch (e) {
+      area.appendChild(msg(e.message));
+    }
+  };
+}
+
+// ============ APP PRINCIPAL ============
+let abaAtiva = 'acervo';
+
+function renderApp() {
+  const isBib = usuario.papel === 'bibliotecario';
+  const abas = isBib
+    ? [['acervo','Acervo'], ['gerenciar','Gerenciar Itens'], ['historico','Histórico'], ['usuarios','Leitores']]
+    : [['acervo','Acervo'], ['meus','Meus Empréstimos']];
+
+  if (!abas.find(a => a[0] === abaAtiva)) abaAtiva = 'acervo';
+
+  app.innerHTML = `
+    <header>
+      <h1>📚 Biblioteca Digital</h1>
+      <div class="user-info">
+        <span>${esc(usuario.nome)} (${isBib ? 'Bibliotecário' : 'Leitor'})</span>
+        <button class="small secondary" id="logout">Sair</button>
+      </div>
+    </header>
+    <div class="container">
+      <div class="tabs">
+        ${abas.map(([id,label]) => `<div class="tab ${abaAtiva===id?'active':''}" data-aba="${id}">${label}</div>`).join('')}
+      </div>
+      <div id="conteudo"></div>
+    </div>
+  `;
+  document.getElementById('logout').onclick = async () => {
+    await api('/api/logout', { method: 'POST' });
+    usuario = null;
+    abaAtiva = 'acervo';
+    renderLogin();
+  };
+  document.querySelectorAll('.tab').forEach(t => {
+    t.onclick = () => { abaAtiva = t.dataset.aba; renderApp(); };
+  });
+  carregarAba();
+}
+
+function carregarAba() {
+  if (abaAtiva === 'acervo') renderAcervo();
+  else if (abaAtiva === 'meus') renderMeusEmprestimos();
+  else if (abaAtiva === 'gerenciar') renderGerenciar();
+  else if (abaAtiva === 'historico') renderHistorico();
+  else if (abaAtiva === 'usuarios') renderUsuarios();
+}
+
+// ============ ACERVO ============
+async function renderAcervo() {
+  const c = document.getElementById('conteudo');
+  c.innerHTML = `
+    <div class="card">
+      <h2>Buscar no acervo</h2>
+      <div class="row">
+        <input id="busca" type="text" placeholder="Título, autor ou categoria...">
+        <button id="btn-buscar">Buscar</button>
+        <button class="secondary" id="btn-limpar">Limpar</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Itens disponíveis</h2>
+      <div id="lista-itens" class="grid"><div class="empty">Carregando...</div></div>
+    </div>
+  `;
+  const carregar = async (busca = '') => {
+    const lista = document.getElementById('lista-itens');
+    try {
+      const itens = await api('/api/itens' + (busca ? '?busca=' + encodeURIComponent(busca) : ''));
+      if (!itens.length) { lista.innerHTML = '<div class="empty">Nenhum item encontrado.</div>'; return; }
+      lista.innerHTML = itens.map(it => `
+        <div class="item">
+          <span class="badge ${it.disponivel ? 'ok' : 'no'}">${it.disponivel ? 'Disponível' : 'Emprestado'}</span>
+          <h3>${esc(it.titulo)}</h3>
+          <div class="meta">${esc(it.autor)} • ${esc(it.categoria)}${it.ano ? ' • ' + it.ano : ''}</div>
+          ${it.disponivel ? `<button class="small" data-emp="${it.id}">Pegar emprestado</button>` : ''}
+        </div>
+      `).join('');
+      lista.querySelectorAll('[data-emp]').forEach(b => {
+        b.onclick = async () => {
+          try {
+            await api('/api/emprestimos', { method: 'POST', body: { item_id: Number(b.dataset.emp) } });
+            alert('Empréstimo realizado! Devolução em 14 dias.');
+            carregar(document.getElementById('busca').value);
+          } catch (e) { alert(e.message); }
+        };
+      });
+    } catch (e) { lista.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  };
+  document.getElementById('btn-buscar').onclick = () => carregar(document.getElementById('busca').value);
+  document.getElementById('busca').onkeydown = e => { if (e.key === 'Enter') carregar(e.target.value); };
+  document.getElementById('btn-limpar').onclick = () => { document.getElementById('busca').value = ''; carregar(''); };
+  carregar();
+}
+
+// ============ MEUS EMPRÉSTIMOS ============
+async function renderMeusEmprestimos() {
+  const c = document.getElementById('conteudo');
+  c.innerHTML = `<div class="card"><h2>Meus Empréstimos</h2><div id="lista"><div class="empty">Carregando...</div></div></div>`;
+  try {
+    const lista = await api('/api/meus-emprestimos');
+    const el = document.getElementById('lista');
+    if (!lista.length) { el.innerHTML = '<div class="empty">Você não tem empréstimos.</div>'; return; }
+    const hoje = new Date().toISOString().slice(0, 10);
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Título</th><th>Autor</th><th>Empréstimo</th><th>Devolução prevista</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        ${lista.map(e => {
+          let status;
+          if (e.data_devolucao) status = `<span class="badge ok">Devolvido em ${e.data_devolucao}</span>`;
+          else if (e.data_prevista < hoje) status = '<span class="badge no">Em atraso</span>';
+          else status = '<span class="badge warn">Em andamento</span>';
+          return `<tr>
+            <td>${esc(e.titulo)}</td>
+            <td>${esc(e.autor)}</td>
+            <td>${e.data_emprestimo}</td>
+            <td>${e.data_prevista}</td>
+            <td>${status}</td>
+            <td>${!e.data_devolucao ? `<button class="small" data-dev="${e.id}">Devolver</button>` : ''}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    `;
+    el.querySelectorAll('[data-dev]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Confirmar devolução?')) return;
+        try {
+          await api(`/api/emprestimos/${b.dataset.dev}/devolver`, { method: 'POST' });
+          renderMeusEmprestimos();
+        } catch (e) { alert(e.message); }
+      };
+    });
+  } catch (e) {
+    document.getElementById('lista').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+// ============ GERENCIAR ITENS (bibliotecário) ============
+async function renderGerenciar() {
+  const c = document.getElementById('conteudo');
+  c.innerHTML = `
+    <div class="card">
+      <h2 id="form-titulo">Novo Item</h2>
+      <div id="msg-area"></div>
+      <input type="hidden" id="edit-id">
+      <label>Título</label>
+      <input id="f-titulo" type="text">
+      <label>Autor</label>
+      <input id="f-autor" type="text">
+      <label>Categoria</label>
+      <input id="f-categoria" type="text">
+      <label>Ano (opcional)</label>
+      <input id="f-ano" type="number">
+      <div class="row">
+        <button id="btn-salvar">Salvar</button>
+        <button class="secondary" id="btn-cancelar" style="display:none">Cancelar edição</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Itens cadastrados</h2>
+      <div id="lista"><div class="empty">Carregando...</div></div>
+    </div>
+  `;
+  const limparForm = () => {
+    ['f-titulo','f-autor','f-categoria','f-ano'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('edit-id').value = '';
+    document.getElementById('form-titulo').textContent = 'Novo Item';
+    document.getElementById('btn-cancelar').style.display = 'none';
+  };
+  const carregar = async () => {
+    const lista = await api('/api/itens');
+    const el = document.getElementById('lista');
+    if (!lista.length) { el.innerHTML = '<div class="empty">Nenhum item cadastrado.</div>'; return; }
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Título</th><th>Autor</th><th>Categoria</th><th>Ano</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        ${lista.map(it => `<tr>
+          <td>${esc(it.titulo)}</td>
+          <td>${esc(it.autor)}</td>
+          <td>${esc(it.categoria)}</td>
+          <td>${it.ano || '-'}</td>
+          <td><span class="badge ${it.disponivel?'ok':'no'}">${it.disponivel?'Disponível':'Emprestado'}</span></td>
+          <td>
+            <button class="small secondary" data-edit="${it.id}">Editar</button>
+            <button class="small danger" data-del="${it.id}">Remover</button>
+          </td>
+        </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    el.querySelectorAll('[data-edit]').forEach(b => {
+      b.onclick = () => {
+        const it = lista.find(x => x.id == b.dataset.edit);
+        document.getElementById('f-titulo').value = it.titulo;
+        document.getElementById('f-autor').value = it.autor;
+        document.getElementById('f-categoria').value = it.categoria;
+        document.getElementById('f-ano').value = it.ano || '';
+        document.getElementById('edit-id').value = it.id;
+        document.getElementById('form-titulo').textContent = 'Editar Item';
+        document.getElementById('btn-cancelar').style.display = 'inline-block';
+        window.scrollTo(0, 0);
+      };
+    });
+    el.querySelectorAll('[data-del]').forEach(b => {
+      b.onclick = async () => {
+        if (!confirm('Remover este item?')) return;
+        try {
+          await api('/api/itens/' + b.dataset.del, { method: 'DELETE' });
+          carregar();
+        } catch (e) { alert(e.message); }
+      };
+    });
+  };
+  document.getElementById('btn-cancelar').onclick = limparForm;
+  document.getElementById('btn-salvar').onclick = async () => {
+    const area = document.getElementById('msg-area');
+    area.innerHTML = '';
+    const body = {
+      titulo: document.getElementById('f-titulo').value,
+      autor: document.getElementById('f-autor').value,
+      categoria: document.getElementById('f-categoria').value,
+      ano: document.getElementById('f-ano').value || null
+    };
+    const id = document.getElementById('edit-id').value;
+    try {
+      if (id) await api('/api/itens/' + id, { method: 'PUT', body });
+      else await api('/api/itens', { method: 'POST', body });
+      limparForm();
+      carregar();
+    } catch (e) { area.appendChild(msg(e.message)); }
+  };
+  carregar();
+}
+
+// ============ HISTÓRICO (bibliotecário) ============
+async function renderHistorico() {
+  const c = document.getElementById('conteudo');
+  c.innerHTML = `<div class="card"><h2>Histórico de Empréstimos</h2><div id="lista"><div class="empty">Carregando...</div></div></div>`;
+  try {
+    const lista = await api('/api/emprestimos');
+    const el = document.getElementById('lista');
+    if (!lista.length) { el.innerHTML = '<div class="empty">Nenhum empréstimo registrado.</div>'; return; }
+    const hoje = new Date().toISOString().slice(0, 10);
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Leitor</th><th>Título</th><th>Empréstimo</th><th>Prevista</th><th>Devolução</th><th>Status</th></tr></thead>
+        <tbody>
+        ${lista.map(e => {
+          let status;
+          if (e.data_devolucao) status = '<span class="badge ok">Devolvido</span>';
+          else if (e.data_prevista < hoje) status = '<span class="badge no">Em atraso</span>';
+          else status = '<span class="badge warn">Em andamento</span>';
+          return `<tr>
+            <td>${esc(e.leitor)}<br><small style="color:#718096">${esc(e.leitor_email)}</small></td>
+            <td>${esc(e.titulo)}</td>
+            <td>${e.data_emprestimo}</td>
+            <td>${e.data_prevista}</td>
+            <td>${e.data_devolucao || '-'}</td>
+            <td>${status}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    document.getElementById('lista').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+// ============ LEITORES (bibliotecário) ============
+async function renderUsuarios() {
+  const c = document.getElementById('conteudo');
+  c.innerHTML = `<div class="card"><h2>Leitores e situação</h2><div id="lista"><div class="empty">Carregando...</div></div></div>`;
+  try {
+    const lista = await api('/api/usuarios');
+    const el = document.getElementById('lista');
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Nome</th><th>Email</th><th>Papel</th><th>Empréstimos ativos</th><th>Atrasos</th><th>Situação</th></tr></thead>
+        <tbody>
+        ${lista.map(u => `
+          <tr>
+            <td>${esc(u.nome)}</td>
+            <td>${esc(u.email)}</td>
+            <td>${u.papel === 'bibliotecario' ? 'Bibliotecário' : 'Leitor'}</td>
+            <td>${u.ativos}</td>
+            <td>${u.atrasados}</td>
+            <td>${u.atrasados > 0
+              ? '<span class="badge no">Bloqueado para novos empréstimos</span>'
+              : '<span class="badge ok">Liberado</span>'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (e) {
+    document.getElementById('lista').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+// ============ INICIALIZAÇÃO ============
+(async function init() {
+  try {
+    const data = await api('/api/eu');
+    if (data.usuario) { usuario = data.usuario; renderApp(); }
+    else renderLogin();
+  } catch { renderLogin(); }
+})();
+
+=== README.md ===
+# 📚 Biblioteca Digital
+
+Site completo de biblioteca com empréstimo de itens, contas de usuário (leitores e bibliotecário) e dados salvos em banco local (SQLite). Tudo funciona sem depender de serviços externos.
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (versão 18 ou superior). Baixe em https://nodejs.org.
+
+1. Abra o terminal na pasta do projeto.
+2. Instale as dependências:
+   ```
+   npm install
+   ```
+3. Inicie o site:
+   ```
+   npm start
+   ```
+4. Abra o navegador em: **http://localhost:3000**
+
+## Conta de bibliotecário padrão
+
+- **Email:** admin@biblioteca.com
+- **Senha:** admin123
+
+## Como usar
+
+### Leitores
+- Clicam em **Cadastre-se** na tela inicial, escolhem o tipo "Leitor".
+- Aba **Acervo**: buscam itens por título, autor ou categoria e pegam emprestado.
+- Aba **Meus Empréstimos**: veem o que pegaram e podem devolver.
+- Prazo de devolução: 14 dias. Se ficar em atraso, não conseguem pegar novos itens até devolver.
+
+### Bibliotecário
+- Aba **Acervo**: mesmo que os leitores.
+- Aba **Gerenciar Itens**: cadastrar, editar e remover itens.
+- Aba **Histórico**: vê todos os empréstimos de todos os leitores.
+- Aba **Leitores**: vê a situação de cada leitor (quem está bloqueado por atraso).
+
+## Onde ficam os dados
+
+Todos os dados (contas, itens e empréstimos) ficam salvos no arquivo `biblioteca.db` na pasta do projeto. Mesmo fechando o site e abrindo de novo, tudo permanece.
+
+## Colocar na internet
+
+Para publicar, hospede em um serviço como Render, Railway ou Fly.io. Envie os arquivos do projeto, defina o comando de start como `npm start` e o site estará acessível publicamente. O banco `biblioteca.db` ficará salvo junto com a aplicação.

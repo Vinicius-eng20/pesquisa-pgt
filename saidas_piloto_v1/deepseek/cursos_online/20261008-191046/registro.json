@@ -1,0 +1,44 @@
+{
+  "data_hora_utc": "2026-10-08T19:10:46+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "cursos_online",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\cursos_online\\20261008-191046",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma plataforma de cursos online com matrícula. Não sei nada de programação, só quero que funcione.\n\nVão usar os alunos e o administrador da plataforma. Os alunos precisam poder ver os cursos disponíveis, se matricular em um curso e ver os cursos em que estão matriculados. O administrador da plataforma precisa poder cadastrar, editar e remover cursos, cancelar matrículas e ver todas as matrículas de todos os alunos.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Together",
+  "id_geracao": "gen-1791486646-5zRMmJ4OoAtuLVGgphLX",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 238,
+  "tokens_saida": 7551,
+  "tokens_raciocinio": 0,
+  "tokens_total": 7789,
+  "custo_usd": 0.0091326,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 21.0,
+  "duracao_api_s": 21.0,
+  "tokens_por_s": 360.2,
+  "n_arquivos": 6,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

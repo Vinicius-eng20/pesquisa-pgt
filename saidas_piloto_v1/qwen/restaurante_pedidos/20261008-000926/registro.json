@@ -1,0 +1,45 @@
+{
+  "data_hora_utc": "2026-10-08T00:09:26+00:00",
+  "modelo": "qwen",
+  "modelo_id": "qwen/qwen3.8-27b",
+  "dominio": "restaurante_pedidos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\qwen\\restaurante_pedidos\\20261008-000926",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um sistema de pedidos para um restaurante. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o gerente do restaurante. Os clientes precisam poder ver o cardápio, fazer um pedido e acompanhar os pedidos que já fizeram. O gerente do restaurante precisa poder cadastrar, editar e remover pratos do cardápio, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Darkbloom",
+  "id_geracao": "gen-1791418168-WLs6Nv1Wwprst8OyAyyZ",
+  "modelo_servido": "qwen/qwen3.8-27b",
+  "tokens_entrada": 216,
+  "tokens_saida": 21659,
+  "tokens_raciocinio": 0,
+  "tokens_total": 21875,
+  "custo_usd": 0.0476606,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 783.8,
+  "duracao_api_s": 783.8,
+  "tokens_por_s": 27.6,
+  "n_arquivos": 7,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    ".gitignore",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

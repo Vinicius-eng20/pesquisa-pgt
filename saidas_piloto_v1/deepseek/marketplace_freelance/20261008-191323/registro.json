@@ -1,0 +1,40 @@
+{
+  "data_hora_utc": "2026-10-08T19:13:23+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "marketplace_freelance",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\marketplace_freelance\\20261008-191323",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um marketplace de serviços freelance. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que oferecem ou contratam serviços e o administrador da plataforma. As pessoas que oferecem ou contratam serviços precisam poder publicar um serviço que oferecem, contratar o serviço de outra pessoa e ver os contratos de que participam. O administrador da plataforma precisa poder aprovar ou remover serviços publicados, suspender contas de usuários e ver todos os serviços e contratos de todos os usuários.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "StreamLake",
+  "id_geracao": "gen-1791486803-nyRMGcJD2h9ZWsQ3Veai",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 253,
+  "tokens_saida": 3537,
+  "tokens_raciocinio": 0,
+  "tokens_total": 3790,
+  "custo_usd": 0.00216015,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 15.2,
+  "duracao_api_s": 15.2,
+  "tokens_por_s": 232.2,
+  "n_arquivos": 2,
+  "arquivos": [
+    "package.json",
+    "server.js"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": false,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

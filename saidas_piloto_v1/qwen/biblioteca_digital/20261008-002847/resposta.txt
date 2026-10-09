@@ -1,0 +1,1119 @@
+```
+=== README.md ===
+# Biblioteca Digital — empréstimo de itens
+
+Um site de biblioteca com acervo, cadastro de usuários, empréstimo/devolução,
+bloqueio automático de leitores com atraso e histórico completo.
+
+Tudo é salvo **dentro do próprio navegador** (localStorage). Por isso o acervo,
+os usuários, os empréstimos e o histórico continuam existindo mesmo se você
+fechar e abrir o site de novo. Não é preciso instalar banco de dados nem
+ligar a nenhum serviço externo.
+
+## Como instalar
+
+Você tem duas opções. Use a que preferir — as duas dão o mesmo resultado.
+
+### Opção 1 — Abrir direto no navegador (mais simples, sem instalar nada)
+
+1. Crie uma pasta no seu computador.
+2. Salve o arquivo `index.html` dentro dessa pasta (ele já contém todo o site).
+3. Dê um duplo clique em `index.html`.
+4. Pronto: o site abre no seu navegador e funciona.
+
+> Dica: se algo parecer "atrasado" só quando você fecha o navegador,
+> use a Opção 2 abaixo (recomendado para uso real).
+
+### Opção 2 — Servidor local (recomendado para uso real)
+
+Precisa de [Node.js](https://nodejs.org) instalado. Depois:
+
+```bash
+# dentro da pasta do projeto
+npm install
+npm start
+```
+
+O comando abre o site no navegador em `http://localhost:5173`.
+
+Para parar, tecle `Ctrl + C` no terminal.
+
+## Como usar
+
+- **Entrar:** use e-mail + senha na tela inicial.
+- **Criar conta:** clique em "Criar conta". O sistema monta o e-mail a partir
+  do seu nome (ex.: Nome: João Silva -> joao.silva@biblioteca.local) e já
+  te dá uma senha provisória na tela. Anote-a e faça login.
+- **Leitor:** busque e veja os itens, "Pegar emprestado" e depois "Devolver".
+- **Bibliotecário:** crie sua conta com a opção "É bibliotecário" marcada.
+  Depois você pode cadastrar/editar/remover itens, ver o histórico de todos os
+  leitores e o bloqueio de empréstimos de quem está em atraso aparece sozinho.
+
+## Conta inicial do bibliotecário
+
+Para não depender de nenhum cadastro manual, a conta do bibliotecário já vem
+pronta:
+
+- **E-mail:** `bibliotecario@biblioteca.local`
+- **Senha:** `biblioteca123`
+
+Troque a senha depois (botão "Minha conta") se quiser.
+
+## Sobre o armazenamento
+
+- Os dados ficam salvos **no navegador do computador** (localStorage).
+- Por isso o acervo/conta de um computador não aparece em outro.
+  Cada máquina tem seus próprios dados.
+- Para começar de novo, limpe o localStorage do site (Ferramentas do
+  desenvolvedor -> Application -> Local Storage -> apagar), ou feche a aba e
+  o site volta com os dados daquela máquina.
+```
+
+```
+=== package.json ===
+{
+  "name": "biblioteca-digital",
+  "version": "1.0.0",
+  "description": "Biblioteca digital com empréstimo de itens",
+  "type": "module",
+  "scripts": {
+    "start": "vite",
+    "dev": "vite"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.10"
+  }
+}
+```
+
+```
+=== index.html ===
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Biblioteca Digital</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+```
+
+```
+=== src/main.jsx ===
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.jsx";
+import "./styles.css";
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+```
+
+```
+=== src/storage.js ===
+// Camada de persistência.
+// Tudo fica salvo no localStorage do navegador, então continua existindo
+// mesmo se você fechar e abrir o site de novo. Não usamos servidor externo.
+
+const USERS_KEY = "bib_users_v1";
+const ITEMS_KEY = "bib_items_v1";
+const LOANS_KEY = "bib_loans_v1";
+const SESSION_KEY = "bib_session_v1";
+const SEED_FLAG = "bib_seeded_v1";
+
+function read(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function write(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+// ---------- helpers ----------
+export function uid(prefix = "id") {
+  return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+}
+
+export function normalizeEmail(email) {
+  return (email || "").trim().toLowerCase();
+}
+
+function emailFromName(name) {
+  const base = (name || "").trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z\s]/g, "").trim();
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (!parts.length) return "leitor" + Math.floor(Math.random() * 1000);
+  return parts.slice(0, 2).join(".");
+}
+
+// ---------- sessão ----------
+export function getSession() {
+  return read(SESSION_KEY, null);
+}
+export function setSession(session) {
+  if (session) write(SESSION_KEY, session);
+  else localStorage.removeItem(SESSION_KEY);
+}
+
+// ---------- usuários ----------
+function loadUsers() {
+  let users = read(USERS_KEY, []);
+  if (!Array.isArray(users)) users = [];
+  return users;
+}
+function saveUsers(users) {
+  write(USERS_KEY, users);
+}
+
+export function getUsers() {
+  return loadUsers();
+}
+
+// Conta inicial do bibliotecário para não depender de cadastro manual.
+const BIB_SEED = {
+  id: "user_bibliotecario",
+  name: "Bibliotecário",
+  email: "bibliotecario@biblioteca.local",
+  password: "biblioteca123",
+  role: "admin",
+  createdAt: new Date().toISOString()
+};
+
+export function ensureSeed() {
+  if (localStorage.getItem(SEED_FLAG)) return;
+  const users = loadUsers();
+  if (!users.some((u) => u.email === BIB_SEED.email)) {
+    users.push(BIB_SEED);
+    saveUsers(users);
+  }
+  // Alguns itens de exemplo para o acervo não ficar vazio.
+  const items = read(ITEMS_KEY, []);
+  if (!Array.isArray(items) || items.length === 0) {
+    const now = new Date().toISOString();
+    const sample = [
+      { id: uid("item"), title: "Dom Casmurro", author: "Machado de Assis", category: "Romance", available: 1, borrowed: 0, createdAt: now, updatedAt: now },
+      { id: uid("item"), title: "A Pequena Sereia", author: "Hans Christian Andersen", category: "Infantil", available: 2, borrowed: 0, createdAt: now, updatedAt: now },
+      { id: uid("item"), title: "O Pequeno Príncipe", author: "Antoine de Saint-Exupéry", category: "Infantil", available: 1, borrowed: 0, createdAt: now, updatedAt: now },
+      { id: uid("item"), title: "Cem Anos de Solidão", author: "Gabriel García Márquez", category: "Romance", available: 1, borrowed: 0, createdAt: now, updatedAt: now }
+    ];
+    write(ITEMS_KEY, sample);
+  }
+  localStorage.setItem(SEED_FLAG, "1");
+}
+
+export function findByEmail(email, password) {
+  const users = loadUsers();
+  return users.find((u) => u.email === normalizeEmail(email) && u.password === password) || null;
+}
+
+export function createUser({ name, role = "reader" }) {
+  const users = loadUsers();
+  const base = emailFromName(name);
+  let email = base + "@biblioteca.local";
+  let n = 2;
+  while (users.some((u) => u.email === email)) {
+    email = base + "." + n + "@biblioteca.local";
+    n++;
+  }
+  // Senha provisória simples e previsível para o usuário novo.
+  const password = base.split(".")[0] + "123";
+  const user = {
+    id: uid("user"),
+    name: (name || "").trim(),
+    email,
+    password,
+    role,
+    createdAt: new Date().toISOString()
+  };
+  users.push(user);
+  saveUsers(users);
+  return user;
+}
+
+export function updateUserPassword(userId, newPassword) {
+  const users = loadUsers();
+  const u = users.find((x) => x.id === userId);
+  if (!u) return null;
+  u.password = newPassword;
+  saveUsers(users);
+  return u;
+}
+
+// ---------- itens ----------
+function loadItems() {
+  let items = read(ITEMS_KEY, []);
+  if (!Array.isArray(items)) items = [];
+  return items;
+}
+function saveItems(items) {
+  write(ITEMS_KEY, items);
+}
+
+export function getItems() {
+  return loadItems();
+}
+
+export function getItem(id) {
+  return loadItems().find((i) => i.id === id) || null;
+}
+
+export function createItem(data) {
+  const items = loadItems();
+  const now = new Date().toISOString();
+  const item = {
+    id: uid("item"),
+    title: (data.title || "").trim(),
+    author: (data.author || "").trim(),
+    category: (data.category || "").trim() || "Sem categoria",
+    available: data.available !== undefined ? data.available : 1,
+    borrowed: 0,
+    createdAt: now,
+    updatedAt: now
+  };
+  items.unshift(item);
+  saveItems(items);
+  return item;
+}
+
+export function updateItem(id, data) {
+  const items = loadItems();
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx === -1) return null;
+  const current = items[idx];
+  const updated = {
+    ...current,
+    title: (data.title ?? current.title).trim(),
+    author: (data.author ?? current.author).trim(),
+    category: (data.category ?? current.category).trim() || "Sem categoria",
+    updatedAt: new Date().toISOString()
+  };
+  items[idx] = updated;
+  saveItems(items);
+  return updated;
+}
+
+export function deleteItem(id) {
+  let items = loadItems();
+  // Só remove se não houver empréstimo ativo.
+  const loans = loadLoans();
+  const active = loans.find((l) => l.itemId === id && l.status === "active");
+  if (active) return { ok: false, error: "Este item está emprestado e não pode ser removido." };
+  items = items.filter((i) => i.id !== id);
+  saveItems(items);
+  return { ok: true };
+}
+
+export function adjustItemAvailability(id, delta) {
+  const items = loadItems();
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx === -1) return null;
+  const it = items[idx];
+  const available = Math.max(0, (it.available || 0) + delta);
+  it.available = available;
+  it.borrowed = it.borrowed - delta; // empréstimos ativos
+  it.updatedAt = new Date().toISOString();
+  saveItems(items);
+  return it;
+}
+
+// ---------- empréstimos ----------
+function loadLoans() {
+  let loans = read(LOANS_KEY, []);
+  if (!Array.isArray(loans)) loans = [];
+  return loans;
+}
+function saveLoans(loans) {
+  write(LOANS_KEY, loans);
+}
+
+const BORROW_DAYS = 14;
+
+export function getLoans() {
+  return loadLoans();
+}
+
+export function getLoanById(id) {
+  return loadLoans().find((l) => l.id === id) || null;
+}
+
+export function getActiveLoans() {
+  return loadLoans().filter((l) => l.status === "active");
+}
+
+export function getActiveLoanByUser(userId) {
+  return loadLoans().find((l) => l.userId === userId && l.status === "active") || null;
+}
+
+export function getAllLoansByUser(userId) {
+  return loadLoans()
+    .filter((l) => l.userId === userId)
+    .sort((a, b) => (a.borrowedAt < b.borrowedAt ? 1 : -1));
+}
+
+export function getAllLoansSorted() {
+  return loadLoans().sort((a, b) => (a.borrowedAt < b.borrowedAt ? 1 : -1));
+}
+
+export function createLoan({ userId, itemId }) {
+  const loans = loadLoans();
+  const now = new Date();
+  const dueDate = new Date(now);
+  dueDate.setDate(dueDate.getDate() + BORROW_DAYS);
+  const loan = {
+    id: uid("loan"),
+    userId,
+    itemId,
+    borrowedAt: now.toISOString(),
+    dueAt: dueDate.toISOString(),
+    returnedAt: null,
+    status: "active"
+  };
+  loans.unshift(loan);
+  saveLoans(loans);
+  return loan;
+}
+
+export function returnLoan(loanId) {
+  const loans = loadLoans();
+  const idx = loans.findIndex((l) => l.id === loanId);
+  if (idx === -1) return null;
+  const loan = loans[idx];
+  if (loan.status !== "active") return loan;
+  loan.status = "returned";
+  loan.returnedAt = new Date().toISOString();
+  saveLoans(loans);
+  return loan;
+}
+
+// ---------- status e regras ----------
+export function isOverdue(loan) {
+  return loan.status === "active" && new Date(loan.dueAt).getTime() < Date.now();
+}
+
+export function userIsOverdue(userId) {
+  const loans = loadLoans().filter((l) => l.userId === userId && l.status === "active");
+  return loans.some(isOverdue);
+}
+
+// Bloqueio: se o usuário tem empréstimo em atraso, não pode pegar mais.
+export function userIsBlocked(userId) {
+  return userIsOverdue(userId);
+}
+
+export function loanIsBlocked(loan) {
+  return isOverdue(loan);
+}
+
+export function canBorrowItem(userId, itemId) {
+  const item = getItem(itemId);
+  if (!item) return { ok: false, error: "Item não encontrado." };
+  if (userIsBlocked(userId)) {
+    return { ok: false, error: "Você está com empréstimo em atraso e não pode pegar mais itens." };
+  }
+  if ((item.available || 0) <= 0) {
+    return { ok: false, error: "Todos os exemplares deste item estão emprestados." };
+  }
+  const existing = getActiveLoanByUser(userId);
+  if (existing && existing.itemId === itemId) {
+    return { ok: false, error: "Você já tem este item emprestado." };
+  }
+  return { ok: true };
+}
+
+export function borrowItem(userId, itemId) {
+  const check = canBorrowItem(userId, itemId);
+  if (!check.ok) return check;
+  const loan = createLoan({ userId, itemId });
+  adjustItemAvailability(itemId, -1);
+  return { ok: true, loan };
+}
+
+export function returnItem(loanId, itemId) {
+  const loan = getLoanById(loanId);
+  if (!loan) return { ok: false, error: "Empréstimo não encontrado." };
+  if (loan.status !== "active") return { ok: false, error: "Este empréstimo já foi devolvido." };
+  returnLoan(loanId);
+  adjustItemAvailability(itemId, +1);
+  return { ok: true, loan: getLoanById(loanId) };
+}
+```
+
+```
+=== src/styles.css ===
+* { box-sizing: border-box; }
+:root {
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --ink: #1f2430;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --brand: #2f6fed;
+  --brand-ink: #ffffff;
+  --danger: #d92d20;
+  --ok: #15803d;
+  --warn: #b45309;
+  --chip: #eef2ff;
+}
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+.app { max-width: 1000px; margin: 0 auto; padding: 16px; }
+
+/* topo */
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; margin-bottom: 12px; }
+.brand { font-weight: 700; font-size: 1.15rem; }
+.userchip { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .9rem; }
+.badge { font-size: .75rem; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--brand); }
+
+/* abas */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.tab { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: .9rem; }
+.tab.active { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+/* cards */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+.card h2 { margin: 0 0 6px; font-size: 1.1rem; }
+.card .hint { color: var(--muted); font-size: .9rem; margin-bottom: 14px; }
+
+/* forms */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+.field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: .95rem; }
+.row { display: flex; gap: 12px; }
+.row > * { flex: 1; }
+.checkbox { display: flex; align-items: center; gap: 8px; font-size: .9rem; }
+
+/* botões */
+.btn { border: 0; border-radius: 8px; padding: 10px 16px; font-size: .95rem; cursor: pointer; background: var(--brand); color: #fff; }
+.btn.secondary { background: #eef1f6; color: var(--ink); }
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.small { padding: 6px 10px; font-size: .85rem; }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* listas de itens */
+.itemlist { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.item { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; }
+.item h3 { margin: 0 0 4px; font-size: 1rem; }
+.item .author { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
+.item .meta { display: flex; align-items: center; justify-content: space-between; margin-top: auto; font-size: .8rem; color: var(--muted); }
+.stoketag { padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--brand); }
+.stoketag.out { background: #fde8e8; color: var(--danger); }
+
+/* busca */
+.search { display: flex; gap: 8px; margin-bottom: 14px; }
+.search input { flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: .95rem; }
+
+/* alertas */
+.alert { border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: .9rem; }
+.alert.error { background: #fde8e8; color: var(--danger); }
+.alert.ok { background: #e6f6ec; color: var(--ok); }
+.alert.warn { background: #fff4e5; color: var(--warn); }
+.alert.info { background: #eef2ff; color: var(--brand); }
+
+/* tabelas */
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+tr:last-child td { border-bottom: 0; }
+
+/* status */
+.status { font-size: .78rem; padding: 3px 10px; border-radius: 999px; }
+.status.active { background: #e6f6ec; color: var(--ok); }
+.status.overdue { background: #fde8e8; color: var(--danger); }
+.status.returned { background: #eef1f6; color: var(--muted); }
+
+.muted { color: var(--muted); }
+.center { text-align: center; }
+.empty { color: var(--muted); padding: 18px 0; text-align: center; }
+
+/* login/registro */
+.auth { max-width: 420px; margin: 40px auto; }
+.auth h1 { font-size: 1.4rem; margin: 0 0 4px; }
+.auth .sub { color: var(--muted); margin-bottom: 18px; }
+.auth .toggle { margin-top: 14px; font-size: .9rem; }
+.auth .toggle button { background: none; border: 0; color: var(--brand); cursor: pointer; font-weight: 600; padding: 0; }
+.created { background: #e6f6ec; border-radius: 10px; padding: 12px; font-size: .9rem; margin-top: 10px; }
+.created b { display: block; margin-bottom: 4px; }
+```
+
+```
+=== src/App.jsx ===
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import * as db from "./storage";
+
+// Garante que a conta do bibliotecário e itens de exemplo existam.
+useEffect(() => { db.ensureSeed(); }, []);
+
+export default function App() {
+  const [session, setSession] = useState(db.getSession());
+
+  const handleLogout = () => {
+    db.setSession(null);
+    setSession(null);
+  };
+
+  if (!session) {
+    return <Auth onLoggedIn={(s) => { db.setSession(s); setSession(s); }} />;
+  }
+  return <Shell session={session} onLogout={handleLogout} />;
+}
+
+/* ---------------- Autenticação ---------------- */
+function Auth({ onLoggedIn }) {
+  const [mode, setMode] = useState("login");
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+
+  return (
+    <div className="auth">
+      <div className="card">
+        <h1>Biblioteca Digital</h1>
+        <p className="sub">Entre com sua conta para começar.</p>
+
+        {mode === "login" ? (
+          <LoginForm onLoggedIn={onLoggedIn} onSwitch={() => { setMode("register"); setError(""); setInfo(""); }} setError={setError} />
+        ) : (
+          <RegisterForm
+            onLoggedIn={onLoggedIn}
+            onSwitch={() => { setMode("login"); setError(""); setInfo(""); }}
+            setError={setError}
+            setInfo={setInfo}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginForm({ onLoggedIn, onSwitch, setError }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const submit = (e) => {
+    e.preventDefault();
+    const user = db.findByEmail(email, password);
+    if (!user) { setError("E-mail ou senha incorretos."); return; }
+    onLoggedIn({ id: user.id, role: user.role, name: user.name, email: user.email });
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <div className="field">
+        <label>E-mail</label>
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@biblioteca.local" required />
+      </div>
+      <div className="field">
+        <label>Senha</label>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="sua senha" required />
+      </div>
+      <div className="btnrow"><button className="btn" type="submit" style={{ flex: 1 }}>Entrar</button></div>
+      <div className="toggle"><button type="button" onClick={onSwitch}>Criar uma conta</button></div>
+      <p className="muted" style={{ fontSize: ".8rem" }}>
+        Conta inicial do bibliotecário: bibliotecario@biblioteca.local / biblioteca123
+      </p>
+    </form>
+  );
+}
+
+function RegisterForm({ onLoggedIn, onSwitch, setError, setInfo }) {
+  const [name, setName] = useState("");
+  const [isBib, setIsBib] = useState(false);
+  const [created, setCreated] = useState(null);
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setError("Digite seu nome."); return; }
+    const user = db.createUser({ name, role: isBib ? "admin" : "reader" });
+    setCreated(user);
+  };
+
+  const loginAs = () => {
+    if (!created) return;
+    onLoggedIn({ id: created.id, role: created.role, name: created.name, email: created.email });
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <div className="field">
+        <label>Nome</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" required />
+      </div>
+      <label className="checkbox">
+        <input type="checkbox" checked={isBib} onChange={(e) => setIsBib(e.target.checked)} />
+        Sou bibliotecário
+      </label>
+      <div className="btnrow" style={{ marginTop: 12 }}>
+        <button className="btn" type="submit" style={{ flex: 1 }}>Criar conta</button>
+      </div>
+
+      {created && (
+        <div className="created">
+          <b>Conta criada!</b>
+          <div>E-mail: <b>{created.email}</b></div>
+          <div>Senha provisória: <b>{created.password}</b></div>
+          <button className="btn small" type="button" onClick={loginAs} style={{ marginTop: 10 }}>Fazer login agora</button>
+        </div>
+      )}
+
+      <div className="toggle"><button type="button" onClick={onSwitch}>Já tenho conta, entrar</button></div>
+    </form>
+  );
+}
+
+/* ---------------- Estrutura principal ---------------- */
+function Shell({ session, onLogout }) {
+  const [tab, setTab] = useState("acervo");
+
+  const tabs = useMemo(() => {
+    if (session.role === "admin") {
+      return [
+        { id: "acervo", label: "Acervo" },
+        { id: "meus", label: "Meus empréstimos" },
+        { id: "gestao", label: "Gerenciar acervo" },
+        { id: "historico", label: "Histórico" },
+        { id: "conta", label: "Minha conta" }
+      ];
+    }
+    return [
+      { id: "acervo", label: "Acervo" },
+      { id: "meus", label: "Meus empréstimos" },
+      { id: "conta", label: "Minha conta" }
+    ];
+  }, [session.role]);
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <div className="brand">📚 Biblioteca Digital</div>
+        <div className="userchip">
+          <span>Olá, {session.name}</span>
+          <span className="badge">{session.role === "admin" ? "Bibliotecário" : "Leitor"}</span>
+          <button className="btn secondary small" onClick={onLogout}>Sair</button>
+        </div>
+      </div>
+
+      <div className="tabs">
+        {tabs.map((t) => (
+          <button key={t.id} className={"tab" + (tab === t.id ? " active" : "")} onClick={() => setTab(t.id)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "acervo" && <Acervo session={session} />}
+      {tab === "meus" && <MeusEmprestimos session={session} />}
+      {tab === "gestao" && session.role === "admin" && <Gestao />}
+      {tab === "historico" && session.role === "admin" && <Historico />}
+      {tab === "conta" && <Conta session={session} />}
+    </div>
+  );
+}
+
+/* ---------------- Acervo (busca + ver + pegar emprestado) ---------------- */
+function Acervo({ session }) {
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState(db.getItems());
+  const [message, setMessage] = useState(null);
+  const [blocked, setBlocked] = useState(db.userIsBlocked(session.id));
+
+  const refresh = () => setItems(db.getItems());
+
+  const filtered = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (!t) return items;
+    return items.filter(
+      (i) => i.title.toLowerCase().includes(t) || i.author.toLowerCase().includes(t) || i.category.toLowerCase().includes(t)
+    );
+  }, [items, q]);
+
+  const borrow = (item) => {
+    const res = db.borrowItem(session.id, item.id);
+    if (!res.ok) {
+      setMessage({ type: "error", text: res.error });
+      setBlocked(db.userIsBlocked(session.id));
+    } else {
+      setMessage({ type: "ok", text: `Você pegou "${item.title}" emprestado. Devolva em 14 dias.` });
+    }
+    refresh();
+  };
+
+  return (
+    <>
+      {blocked && (
+        <div className="alert warn">
+          Você está com empréstimo em atraso. Novos empréstimos estão bloqueados.
+          Devolva o item em "Meus empréstimos".
+        </div>
+      )}
+      {message && (
+        <div className={"alert " + (message.type === "ok" ? "ok" : message.type === "warn" ? "warn" : message.type === "info" ? "info" : "error")}>
+          {message.text}
+          <button className="btn secondary small" style={{ marginLeft: 10 }} onClick={() => setMessage(null)}>fechar</button>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>Acervo</h2>
+        <p className="hint">Busque por título, autor ou categoria.</p>
+        <div className="search">
+          <input placeholder="Buscar..." value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        {filtered.length === 0 ? (
+          <div className="empty">Nenhum item encontrado.</div>
+        ) : (
+          <div className="itemlist">
+            {filtered.map((item) => {
+              const out = (item.available || 0) <= 0;
+              return (
+                <div className="item" key={item.id}>
+                  <h3>{item.title}</h3>
+                  <div className="author">{item.author || "Autor desconhecido"}</div>
+                  <div className="meta">
+                    <span className="stoketag">{item.category}</span>
+                    <span className={out ? "stoketag out" : "stoketag"}>
+                      {out ? "Indisponível" : `${item.available} em estante`}
+                    </span>
+                  </div>
+                  <div className="btnrow" style={{ marginTop: 12 }}>
+                    <button className="btn small" disabled={out || blocked} onClick={() => borrow(item)}>
+                      {out ? "Indisponível" : "Pegar emprestado"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Meus empréstimos (pegar já emprestado + devolver) ---------------- */
+function MeusEmprestimos({ session }) {
+  const [loans, setLoans] = useState(() => db.getAllLoansByUser(session.id));
+  const [items, setItems] = useState(() => Object.fromEntries(db.getItems().map((i) => [i.id, i])));
+  const [message, setMessage] = useState(null);
+
+  const refresh = () => {
+    setLoans(db.getAllLoansByUser(session.id));
+    setItems(Object.fromEntries(db.getItems().map((i) => [i.id, i])));
+  };
+
+  const doReturn = (loan) => {
+    const res = db.returnItem(loan.id, loan.itemId);
+    if (!res.ok) setMessage({ type: "error", text: res.error });
+    else setMessage({ type: "ok", text: "Devolução registrada com sucesso." });
+    refresh();
+  };
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+
+  const active = loans.filter((l) => l.status === "active");
+  const history = loans.filter((l) => l.status === "returned");
+
+  return (
+    <>
+      {message && (
+        <div className={"alert " + (message.type === "ok" ? "ok" : "error")}>
+          {message.text}
+          <button className="btn secondary small" style={{ marginLeft: 10 }} onClick={() => setMessage(null)}>fechar</button>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>Meus empréstimos</h2>
+        <p className="hint">Itens que você pegou. Devolva dentro do prazo.</p>
+        {active.length === 0 ? (
+          <div className="empty">Você não tem nada emprestado agora.</div>
+        ) : (
+          <table>
+            <thead><tr><th>Item</th><th>Autor</th><th>Emprestado</th><th>Devolva até</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {active.map((l) => {
+                const it = items[l.itemId];
+                const overdue = db.isOverdue(l);
+                return (
+                  <tr key={l.id}>
+                    <td>{it ? it.title : "?"}</td>
+                    <td>{it ? it.author : "—"}</td>
+                    <td>{fmt(l.borrowedAt)}</td>
+                    <td>{fmt(l.dueAt)}</td>
+                    <td><span className={"status " + (overdue ? "overdue" : "active")}>{overdue ? "Em atraso" : "Emprestado"}</span></td>
+                    <td><button className="btn small" onClick={() => doReturn(l)}>Devolver</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="card">
+        <h2>Histórico de devoluções</h2>
+        {history.length === 0 ? (
+          <div className="empty">Nenhuma devolução registrada ainda.</div>
+        ) : (
+          <table>
+            <thead><tr><th>Item</th><th>Emprestado</th><th>Devolvido</th><th></th></tr></thead>
+            <tbody>
+              {history.map((l) => {
+                const it = items[l.itemId];
+                return (
+                  <tr key={l.id}>
+                    <td>{it ? it.title : "?"}</td>
+                    <td>{fmt(l.borrowedAt)}</td>
+                    <td>{fmt(l.returnedAt)}</td>
+                    <td><span className="status returned">Devolvido</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Gerenciar acervo (bibliotecário) ---------------- */
+function Gestao() {
+  const [items, setItems] = useState(db.getItems());
+  const [form, setForm] = useState({ title: "", author: "", category: "", available: 1 });
+  const [editing, setEditing] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [loans, setLoans] = useState(() => db.getLoans());
+
+  const refresh = () => {
+    setItems(db.getItems());
+    setLoans(db.getLoans());
+  };
+
+  const reset = () => {
+    setForm({ title: "", author: "", category: "", available: 1 });
+    setEditing(null);
+  };
+
+  const save = (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) { setMessage({ type: "error", text: "Título é obrigatório." }); return; }
+    if (editing) {
+      db.updateItem(editing, form);
+      setMessage({ type: "ok", text: "Item atualizado." });
+    } else {
+      db.createItem(form);
+      setMessage({ type: "ok", text: "Item adicionado ao acervo." });
+    }
+    reset();
+    refresh();
+  };
+
+  const edit = (item) => {
+    setEditing(item.id);
+    setForm({ title: item.title, author: item.author, category: item.category, available: item.available });
+  };
+
+  const remove = (item) => {
+    const res = db.deleteItem(item.id);
+    if (!res.ok) setMessage({ type: "error", text: res.error });
+    else { setMessage({ type: "ok", text: "Item removido." }); reset(); refresh(); }
+  };
+
+  // Empréstimos ativos de cada item (para a tabela)
+  const activeByItem = useMemo(() => {
+    const map = {};
+    loans.filter((l) => l.status === "active").forEach((l) => {
+      map[l.itemId] = (map[l.itemId] || 0) + 1;
+    });
+    return map;
+  }, [loans]);
+
+  return (
+    <>
+      {message && (
+        <div className={"alert " + (message.type === "ok" ? "ok" : "error")}>
+          {message.text}
+          <button className="btn secondary small" style={{ marginLeft: 10 }} onClick={() => setMessage(null)}>fechar</button>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>{editing ? "Editar item" : "Cadastrar item"}</h2>
+        <p className="hint">Preencha os dados e salve.</p>
+        <form onSubmit={save}>
+          <div className="field">
+            <label>Título</label>
+            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Título do item" />
+          </div>
+          <div className="row">
+            <div className="field">
+              <label>Autor</label>
+              <input value={form.author} onChange={(e) => setForm({ ...form, author: e.target.value })} placeholder="Autor" />
+            </div>
+            <div className="field">
+              <label>Categoria</label>
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Ex.: Romance" />
+            </div>
+          </div>
+          <div className="field" style={{ maxWidth: 160 }}>
+            <label>Exemplares disponíveis</label>
+            <input type="number" min="0" value={form.available} onChange={(e) => setForm({ ...form, available: Math.max(0, parseInt(e.target.value, 10) || 0) })} />
+          </div>
+          <div className="btnrow">
+            <button className="btn" type="submit">{editing ? "Salvar alterações" : "Adicionar ao acervo"}</button>
+            {editing && <button className="btn secondary" type="button" onClick={reset}>Cancelar</button>}
+          </div>
+        </form>
+      </div>
+
+      <div className="card">
+        <h2>Acervo cadastrado</h2>
+        {items.length === 0 ? (
+          <div className="empty">Nenhum item cadastrado.</div>
+        ) : (
+          <table>
+            <thead><tr><th>Título</th><th>Autor</th><th>Categoria</th><th>Disponíveis</th><th>Empréstimos</th><th></th></tr></thead>
+            <tbody>
+              {items.map((it) => (
+                <tr key={it.id}>
+                  <td>{it.title}</td>
+                  <td>{it.author || "—"}</td>
+                  <td>{it.category}</td>
+                  <td>{it.available}</td>
+                  <td>{activeByItem[it.id] || 0}</td>
+                  <td>
+                    <div className="btnrow">
+                      <button className="btn secondary small" onClick={() => edit(it)}>Editar</button>
+                      <button className="btn danger small" onClick={() => remove(it)}>Remover</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Histórico (bibliotecário) ---------------- */
+function Historico() {
+  const [loans, setLoans] = useState(db.getAllLoansSorted());
+  const [users, setUsers] = useState(Object.fromEntries(db.getUsers().map((u) => [u.id, u])));
+  const [items, setItems] = useState(Object.fromEntries(db.getItems().map((i) => [i.id, i])));
+  const [filterUser, setFilterUser] = useState("");
+
+  const refresh = () => {
+    setLoans(db.getAllLoansSorted());
+    setUsers(Object.fromEntries(db.getUsers().map((u) => [u.id, u])));
+    setItems(Object.fromEntries(db.getItems().map((i) => [i.id, i])));
+  };
+
+  const fmt = (iso) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
+
+  const visible = filterUser ? loans.filter((l) => l.userId === filterUser) : loans;
+
+  return (
+    <div className="card">
+      <h2>Histórico de empréstimos</h2>
+      <p className="hint">Todos os empréstimos de todos os leitores.</p>
+      <div className="field" style={{ maxWidth: 320, marginBottom: 14 }}>
+        <label>Filtrar por leitor</label>
+        <select value={filterUser} onChange={(e) => { setFilterUser(e.target.value); refresh(); }}>
+          <option value="">Todos os leitores</option>
+          {Object.values(users).map((u) => (
+            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+          ))}
+        </select>
+      </div>
+      {visible.length === 0 ? (
+        <div className="empty">Nenhum empréstimo registrado.</div>
+      ) : (
+        <table>
+          <thead><tr><th>Leitor</th><th>Item</th><th>Emprestado</th><th>Devolva até</th><th>Devolvido</th><th>Status</th></tr></thead>
+          <tbody>
+            {visible.map((l) => {
+              const u = users[l.userId];
+              const it = items[l.itemId];
+              const overdue = db.isOverdue(l);
+              return (
+                <tr key={l.id}>
+                  <td>{u ? u.name : "?"}</td>
+                  <td>{it ? it.title : "?"}</td>
+                  <td>{fmt(l.borrowedAt)}</td>
+                  <td>{fmt(l.dueAt)}</td>
+                  <td>{fmt(l.returnedAt)}</td>
+                  <td>
+                    <span className={"status " + (l.status === "returned" ? "returned" : overdue ? "overdue" : "active")}>
+                      {l.status === "returned" ? "Devolvido" : overdue ? "Em atraso" : "Emprestado"}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- Minha conta (trocar senha) ---------------- */
+function Conta({ session }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [message, setMessage] = useState(null);
+
+  const change = (e) => {
+    e.preventDefault();
+    const user = db.getUsers().find((u) => u.id === session.id);
+    if (!user) { setMessage({ type: "error", text: "Usuário não encontrado." }); return; }
+    if (current !== user.password) { setMessage({ type: "error", text: "Senha atual incorreta." }); return; }
+    if (next.length < 4) { setMessage({ type: "error", text: "A nova senha deve ter pelo menos 4 caracteres." }); return; }
+    db.updateUserPassword(session.id, next);
+    setCurrent(""); setNext("");
+    setMessage({ type: "ok", text: "Senha alterada com sucesso." });
+  };
+
+  return (
+    <div className="card" style={{ maxWidth: 460 }}>
+      <h2>Minha conta</h2>
+      <p className="hint">Nome: {session.name}</p>
+      <p className="hint">E-mail: {session.email}</p>
+      {message && (
+        <div className={"alert " + (message.type === "ok" ? "ok" : "error")} style={{ marginBottom: 12 }}>{message.text}</div>
+      )}
+      <form onSubmit={change}>
+        <div className="field">
+          <label>Senha atual</label>
+          <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
+        </div>
+        <div className="field">
+          <label>Nova senha</label>
+          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} required />
+        </div>
+        <div className="btnrow"><button className="btn" type="submit">Alterar senha</button></div>
+      </form>
+    </div>
+  );
+}
+```

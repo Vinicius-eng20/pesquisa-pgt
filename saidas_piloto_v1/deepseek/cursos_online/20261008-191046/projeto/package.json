@@ -1,0 +1,15 @@
+{
+  "name": "plataforma-cursos",
+  "version": "1.0.0",
+  "description": "Plataforma de cursos online com matrícula",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3"
+  }
+}

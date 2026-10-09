@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Painel Administrativo</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<header>
+  <h1>🛠️ Painel Administrativo</h1>
+  <nav>
+    <a href="/app">Meus Gastos</a>
+    <a id="logout">Sair</a>
+  </nav>
+</header>
+
+<div class="container">
+  <div class="grid grid-3">
+    <div class="stat">
+      <div class="value" id="statTotal">R$ 0,00</div>
+      <div class="label">Total gasto (todos os usuários)</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statUsers">0</div>
+      <div class="label">Usuários cadastrados</div>
+    </div>
+    <div class="stat">
+      <div class="value" id="statExpenses">0</div>
+      <div class="label">Gastos registrados</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Cadastrar categoria</h2>
+    <div class="row">
+      <div>
+        <label>Nome da categoria</label>
+        <input id="catName" placeholder="Ex: Educação" />
+      </div>
+      <button id="btnAddCat" style="width:auto;padding:9px 18px">Cadastrar</button>
+    </div>
+    <div id="catMsg" class="error"></div>
+
+    <div style="height:16px"></div>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="catTbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Usuários</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>E-mail</th>
+          <th>Perfil</th>
+          <th>Status</th>
+          <th style="text-align:right">Total gasto</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="userTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json.error || 'Erro');
+  return json;
+}
+
+function money(v) {
+  return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+}
+
+async function init() {
+  try {
+    const me = await api('/api/me');
+    if (me.role !== 'admin') { window.location.href = '/app'; return; }
+  } catch (e) {
+    window.location.href = '/';
+    return;
+  }
+  await loadAll();
+}
+
+async function loadAll() {
+  await loadStats();
+  await loadCategories();
+  await loadUsers();
+}
+
+async function loadStats() {
+  const s = await api('/api/admin/summary');
+  document.getElementById('statTotal').textContent = money(s.totalAll);
+  document.getElementById('statUsers').textContent = s.totalUsers;
+  document.getElementById('statExpenses').textContent = s.totalExpenses;
+}
+
+async function loadCategories() {
+  const cats = await api('/api/categories');
+  const tbody = document.getElementById('catTbody');
+  tbody.innerHTML = '';
+  cats.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.id}</td>
+      <td id="name-${c.id}">${c.name}</td>
+      <td>${c.active ? '<span class="badge ok">Ativa</span>' : '<span class="badge off">Inativa</span>'}</td>
+      <td style="text-align:right">
+        <button class="secondary small" data-act="rename" data-id="${c.id}">Renomear</button>
+        <button class="${c.active ? 'danger' : ''} small" data-act="toggle" data-id="${c.id}" data-active="${c.active}">
+          ${c.active ? 'Desativar' : 'Ativar'}
+        </button>
+      </td>
+    `;
+    tr.querySelectorAll('button').forEach(b => {
+      b.onclick = async () => {
+        const id = parseInt(b.dataset.id, 10);
+        if (b.dataset.act === 'rename') {
+          const novo = prompt('Novo nome da categoria:');
+          if (!novo || !novo.trim()) return;
+          await api('/api/categories/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: novo.trim() })
+          });
+        } else {
+          const novoStatus = b.dataset.active === 'true' ? false : true;
+          await api('/api/categories/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: novoStatus })
+          });
+        }
+        loadAll();
+      };
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadUsers() {
+  const users = await api('/api/admin/users');
+  const summary = await api('/api/admin/summary');
+  const totals = {};
+  summary.perUser.forEach(p => totals[p.id] = p.total);
+
+  const me = await api('/api/me');
+  const tbody = document.getElementById('userTbody');
+  tbody.innerHTML = '';
+  users.forEach(u => {
+    const tr = document.createElement('tr');
+    const isMe = u.id === me.id;
+    tr.innerHTML = `
+      <td>${u.id}</td>
+      <td>${u.name}${isMe ? ' <span class="muted">(você)</span>' : ''}</td>
+      <td>${u.email}</td>
+      <td>${u.role === 'admin' ? 'Administrador' : 'Usuário'}</td>
+      <td>${u.active ? '<span class="badge ok">Ativo</span>' : '<span class="badge off">Desativado</span>'}</td>
+      <td style="text-align:right">${money(totals[u.id] || 0)}</td>
+      <td style="text-align:right">
+        ${isMe ? '' : `<button class="${u.active ? 'danger' : ''} small" data-id="${u.id}" data-active="${u.active}">
+          ${u.active ? 'Desativar' : 'Ativar'}
+        </button>`}
+      </td>
+    `;
+    const btn = tr.querySelector('button');
+    if (btn) {
+      btn.onclick = async () => {
+        const id = parseInt(btn.dataset.id, 10);
+        const novoStatus = btn.dataset.active === 'true' ? false : true;
+        if (novoStatus === false && !confirm('Desativar esta conta? O usuário não poderá mais entrar.')) return;
+        try {
+          await api('/api/admin/users/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ active: novoStatus })
+          });
+          loadAll();
+        } catch (e) {
+          alert(e.message);
+        }
+      };
+    }
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('btnAddCat').onclick = async () => {
+  const msg = document.getElementById('catMsg');
+  msg.textContent = '';
+  const name = document.getElementById('catName').value.trim();
+  if (!name) { msg.textContent = 'Informe o nome da categoria'; return; }
+  try {
+    await api('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    document.getElementById('catName').value = '';
+    loadAll();
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+};
+
+document.getElementById('logout').onclick = async () => {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/';
+};
+
+init();
+</script>
+</body>
+</html>

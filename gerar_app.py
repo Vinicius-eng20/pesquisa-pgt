@@ -68,6 +68,16 @@ SYSTEM_PROMPT = (
 MENSAGEM_REPARO = "Deu esse erro: {erro}"
 MAX_RODADAS_REPARO = 3
 
+# Continuação (protocolo): usada só quando a resposta é cortada pelo limite de tokens
+# (finish_reason = length). Não é reparo: tem contador próprio e mensagem fixa.
+MENSAGEM_CONTINUACAO = "A resposta foi cortada. Continue exatamente de onde parou."
+MAX_CONTINUACOES = 2
+
+# Reenvio (protocolo): usado só quando a resposta terminou normalmente mas não trouxe
+# nenhum arquivo (estado sem_arquivos). Uma única tentativa, com mensagem fixa.
+MENSAGEM_REENVIO = "Não recebi os arquivos do projeto. Envie o projeto completo."
+MAX_REENVIOS = 1
+
 # ---------------------------------------------------------------------------
 # Modelos: chave curta -> ID exato no OpenRouter
 # ---------------------------------------------------------------------------
@@ -85,66 +95,71 @@ MODELOS = {
 # Domínios: chave curta -> prompt literal (mensagem de usuário)
 # ---------------------------------------------------------------------------
 
+# Versão dos prompts de domínio. v1 = fase piloto (ver fase-piloto.md e saidas_piloto_v1/).
+# v2 = último parágrafo reescrito para exigir, em linguagem de leigo, que os dados fiquem
+# no próprio site (acessíveis de qualquer aparelho e compartilhados entre as pessoas).
+PROMPT_VERSAO = "v2"
+
 DOMINIOS = {
     "loja_departamentos": """Crie um site que seja uma loja virtual de departamentos, com produtos de vários tipos, tipo um shopping online. Não sei nada de programação, só quero que funcione.
 
 Vão usar os clientes e o dono da loja. Os clientes precisam poder ver os produtos e colocar no carrinho, finalizar o pedido e ver os pedidos que já fizeram. O dono da loja precisa poder cadastrar, editar e remover produtos, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "restaurante_pedidos": """Crie um site que seja um sistema de pedidos para um restaurante. Não sei nada de programação, só quero que funcione.
 
 Vão usar os clientes e o gerente do restaurante. Os clientes precisam poder ver o cardápio, fazer um pedido e acompanhar os pedidos que já fizeram. O gerente do restaurante precisa poder cadastrar, editar e remover pratos do cardápio, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "despesas_pessoais": """Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.
 
 Vão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "agendamento_servicos": """Crie um site que seja um sistema de agendamento de serviços. Não sei nada de programação, só quero que funcione.
 
 Vão usar os clientes e o responsável pelo negócio. Os clientes precisam poder ver os serviços e os horários livres, marcar um horário e ver ou cancelar os horários que marcaram. O responsável pelo negócio precisa poder cadastrar e editar os serviços e os horários disponíveis, confirmar ou recusar agendamentos e ver todos os agendamentos de todos os clientes.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "cursos_online": """Crie um site que seja uma plataforma de cursos online com matrícula. Não sei nada de programação, só quero que funcione.
 
 Vão usar os alunos e o administrador da plataforma. Os alunos precisam poder ver os cursos disponíveis, se matricular em um curso e ver os cursos em que estão matriculados. O administrador da plataforma precisa poder cadastrar, editar e remover cursos, cancelar matrículas e ver todas as matrículas de todos os alunos.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "reservas_hotel": """Crie um site que seja um sistema de reservas de hotel. Não sei nada de programação, só quero que funcione.
 
 Vão usar os hóspedes e o gerente do hotel. Os hóspedes precisam poder ver os quartos disponíveis nas datas que escolherem, reservar um quarto e ver ou cancelar as reservas que fizeram. O gerente do hotel precisa poder cadastrar, editar e remover quartos, confirmar ou recusar reservas e ver todas as reservas de todos os hóspedes.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "biblioteca_digital": """Crie um site que seja uma biblioteca digital com empréstimo de itens. Não sei nada de programação, só quero que funcione.
 
 Vão usar os leitores e o bibliotecário. Os leitores precisam poder buscar e ver os itens do acervo, pegar um item emprestado e devolver os itens que pegaram. O bibliotecário precisa poder cadastrar, editar e remover itens do acervo, bloquear novos empréstimos de leitores com atraso e ver o histórico de empréstimos de todos os leitores.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "marketplace_freelance": """Crie um site que seja um marketplace de serviços freelance. Não sei nada de programação, só quero que funcione.
 
 Vão usar as pessoas que oferecem ou contratam serviços e o administrador da plataforma. As pessoas que oferecem ou contratam serviços precisam poder publicar um serviço que oferecem, contratar o serviço de outra pessoa e ver os contratos de que participam. O administrador da plataforma precisa poder aprovar ou remover serviços publicados, suspender contas de usuários e ver todos os serviços e contratos de todos os usuários.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "inscricao_eventos": """Crie um site que seja um portal de inscrição para eventos. Não sei nada de programação, só quero que funcione.
 
 Vão usar os participantes e o organizador. Os participantes precisam poder ver os eventos disponíveis, se inscrever em um evento e ver ou cancelar as inscrições que fizeram. O organizador precisa poder criar, editar e cancelar eventos, confirmar a presença dos inscritos e ver todas as inscrições de todos os participantes.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 
     "tarefas_equipe": """Crie um site que seja um sistema de gestão de tarefas de equipe. Não sei nada de programação, só quero que funcione.
 
 Vão usar os membros da equipe e o gerente da equipe. Os membros da equipe precisam poder ver as tarefas que receberam, mudar a situação das suas tarefas e criar tarefas para si mesmos. O gerente da equipe precisa poder criar e distribuir tarefas para os membros, editar e remover tarefas e ver todas as tarefas de todos os membros.
 
-Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.""",
+Cada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.""",
 }
 
 # ---------------------------------------------------------------------------
@@ -152,11 +167,11 @@ Cada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar 
 # ---------------------------------------------------------------------------
 
 CAMPOS_CSV = [
-    "data_hora_utc", "modelo", "modelo_id", "provedor", "dominio", "rodada",
+    "data_hora_utc", "modelo", "modelo_id", "provedor", "dominio", "prompt_versao", "rodada",
     "gratuito",
     "tokens_entrada", "tokens_saida", "tokens_raciocinio", "tokens_total",
     "custo_usd", "motivo_termino", "tentativas_api", "duracao_s",
-    "duracao_api_s", "tokens_por_s", "n_arquivos", "tem_readme", "cercas_removidas", "estado", "pasta", "erro",
+    "duracao_api_s", "tokens_por_s", "n_arquivos", "tem_readme", "cercas_removidas", "continuacao", "reenvio", "estado", "pasta", "erro",
 ]
 
 # Aceita a linha '=== caminho ===' e também a variante em que o modelo cola uma
@@ -397,6 +412,18 @@ def _acrescentar_csv(linha):
 # Função principal
 # ---------------------------------------------------------------------------
 
+def _conferir_pasta_saida():
+    """Impede misturar gerações da v2 com as do piloto (v1) na mesma pasta 'saidas'."""
+    arquivo = PASTA_SAIDA / "registro.csv"
+    if arquivo.exists():
+        with arquivo.open(newline="", encoding="utf-8") as f:
+            cabecalho = next(csv.reader(f), [])
+        if "prompt_versao" not in cabecalho:
+            raise RuntimeError(
+                f"'{PASTA_SAIDA}' contém gerações do piloto (prompt v1). Renomeie a pasta para "
+                "'saidas_piloto_v1' antes de gerar com o prompt v2.")
+
+
 def gerar_aplicacao(modelo, dominio):
     """Gera a aplicação de um domínio com um modelo e registra tokens e custo.
 
@@ -409,6 +436,7 @@ def gerar_aplicacao(modelo, dominio):
     if dominio not in DOMINIOS:
         raise KeyError(f"Domínio '{dominio}' não existe. Opções: {list(DOMINIOS)}")
 
+    _conferir_pasta_saida()
     modelo_id = MODELOS[modelo]
     gratuito = modelo_id.endswith(":free")
     if gratuito:
@@ -441,6 +469,7 @@ def gerar_aplicacao(modelo, dominio):
         "pasta": str(pasta),
         "prompt_sistema": SYSTEM_PROMPT,
         "prompt_usuario": DOMINIOS[dominio],
+        "prompt_versao": PROMPT_VERSAO,
     }
 
     t0 = time.monotonic()
@@ -556,6 +585,375 @@ def _dialogo_anterior(pasta, registro_anterior):
     ]
 
 
+def _pasta_da_geracao(pasta):
+    """Pasta da geração original, dado o resposta.txt de uma geração, reparo ou continuação."""
+    if pasta.name.startswith(("reparo_", "continuacao_", "reenvio_")):
+        return pasta.parent
+    return pasta
+
+
+def _unir_continuacao(texto_ant, texto_novo):
+    """Une a resposta cortada com a continuação. Devolve (texto, nota).
+    - Se a continuação reabre o último arquivo com o marcador '=== caminho ===', a parte
+      cortada desse arquivo é descartada e vale a versão nova ('arquivo_reiniciado').
+    - Se abre outro arquivo, o último arquivo cortado fica como estava, possivelmente
+      incompleto ('novo_arquivo_apos_corte').
+    - Caso contrário, o texto novo é anexado diretamente ('continuacao_direta')."""
+    novo = texto_novo.lstrip("\n")
+    primeira = novo.split("\n", 1)[0] if novo else ""
+    marcas = list(MARCADOR_ARQUIVO.finditer(texto_ant))
+    m_novo = MARCADOR_ARQUIVO.match(primeira) if primeira else None
+    if m_novo:
+        nome_novo = m_novo.group("nome").strip().strip("`")
+        if marcas and marcas[-1].group("nome").strip().strip("`") == nome_novo:
+            return texto_ant[:marcas[-1].start()] + novo, "arquivo_reiniciado"
+        return texto_ant.rstrip("\n") + "\n" + novo, "novo_arquivo_apos_corte"
+    if primeira.strip() in CERCAS or re.fullmatch(r"(```|\'\'\'|\"\"\")\s*\w+", primeira.strip()):
+        texto_novo = texto_novo.split("\n", 1)[1] if "\n" in texto_novo else ""
+    return texto_ant + texto_novo, "continuacao_direta"
+
+
+def continuar_aplicacao(modelo, contexto):
+    """Continua uma resposta cortada pelo limite de tokens (estado 'truncada').
+
+    modelo:   chave de MODELOS; precisa ser o mesmo da geração.
+    contexto: caminho do resposta.txt (ou da pasta) da geração truncada ou de uma
+              continuação anterior que também foi cortada.
+
+    Envia a mensagem fixa MENSAGEM_CONTINUACAO no mesmo diálogo, une a resposta nova
+    à anterior e grava o projeto completo em <geração>/continuacao_<n>/projeto.
+    Limite: MAX_CONTINUACOES por aplicação, contador separado do reparo. Se a última
+    continuação ainda terminar por limite de tokens, o estado fica 'nao_entregue'.
+    Depois de uma continuação concluída, o reparo (corrigir_aplicacao) pode usar a pasta
+    da continuação como contexto.
+    """
+    if modelo not in MODELOS:
+        raise KeyError(f"Modelo '{modelo}' não existe. Opções: {list(MODELOS)}")
+
+    pasta_ant = _localizar_contexto(contexto)
+    registro_ant = json.loads((pasta_ant / "registro.json").read_text(encoding="utf-8"))
+
+    if registro_ant.get("modelo") != modelo:
+        raise ValueError(
+            f"O contexto foi gerado por '{registro_ant.get('modelo')}', não por "
+            f"'{modelo}'. A continuação deve usar o mesmo modelo da geração.")
+    if int(registro_ant.get("rodada", 0)) != 0:
+        raise ValueError("Continuação só se aplica à geração original ou a outra continuação, "
+                         "não a uma rodada de reparo.")
+    if registro_ant.get("estado") != "truncada":
+        raise ValueError(
+            f"O estado da rodada indicada é '{registro_ant.get('estado')}'. "
+            "A continuação só é permitida quando o estado é 'truncada'.")
+
+    n = int(registro_ant.get("continuacao") or 0) + 1
+    if n > MAX_CONTINUACOES:
+        raise ValueError(
+            f"Limite de {MAX_CONTINUACOES} continuações atingido (protocolo). "
+            "Registre a aplicação como não entregue.")
+
+    pasta_geracao = _pasta_da_geracao(pasta_ant)
+    pasta = pasta_geracao / f"continuacao_{n}"
+    if pasta.exists():
+        raise FileExistsError(
+            f"'{pasta}' já existe. Para refazer esta continuação, apague ou renomeie a pasta.")
+
+    modelo_id = MODELOS[modelo]
+    if modelo_id != registro_ant.get("modelo_id"):
+        print(f"AVISO: o ID do modelo mudou desde a geração "
+              f"({registro_ant.get('modelo_id')} -> {modelo_id}).")
+
+    parametros = registro_ant.get("parametros") or {
+        "max_tokens": MAX_TOKENS,
+        "reasoning": REASONING_POR_MODELO.get(modelo, REASONING_PADRAO),
+    }
+    texto_ant = (pasta_ant / "resposta.txt").read_text(encoding="utf-8")
+    dialogo = _dialogo_anterior(pasta_ant, registro_ant) + [
+        {"role": "user", "content": MENSAGEM_CONTINUACAO}]
+    corpo = {"model": modelo_id, "messages": list(dialogo), **parametros}
+
+    pasta.mkdir(parents=True)
+    inicio = datetime.now(timezone.utc)
+    registro = {
+        "data_hora_utc": inicio.isoformat(timespec="seconds"),
+        "modelo": modelo,
+        "modelo_id": modelo_id,
+        "dominio": registro_ant.get("dominio"),
+        "rodada": 0,
+        "continuacao": n,
+        "gratuito": modelo_id.endswith(":free"),
+        "parametros": parametros,
+        "pasta": str(pasta),
+        "pasta_geracao": str(pasta_geracao),
+        "contexto": str(pasta_ant),
+        "prompt_sistema": registro_ant.get("prompt_sistema"),
+        "prompt_usuario": registro_ant.get("prompt_usuario"),
+        "prompt_versao": registro_ant.get("prompt_versao", "v1"),
+        "mensagem_continuacao": MENSAGEM_CONTINUACAO,
+    }
+
+    t0 = time.monotonic()
+    print(f"[{datetime.now():%H:%M:%S}] Continuação {n}/{MAX_CONTINUACOES} de "
+          f"'{registro['dominio']}' com '{modelo}' ({modelo_id})...")
+    try:
+        dados, tentativas, duracao_api = _chamar_api(corpo)
+    except ErroAPI as e:
+        total = time.monotonic() - t0
+        registro.update(estado="erro_api", erro=str(e), duracao_s=round(total, 1))
+        (pasta / "registro.json").write_text(
+            json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")
+        _acrescentar_csv(registro)
+        print(f"FALHA após {formatar_tempo(total)}: {e}")
+        return registro
+    duracao = round(time.monotonic() - t0, 1)
+
+    escolha = dados["choices"][0]
+    texto_novo = (escolha.get("message") or {}).get("content") or ""
+    uso = dados.get("usage") or {}
+    detalhes = uso.get("completion_tokens_details") or {}
+    custo = uso.get("cost")
+    if custo is None:
+        custo = _buscar_custo(dados.get("id"))
+    tokens_saida = uso.get("completion_tokens")
+    tokens_por_s = (round(tokens_saida / duracao_api, 1)
+                    if tokens_saida and duracao_api > 0 else None)
+
+    texto, uniao = _unir_continuacao(texto_ant, texto_novo)
+    arquivos, cercas = extrair_arquivos(texto)
+    gravados, recusados = _gravar_arquivos(arquivos, pasta / "projeto")
+    tem_readme = any(Path(c).name.lower() == "readme.md" for c in gravados)
+
+    motivo = escolha.get("finish_reason")
+    if motivo == "length":
+        estado = "nao_entregue" if n >= MAX_CONTINUACOES else "truncada"
+    elif not gravados:
+        estado = "sem_arquivos"
+    else:
+        estado = "gerada"
+
+    registro.update(
+        provedor=dados.get("provider"),
+        id_geracao=dados.get("id"),
+        modelo_servido=dados.get("model"),
+        tokens_entrada=uso.get("prompt_tokens"),
+        tokens_saida=tokens_saida,
+        tokens_raciocinio=detalhes.get("reasoning_tokens"),
+        tokens_total=uso.get("total_tokens"),
+        custo_usd=custo,
+        motivo_termino=motivo,
+        tentativas_api=tentativas,
+        duracao_s=duracao,
+        duracao_api_s=round(duracao_api, 1),
+        tokens_por_s=tokens_por_s,
+        n_arquivos=len(gravados),
+        arquivos=gravados,
+        caminhos_recusados=recusados,
+        tem_readme=tem_readme,
+        cercas_removidas=cercas,
+        uniao=uniao,
+        estado=estado,
+        erro="",
+    )
+
+    dialogo.append({"role": "assistant", "content": texto_novo})
+    (pasta / "dialogo.json").write_text(
+        json.dumps(dialogo, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pasta / "resposta.txt").write_text(texto, encoding="utf-8")  # resposta unida
+    (pasta / "resposta_continuacao.txt").write_text(texto_novo, encoding="utf-8")
+    (pasta / "resposta_api.json").write_text(
+        json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pasta / "registro.json").write_text(
+        json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")
+    _acrescentar_csv(registro)
+
+    print(f"[{datetime.now():%H:%M:%S}] Concluído em {formatar_tempo(duracao)} "
+          f"(chamada à API: {formatar_tempo(duracao_api)}; vazão: "
+          f"{tokens_por_s if tokens_por_s is not None else 'n/d'} tokens/s)")
+    print(f"Estado: {estado} | união: {uniao} | arquivos: {len(gravados)} | tokens "
+          f"(entrada/saída/raciocínio): {registro['tokens_entrada']}/{tokens_saida}/"
+          f"{registro['tokens_raciocinio']} | custo: US$ {custo}")
+    print(f"Projeto em: {pasta / 'projeto'}")
+    if uniao == "novo_arquivo_apos_corte":
+        print("ATENÇÃO: a continuação abriu outro arquivo; o arquivo cortado pode estar "
+              "incompleto. Confira o final dele.")
+    if estado == "truncada":
+        print("A resposta continua cortada. Ainda há continuação disponível.")
+    elif estado == "nao_entregue":
+        print("Limite de continuações atingido: registre a aplicação como não entregue.")
+    if recusados:
+        print(f"AVISO: caminhos recusados por saírem da pasta do projeto: {recusados}")
+    return {**registro, "resposta": texto}
+
+
+def reenviar_pedido(modelo, contexto):
+    """Pede ao modelo, uma única vez, o projeto que não veio (estado 'sem_arquivos').
+
+    modelo:   chave de MODELOS; precisa ser o mesmo da geração.
+    contexto: caminho do resposta.txt (ou da pasta) da geração original.
+
+    Cobre respostas que terminaram normalmente sem nenhum arquivo (só texto, pergunta,
+    chamada de ferramenta inexistente, recusa). Envia a mensagem fixa MENSAGEM_REENVIO no
+    mesmo diálogo. Limite: MAX_REENVIOS por aplicação, contador separado de reparo e
+    continuação. Se ainda não vierem arquivos, o estado fica 'nao_entregue'.
+    Se o resposta.txt já contém arquivos que o extrator não leu, a função recusa:
+    nesse caso use reprocessar_resposta (sem custo).
+    """
+    if modelo not in MODELOS:
+        raise KeyError(f"Modelo '{modelo}' não existe. Opções: {list(MODELOS)}")
+
+    pasta_ant = _localizar_contexto(contexto)
+    registro_ant = json.loads((pasta_ant / "registro.json").read_text(encoding="utf-8"))
+
+    if registro_ant.get("modelo") != modelo:
+        raise ValueError(
+            f"O contexto foi gerado por '{registro_ant.get('modelo')}', não por "
+            f"'{modelo}'. O reenvio deve usar o mesmo modelo da geração.")
+    if int(registro_ant.get("rodada", 0)) != 0 or registro_ant.get("continuacao") \
+            or registro_ant.get("reenvio") or pasta_ant.name.startswith(
+                ("reparo_", "continuacao_", "reenvio_")):
+        raise ValueError("O reenvio se aplica apenas à geração original.")
+    if registro_ant.get("estado") != "sem_arquivos":
+        raise ValueError(
+            f"O estado da rodada indicada é '{registro_ant.get('estado')}'. "
+            "O reenvio só é permitido quando o estado é 'sem_arquivos'.")
+
+    texto_ant = (pasta_ant / "resposta.txt").read_text(encoding="utf-8")
+    achados, _ = extrair_arquivos(texto_ant)
+    if achados:
+        raise ValueError(
+            f"O resposta.txt contém {len(achados)} arquivo(s) que o extrator não gravou. "
+            "Use reprocessar_resposta(pasta) em vez de reenviar o pedido.")
+
+    n = 1
+    if n > MAX_REENVIOS:
+        raise ValueError("Limite de reenvios atingido (protocolo).")
+    pasta = pasta_ant / f"reenvio_{n}"
+    if pasta.exists():
+        raise FileExistsError(
+            f"'{pasta}' já existe: o reenvio já foi usado. Para refazer, apague ou "
+            "renomeie a pasta.")
+
+    modelo_id = MODELOS[modelo]
+    if modelo_id != registro_ant.get("modelo_id"):
+        print(f"AVISO: o ID do modelo mudou desde a geração "
+              f"({registro_ant.get('modelo_id')} -> {modelo_id}).")
+
+    parametros = registro_ant.get("parametros") or {
+        "max_tokens": MAX_TOKENS,
+        "reasoning": REASONING_POR_MODELO.get(modelo, REASONING_PADRAO),
+    }
+    dialogo = [m for m in _dialogo_anterior(pasta_ant, registro_ant)
+               if not (m["role"] == "assistant" and not (m.get("content") or "").strip())]
+    dialogo.append({"role": "user", "content": MENSAGEM_REENVIO})
+    corpo = {"model": modelo_id, "messages": list(dialogo), **parametros}
+
+    pasta.mkdir(parents=True)
+    inicio = datetime.now(timezone.utc)
+    registro = {
+        "data_hora_utc": inicio.isoformat(timespec="seconds"),
+        "modelo": modelo,
+        "modelo_id": modelo_id,
+        "dominio": registro_ant.get("dominio"),
+        "rodada": 0,
+        "reenvio": n,
+        "gratuito": modelo_id.endswith(":free"),
+        "parametros": parametros,
+        "pasta": str(pasta),
+        "pasta_geracao": str(pasta_ant),
+        "contexto": str(pasta_ant),
+        "prompt_sistema": registro_ant.get("prompt_sistema"),
+        "prompt_usuario": registro_ant.get("prompt_usuario"),
+        "prompt_versao": registro_ant.get("prompt_versao", "v1"),
+        "mensagem_reenvio": MENSAGEM_REENVIO,
+    }
+
+    t0 = time.monotonic()
+    print(f"[{datetime.now():%H:%M:%S}] Reenvio {n}/{MAX_REENVIOS} de "
+          f"'{registro['dominio']}' com '{modelo}' ({modelo_id})...")
+    try:
+        dados, tentativas, duracao_api = _chamar_api(corpo)
+    except ErroAPI as e:
+        total = time.monotonic() - t0
+        registro.update(estado="erro_api", erro=str(e), duracao_s=round(total, 1))
+        (pasta / "registro.json").write_text(
+            json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")
+        _acrescentar_csv(registro)
+        print(f"FALHA após {formatar_tempo(total)}: {e}")
+        return registro
+    duracao = round(time.monotonic() - t0, 1)
+
+    escolha = dados["choices"][0]
+    texto = (escolha.get("message") or {}).get("content") or ""
+    uso = dados.get("usage") or {}
+    detalhes = uso.get("completion_tokens_details") or {}
+    custo = uso.get("cost")
+    if custo is None:
+        custo = _buscar_custo(dados.get("id"))
+    tokens_saida = uso.get("completion_tokens")
+    tokens_por_s = (round(tokens_saida / duracao_api, 1)
+                    if tokens_saida and duracao_api > 0 else None)
+
+    arquivos, cercas = extrair_arquivos(texto)
+    gravados, recusados = _gravar_arquivos(arquivos, pasta / "projeto")
+    tem_readme = any(Path(c).name.lower() == "readme.md" for c in gravados)
+
+    motivo = escolha.get("finish_reason")
+    if motivo == "length":
+        estado = "truncada"
+    elif not gravados:
+        estado = "nao_entregue"
+    else:
+        estado = "gerada"
+
+    registro.update(
+        provedor=dados.get("provider"),
+        id_geracao=dados.get("id"),
+        modelo_servido=dados.get("model"),
+        tokens_entrada=uso.get("prompt_tokens"),
+        tokens_saida=tokens_saida,
+        tokens_raciocinio=detalhes.get("reasoning_tokens"),
+        tokens_total=uso.get("total_tokens"),
+        custo_usd=custo,
+        motivo_termino=motivo,
+        tentativas_api=tentativas,
+        duracao_s=duracao,
+        duracao_api_s=round(duracao_api, 1),
+        tokens_por_s=tokens_por_s,
+        n_arquivos=len(gravados),
+        arquivos=gravados,
+        caminhos_recusados=recusados,
+        tem_readme=tem_readme,
+        cercas_removidas=cercas,
+        estado=estado,
+        erro="",
+    )
+
+    dialogo.append({"role": "assistant", "content": texto})
+    (pasta / "dialogo.json").write_text(
+        json.dumps(dialogo, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pasta / "resposta.txt").write_text(texto, encoding="utf-8")
+    (pasta / "resposta_api.json").write_text(
+        json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pasta / "registro.json").write_text(
+        json.dumps(registro, ensure_ascii=False, indent=2), encoding="utf-8")
+    _acrescentar_csv(registro)
+
+    print(f"[{datetime.now():%H:%M:%S}] Concluído em {formatar_tempo(duracao)} "
+          f"(chamada à API: {formatar_tempo(duracao_api)}; vazão: "
+          f"{tokens_por_s if tokens_por_s is not None else 'n/d'} tokens/s)")
+    print(f"Estado: {estado} | arquivos: {len(gravados)} | tokens "
+          f"(entrada/saída/raciocínio): {registro['tokens_entrada']}/{tokens_saida}/"
+          f"{registro['tokens_raciocinio']} | custo: US$ {custo}")
+    if estado == "gerada":
+        print(f"Projeto em: {pasta / 'projeto'}")
+    elif estado == "nao_entregue":
+        print("O modelo não entregou arquivos no reenvio: registre a aplicação como não entregue.")
+    elif estado == "truncada":
+        print("A resposta foi cortada. Use continuar_aplicacao com esta pasta.")
+    if recusados:
+        print(f"AVISO: caminhos recusados por saírem da pasta do projeto: {recusados}")
+    return {**registro, "resposta": texto}
+
+
 def corrigir_aplicacao(mensagem_erro, modelo, contexto):
     """Executa uma rodada de reparo, no mesmo diálogo da geração.
 
@@ -591,7 +989,7 @@ def corrigir_aplicacao(mensagem_erro, modelo, contexto):
             f"Limite de {MAX_RODADAS_REPARO} rodadas de reparo atingido "
             "(protocolo). Registre a aplicação como não executável.")
 
-    pasta_geracao = pasta_ant if rodada == 1 else pasta_ant.parent
+    pasta_geracao = _pasta_da_geracao(pasta_ant)
     pasta = pasta_geracao / f"reparo_{rodada}"
     if pasta.exists():
         raise FileExistsError(
@@ -626,6 +1024,7 @@ def corrigir_aplicacao(mensagem_erro, modelo, contexto):
         "contexto": str(pasta_ant),
         "prompt_sistema": registro_ant.get("prompt_sistema"),
         "prompt_usuario": registro_ant.get("prompt_usuario"),
+        "prompt_versao": registro_ant.get("prompt_versao", "v1"),
         "mensagem_reparo": mensagem,
     }
 

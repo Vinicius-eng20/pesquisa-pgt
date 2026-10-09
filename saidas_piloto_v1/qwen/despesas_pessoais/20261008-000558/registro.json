@@ -1,0 +1,49 @@
+{
+  "data_hora_utc": "2026-10-08T00:05:58+00:00",
+  "modelo": "qwen",
+  "modelo_id": "qwen/qwen3.8-27b",
+  "dominio": "despesas_pessoais",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\qwen\\despesas_pessoais\\20261008-000558",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Wafer",
+  "id_geracao": "gen-1791417959-5zoNHMMzGTXt1VqkzJoh",
+  "modelo_servido": "qwen/qwen3.8-27b",
+  "tokens_entrada": 222,
+  "tokens_saida": 19096,
+  "tokens_raciocinio": 0,
+  "tokens_total": 19318,
+  "custo_usd": 0.0830728836,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 205.5,
+  "duracao_api_s": 205.5,
+  "tokens_por_s": 92.9,
+  "n_arquivos": 11,
+  "arquivos": [
+    "package.json",
+    ".gitignore",
+    "wrangler.toml",
+    "supabase/schema.sql",
+    "public/index.html",
+    "public/styles.css",
+    "src/config.js",
+    "src/hash.js",
+    "src/server.js",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

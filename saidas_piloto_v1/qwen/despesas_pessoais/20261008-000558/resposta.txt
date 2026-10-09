@@ -1,0 +1,1600 @@
+O site precisa funcionar de verdade na internet com salvamento real e contas de usuário separadas. Isso exige um **servidor + banco de dados** (impossível fazer só com um arquivo HTML — navegador não guarda dados de outras pessoas nem protege senhas).
+
+Usei **Node.js + Supabase (banco gratuito na nuvem)** — é "dentro do próprio site" (não usa OAuth, Facebook, Stripe, etc.), roda em hospedagem gratuita, e cada pessoa entra com seu usuário/senha e só vê os próprios gastos.
+
+**Importante:** o banco é um arquivo de configuração com um link (URL + chave). Você pega esse link no Supabase (grátis, 2 min) e cola nele. Depois, suba o projeto num serviço gratuito (Cloudflare Workers — 5 min, eu deixo os passos) e fique no ar.
+
+=== package.json ===
+{
+  "name": "controle-de-despesas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "bcryptjs": "^2.4.3",
+    "cookie": "^0.6.0"
+  },
+  "devDependencies": {
+    "wrangler": "^3.60.0"
+  }
+}
+
+=== .gitignore ===
+node_modules/
+.env
+.wrangler/
+supabase/.temp/
+
+=== wrangler.toml ===
+name = "controle-de-despesas"
+main = "src/server.js"
+compatibility_date = "2024-07-01"
+compatibility_flags = ["nodejs_compat"]
+usage_model = "bunds"
+
+# Preencha as variáveis de ambiente do Cloudflare (veja README) com:
+#   npx wrangler secret put SUPABASE_URL
+#   npx wrangler secret put SUPABASE_SERVICE_KEY
+
+=== supabase/schema.sql ===
+-- RODE ESTE BLOCO uma única vez na aba SQL Editor do Supabase (veja README).
+-- Cria todas as tabelas e regras de segurança.
+
+create table public.users (
+  id uuid primary key default gen_random_uuid(),
+  username text unique not null,
+  email text unique not null,
+  password_hash text not null,
+  is_admin boolean not null default false,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table public.categories (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  color text not null default '#64748B',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  category_id uuid not null references public.categories(id) on delete restrict,
+  description text not null,
+  amount_cents integer not null check (amount_cents >= 0),
+  spent_on date not null default current_date,
+  created_at timestamptz not null default now()
+);
+
+create index expenses_user_spent_idx on public.expenses (user_id, spent_on);
+create index expenses_category_idx on public.expenses (category_id);
+
+-- Permite apenas leitura para quem se autenticou; escrita é feita pelo servidor.
+alter table public.users enable row level security;
+alter table public.categories enable row level security;
+alter table public.expenses enable row level security;
+
+create policy "read users" on public.users for select using (auth.role() = 'authenticated');
+create policy "read categories" on public.categories for select using (auth.role() = 'authenticated');
+create policy "read own expenses" on public.expenses for select using (auth.uid() = user_id);
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minhas Despesas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ================= LOGIN / CADASTRO ================= -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <span class="brand-dot"></span>
+        <div>
+          <h1 class="brand-title">Minhas Despesas</h1>
+          <p class="brand-sub">Controle do seu dinheiro, simples e seu.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs">
+        <button id="tab-login" class="auth-tab active" type="button">Entrar</button>
+        <button id="tab-register" class="auth-tab" type="button">Criar conta</button>
+      </div>
+
+      <form id="auth-form" class="auth-form" autocomplete="on">
+        <label class="field">
+          <span class="field-label">Usuário</span>
+          <input id="auth-username" type="text" autocomplete="username" placeholder="seu nome de usuário" required />
+        </label>
+        <label class="field" id="email-field">
+          <span class="field-label">E-mail</span>
+          <input id="auth-email" type="email" autocomplete="email" placeholder="voce@email.com" />
+        </label>
+        <label class="field">
+          <span class="field-label">Senha</span>
+          <input id="auth-password" type="password" autocomplete="current-password" placeholder="mínimo 6 caracteres" required />
+        </label>
+
+        <button type="submit" id="auth-submit" class="btn btn-primary btn-block">Entrar</button>
+        <p id="auth-message" class="auth-message hidden"></p>
+      </form>
+    </div>
+    <p class="auth-footnote">Seus dados ficam só neste site, protegidos por senha.</p>
+  </div>
+
+  <!-- ================= APP ================= -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-dot"></span>
+        <span class="brand-title-sm">Minhas Despesas</span>
+      </div>
+      <div class="topbar-right">
+        <span id="user-name" class="user-chip"></span>
+        <span id="admin-badge" class="admin-badge hidden">Admin</span>
+        <button id="logout-btn" class="btn btn-ghost" type="button">Sair</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button id="tab-me" class="nav-tab active" type="button">Meus gastos</button>
+      <button id="tab-admin" class="nav-tab hidden" type="button">Administração</button>
+    </nav>
+
+    <main class="content">
+      <!-- Meus gastos -->
+      <section id="view-me" class="view">
+        <div class="page-head">
+          <div>
+            <h2 class="page-title">Meus gastos</h2>
+            <p class="page-sub" id="me-month-label"></p>
+          </div>
+          <button id="me-refresh" class="btn btn-ghost" type="button">↻ Atualizar</button>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-card stat-hero">
+            <p class="stat-label">Gasto no mês</p>
+            <p class="stat-value" id="stat-month">R$ 0,00</p>
+            <p class="stat-hint" id="stat-month-hint"></p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Total geral</p>
+            <p class="stat-value stat-value-sm" id="stat-total">R$ 0,00</p>
+            <p class="stat-hint" id="stat-total-hint"></p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Lançamentos</p>
+            <p class="stat-value stat-value-sm" id="stat-count">0</p>
+            <p class="stat-hint">registrados até hoje</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3 class="panel-title">Adicionar gasto</h3>
+          </div>
+          <form id="expense-form" class="expense-form">
+            <div class="form-grid">
+              <label class="field">
+                <span class="field-label">Descrição</span>
+                <input id="exp-desc" type="text" placeholder="Ex.: mercado, uber, cinema" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Valor</span>
+                <input id="exp-amount" type="text" inputmode="decimal" placeholder="0,00" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Categoria</span>
+                <select id="exp-category" required></select>
+              </label>
+              <label class="field">
+                <span class="field-label">Data</span>
+                <input id="exp-date" type="date" required />
+              </label>
+            </div>
+            <div class="form-actions">
+              <p id="expense-message" class="form-message"></p>
+              <button type="submit" class="btn btn-primary">Salvar gasto</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h3 class="panel-title">Histórico</h3>
+            <div class="filter-row">
+              <select id="filter-month" class="mini-select"></select>
+              <select id="filter-category" class="mini-select">
+                <option value="">Todas as categorias</option>
+              </select>
+            </div>
+          </div>
+          <div id="no-data" class="empty hidden">Nenhum gasto por aqui ainda. Adicione o primeiro acima! 🎉</div>
+          <div class="group-list" id="expense-groups"></div>
+        </div>
+      </section>
+
+      <!-- Administração -->
+      <section id="view-admin" class="view hidden">
+        <div class="page-head">
+          <h2 class="page-title">Administração</h2>
+          <p class="page-sub">Visão geral do sistema para o administrador.</p>
+        </div>
+
+        <div class="admin-stats">
+          <div class="stat-card">
+            <p class="stat-label">Total gasto (todos)</p>
+            <p class="stat-value" id="admin-total">R$ 0,00</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Usuários ativos</p>
+            <p class="stat-value" id="admin-users">0</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">Gasto médio / usuário</p>
+            <p class="stat-value" id="admin-avg">R$ 0,00</p>
+          </div>
+        </div>
+
+        <div class="admin-grid">
+          <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">Categorias</h3></div>
+            <form id="category-form" class="category-form">
+              <input id="cat-name" type="text" placeholder="Nova categoria (ex.: Viagem)" required />
+              <input id="cat-color" type="color" value="#64748B" title="Cor" />
+              <button type="submit" class="btn btn-primary">Adicionar</button>
+            </form>
+            <div id="category-message" class="form-message"></div>
+            <ul id="category-list" class="category-list"></ul>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3 class="panel-title">Usuários</h3></div>
+            <table class="user-table">
+              <thead>
+                <tr><th>Usuário</th><th>Gasto total</th><th>Status</th><th></th></tr>
+              </thead>
+              <tbody id="user-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">Feito para quem quer saber exatamente para onde o dinheiro foi.</footer>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+
+=== public/styles.css ===
+:root{
+  --bg:#F3EFE8;
+  --surface:#FFFFFF;
+  --surface-2:#FBF9F5;
+  --ink:#171A1F;
+  --ink-soft:#5A6069;
+  --line:#E7E0D6;
+  --line-strong:#D8CFC2;
+  --green:#2F6F4F;
+  --green-strong:#245a40;
+  --green-soft:#E4EFE9;
+  --amber:#B26A05;
+  --red:#B23B3B;
+  --red-soft:#F6E6E6;
+  --shadow:0 1px 2px rgba(23,26,31,.04), 0 12px 30px rgba(23,26,31,.07);
+  --radius:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font-family:"Manrope",system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.hidden{display:none !important}
+
+/* ---------- AUTENTICAÇÃO ---------- */
+.auth-screen{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  padding:32px 16px;
+  background:
+    radial-gradient(900px 500px at 15% -10%, rgba(47,111,79,.10), transparent 60%),
+    radial-gradient(700px 500px at 100% 110%, rgba(178,106,5,.10), transparent 55%),
+    var(--bg);
+}
+.auth-card{
+  width:100%;
+  max-width:420px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:22px;
+  box-shadow:var(--shadow);
+  padding:28px;
+  animation:rise .5s ease both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.auth-brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.brand-dot{
+  width:34px;height:34px;border-radius:10px;flex:0 0 auto;
+  background:linear-gradient(135deg,var(--green),#5aa87d);
+  box-shadow:inset 0 -6px 12px rgba(0,0,0,.15);
+}
+.brand-title{font-family:"Fraunces",serif;font-size:1.7rem;font-weight:700;margin:0;letter-spacing:-.02em}
+.brand-title-sm{font-family:"Fraunces",serif;font-weight:700;font-size:1.15rem;letter-spacing:-.02em}
+.brand-sub{margin:2px 0 0;font-size:.85rem;color:var(--ink-soft)}
+.auth-tabs{
+  display:grid;grid-template-columns:1fr 1fr;gap:6px;
+  background:var(--surface-2);border:1px solid var(--line);
+  border-radius:12px;padding:4px;margin-bottom:18px;
+}
+.auth-tab{
+  border:0;background:transparent;padding:10px;border-radius:9px;
+  font:inherit;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:.2s;
+}
+.auth-tab.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.auth-form{display:flex;flex-direction:column;gap:14px}
+.auth-message{margin:0;font-size:.85rem;color:var(--red);min-height:1em}
+.auth-footnote{margin-top:20px;font-size:.8rem;color:var(--ink-soft);text-align:center;max-width:320px}
+
+/* ---------- CAMPOS E BOTÕES ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field-label{font-size:.78rem;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
+input,select{
+  font:inherit;padding:11px 13px;border:1px solid var(--line-strong);
+  border-radius:11px;background:var(--surface-2);color:var(--ink);width:100%;
+  transition:border-color .15s, box-shadow .15s, background .15s;
+}
+input:focus,select:focus{
+  outline:none;border-color:var(--green);background:var(--surface);
+  box-shadow:0 0 0 3px rgba(47,111,79,.15);
+}
+input[type=color]{padding:4px;height:44px;width:70px;cursor:pointer;background:var(--surface-2)}
+.btn{
+  font:inherit;font-weight:700;border:1px solid transparent;border-radius:11px;
+  padding:12px 18px;cursor:pointer;transition:.18s;
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--green);color:#fff}
+.btn-primary:hover{background:var(--green-strong)}
+.btn-ghost{background:transparent;border-color:var(--line-strong);color:var(--ink)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-block{width:100%}
+
+/* ---------- TOPO E ABAS ---------- */
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 22px;background:var(--surface);
+  border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:10;
+}
+.topbar-left{display:flex;align-items:center;gap:10px}
+.topbar-left .brand-dot{width:26px;height:26px;border-radius:8px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.user-chip{
+  font-weight:700;font-size:.9rem;background:var(--surface-2);
+  border:1px solid var(--line);padding:6px 12px;border-radius:999px;
+}
+.admin-badge{
+  font-size:.72rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+  background:var(--green-soft);color:var(--green-strong);
+  padding:4px 10px;border-radius:999px;
+}
+.btn-ghost{padding:9px 14px;font-size:.85rem}
+.tabs{
+  display:flex;gap:6px;padding:14px 22px 0;background:var(--bg);
+}
+.nav-tab{
+  border:0;background:transparent;font:inherit;font-weight:700;font-size:.95rem;
+  color:var(--ink-soft);padding:10px 16px;border-radius:12px;cursor:pointer;
+  border-bottom:2px solid transparent;transition:.15s;
+}
+.nav-tab:hover{color:var(--ink)}
+.nav-tab.active{color:var(--ink);border-bottom-color:var(--green);background:var(--surface)}
+.content{flex:1;padding:22px;max-width:1100px;width:100%;margin:0 auto}
+.footer{text-align:center;padding:18px;color:var(--ink-soft);font-size:.8rem}
+
+/* ---------- PÁGINA / CARRINHOS ---------- */
+.page-head{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:16px;margin:4px 0 18px;flex-wrap:wrap;
+}
+.page-title{font-family:"Fraunces",serif;font-size:1.9rem;margin:0;letter-spacing:-.02em}
+.page-sub{margin:2px 0 0;color:var(--ink-soft);font-size:.9rem}
+.view{display:flex;flex-direction:column;gap:18px;animation:fade .35s ease both}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+
+.stats-grid{
+  display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;
+}
+.stat-card{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);
+  transition:transform .18s, box-shadow .18s;
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(23,26,31,.06), 0 18px 40px rgba(23,26,31,.09)}
+.stat-hero{background:linear-gradient(150deg,#1f3d2d,#2f6f4f);border-color:transparent;color:#fff}
+.stat-hero .stat-label{color:rgba(255,255,255,.75)}
+.stat-hero .stat-hint{color:rgba(255,255,255,.7)}
+.stat-label{margin:0;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-soft)}
+.stat-value{font-family:"Fraunces",serif;font-size:2.1rem;font-weight:700;margin:6px 0 2px;letter-spacing:-.02em}
+.stat-value-sm{font-size:1.5rem}
+.stat-hint{margin:0;font-size:.8rem;color:var(--ink-soft)}
+
+.panel{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);
+}
+.panel-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  flex-wrap:wrap;margin-bottom:16px;
+}
+.panel-title{font-family:"Fraunces",serif;font-size:1.25rem;margin:0}
+.form-grid{display:grid;grid-template-columns:1.6fr .9fr 1fr .9fr;gap:12px}
+.form-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;flex-wrap:wrap}
+.form-message{margin:0;font-size:.85rem;color:var(--red);min-height:1em}
+
+.mini-select{width:auto;min-width:150px;padding:9px 11px;font-size:.88rem}
+.filter-row{display:flex;gap:10px;flex-wrap:wrap}
+
+/* ---------- LISTA DE GASTOS ---------- */
+.empty{text-align:center;color:var(--ink-soft);padding:34px 10px;font-size:.95rem}
+.group-list{display:flex;flex-direction:column;gap:16px}
+.expense-group{border-top:1px solid var(--line);padding-top:14px}
+.expense-group:first-child{border-top:0;padding-top:0}
+.group-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+.group-date{font-weight:800;font-size:.92rem}
+.group-date-sub{color:var(--ink-soft);font-weight:600;font-size:.78rem;margin-left:8px}
+.group-total{font-weight:700;font-size:.92rem}
+.expense-item{
+  display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:12px;
+  transition:background .15s;
+}
+.expense-item:hover{background:var(--surface-2)}
+.cat-chip{
+  display:inline-flex;align-items:center;gap:7px;flex:1;min-width:0;
+  font-size:.9rem;font-weight:600;
+}
+.cat-dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.exp-desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.exp-cat-name{color:var(--ink-soft);font-size:.82rem;font-weight:700;margin-left:2px}
+.exp-amount{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.exp-del{
+  border:0;background:transparent;color:var(--line-strong);cursor:pointer;
+  font-size:1.05rem;padding:4px 8px;border-radius:8px;line-height:1;
+  opacity:.4;transition:.15s;
+}
+.expense-item:hover .exp-del{opacity:1}
+.exp-del:hover{color:var(--red);background:var(--red-soft)}
+
+/* ---------- ADMIN ---------- */
+.admin-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.admin-grid{display:grid;grid-template-columns:1fr 1.3fr;gap:18px;align-items:start}
+.category-form{display:grid;grid-template-columns:1fr auto auto;gap:10px;margin-bottom:10px}
+.category-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.category-row{
+  display:flex;align-items:center;gap:12px;padding:10px 12px;
+  border:1px solid var(--line);border-radius:12px;background:var(--surface-2);
+}
+.category-row .cat-dot{width:14px;height:14px}
+.category-row .cat-name{flex:1;font-weight:700}
+.category-row.is-off .cat-name{color:var(--ink-soft);text-decoration:line-through}
+.category-row .count{font-size:.78rem;color:var(--ink-soft);font-weight:700}
+.toggle{
+  border:1px solid var(--line-strong);background:var(--surface);cursor:pointer;
+  font:inherit;font-size:.78rem;font-weight:700;padding:6px 12px;border-radius:999px;transition:.15s;
+}
+.toggle:hover{border-color:var(--green);color:var(--green-strong)}
+.toggle.off{border-color:var(--red-soft);background:var(--red-soft);color:var(--red)}
+.toggle:disabled{opacity:.4;cursor:not-allowed}
+
+.user-table{width:100%;border-collapse:collapse;font-size:.9rem}
+.user-table th{
+  text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--ink-soft);padding:8px 10px;border-bottom:1px solid var(--line);
+}
+.user-table td{padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.user-table tr:last-child td{border-bottom:0}
+.user-name{font-weight:700}
+.user-total{font-variant-numeric:tabular-nums;font-weight:700}
+.status-pill{font-size:.72rem;font-weight:800;padding:3px 10px;border-radius:999px}
+.status-on{background:var(--green-soft);color:var(--green-strong)}
+.status-off{background:var(--red-soft);color:var(--red)}
+
+/* ---------- TOAST ---------- */
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+  background:var(--ink);color:#fff;padding:12px 20px;border-radius:12px;
+  font-weight:600;font-size:.9rem;box-shadow:0 12px 30px rgba(0,0,0,.25);
+  opacity:0;transition:.3s;z-index:50;max-width:90vw;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- RESPONSIVO ---------- */
+@media (max-width:820px){
+  .stats-grid,.admin-stats{grid-template-columns:1fr 1fr}
+  .form-grid{grid-template-columns:1fr 1fr}
+  .admin-grid{grid-template-columns:1fr}
+}
+@media (max-width:540px){
+  .stats-grid,.admin-stats{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .category-form{grid-template-columns:1fr}
+  .category-form input[type=color]{width:100%}
+  .content{padding:16px}
+  .topbar{padding:12px 14px}
+  .user-chip{display:none}
+}
+
+=== src/config.js ===
+import { createClient } from '@supabase/supabase-js';
+
+const url = process.env.SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_KEY;
+
+if (!url || !key) {
+  console.error(
+    'ERRO: variáveis de ambiente SUPABASE_URL e SUPABASE_SERVICE_KEY não configuradas.\n' +
+    'Leia o README.md — você precisa cadastrar um projeto gratuito no Supabase\n' +
+    'e colocar a URL e a Service Key (veja a seção "Passo a passo").'
+  );
+  process.exit(1);
+}
+
+export const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+
+=== src/hash.js ===
+import bcrypt from 'bcryptjs';
+
+export function hashPassword(pw) {
+  return bcrypt.hashSync(pw, 10);
+}
+
+export function verifyPassword(pw, hash) {
+  return bcrypt.compareSync(pw, hash);
+}
+
+=== src/server.js ===
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { cookie } from 'cookie';
+import { supabase } from './config.js';
+import { hashPassword, verifyPassword } from './hash.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+const PORT = process.env.PORT || 8787;
+const COOKIE = 'cd_session';
+
+// ---------- helpers ----------
+function json(res, status, obj) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(obj));
+}
+function bad(req, res, status, msg) {
+  return json(res, status, { ok: false, error: msg });
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => {
+      data += c;
+      if (data.length > 1e6) { reject(new Error('muito grande')); req.destroy(); }
+    });
+    req.on('end', () => {
+      if (!data) return resolve({});
+      try { resolve(JSON.parse(data)); } catch { reject(new Error('json inválido')); }
+    });
+    req.on('error', reject);
+  });
+}
+function sendFile(res, file, type) {
+  fs.readFile(file, (err, buf) => {
+    if (err) { res.writeHead(404); res.end('não encontrado'); return; }
+    res.writeHead(200, { 'Content-Type': type });
+    res.end(buf);
+  });
+}
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon'
+};
+
+function getCookieValue(req, name) {
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+  const jar = cookie.parse(raw);
+  return jar[name] || null;
+}
+
+function parseToken(tok) {
+  if (!tok) return null;
+  const [aid, payload] = tok.split('.');
+  if (!aid || !payload) return null;
+  const exp = Number(payload.split('.')[0]);
+  if (!exp || Date.now() > exp) return null;
+  return { id: aid, exp };
+}
+
+function setCookie(res, token, active) {
+  res.setHeader('Set-Cookie', cookie.serialize(COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: active ? 60 * 60 * 24 * 30 : 0
+  }));
+}
+function clearCookie(res) {
+  res.setHeader('Set-Cookie', cookie.serialize(COOKIE, '', {
+    httpOnly: true, sameSite: 'strict', secure: process.env.NODE_ENV === 'production',
+    path: '/', maxAge: 0
+  }));
+}
+function issueToken(user) {
+  const exp = Date.now() + 60 * 60 * 24 * 30; // 30 dias
+  const payload = `${exp}.${Math.random().toString(36).slice(2)}`;
+  return `${user.id}.${payload}`;
+}
+
+// ---------- carga do usuário via token ----------
+async function loadUser(req) {
+  const token = getCookieValue(req, COOKIE);
+  const dec = parseToken(token);
+  if (!dec) return null;
+  const { data } = await supabase.from('users').select('id,username,email,is_admin,is_active').eq('id', dec.id).maybeSingle();
+  if (!data) return null;
+  if (data.is_active === false) return { ...data, __inactive: true };
+  return data;
+}
+
+// ---------- validações ----------
+function isEmail(s) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s); }
+function str(s, min = 1, max = 100) {
+  const v = String(s || '').trim();
+  if (v.length < min || v.length > max) return null;
+  return v;
+}
+function toCents(s) {
+  if (s === undefined || s === null) return null;
+  let t = String(s).trim().replace(/[R$\s]/g, '');
+  if (t === '') return null;
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  const n = Number(t);
+  if (!isFinite(n) || n < 0) return null;
+  return Math.round(n * 100);
+}
+function safeDate(s) {
+  if (!s) return null;
+  const m = String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+// ---------- rotas ----------
+const routes = [];
+function route(method, path, handler, opts = {}) { routes.push({ method, path, handler, opts }); }
+
+// --- Auth ---
+route('POST', '/api/register', async (req, res) => {
+  const b = await readBody(req);
+  const username = str(b.username, 2, 32);
+  const email = String(b.email || '').trim().toLowerCase();
+  const password = String(b.password || '');
+  if (!username) return bad(req, res, 400, 'Informe um usuário válido.');
+  if (!isEmail(email)) return bad(req, res, 400, 'Informe um e-mail válido.');
+  if (password.length < 6) return bad(req, res, 400, 'A senha precisa de pelo menos 6 caracteres.');
+
+  const { data: dup } = await supabase.from('users').select('id').or(`username.eq.${username},email.eq.${email}`).limit(1);
+  if (dup && dup.length) return bad(req, res, 409, 'Já existe conta com esse usuário ou e-mail.');
+
+  const { data, error } = await supabase.from('users')
+    .insert({ username, email, password_hash: hashPassword(password), is_admin: false, is_active: true })
+    .select().single();
+  if (error) return bad(req, res, 500, 'Não foi possível criar a conta.');
+  setCookie(res, issueToken(data), true);
+  return json(res, 200, { ok: true, user: { id: data.id, username: data.username, is_admin: data.is_admin } });
+});
+
+route('POST', '/api/login', async (req, res) => {
+  const b = await readBody(req);
+  const id = str(b.username || b.email || '', 1, 120);
+  const password = String(b.password || '');
+  if (!id) return bad(req, res, 400, 'Informe usuário/e-mail e senha.');
+
+  let users = [];
+  try {
+    users = String(b.username || '').trim()
+      ? (await supabase.from('users').select('*').eq('username', String(b.username).trim())).data
+      : (await supabase.from('users').select('*').eq('email', String(b.email).trim().toLowerCase())).data;
+  } catch { users = []; }
+
+  if (!users.length) return bad(req, res, 401, 'Não encontramos essa conta.');
+  const user = users[0];
+  if (!verifyPassword(password, user.password_hash)) return bad(req, res, 401, 'Senha incorreta.');
+  if (user.is_active === false) return bad(req, res, 403, 'Esta conta está desativada. Fale com o administrador.');
+  setCookie(res, issueToken(user), true);
+  return json(res, 200, { ok: true, user: { id: user.id, username: user.username, is_admin: user.is_admin } });
+});
+
+route('POST', '/api/logout', async (req, res) => {
+  clearCookie(res);
+  return json(res, 200, { ok: true });
+});
+
+route('GET', '/api/me', async (req, res) => {
+  const u = await loadUser(req);
+  if (!u || u.__inactive) return json(res, 200, { ok: true, user: null });
+  return json(res, 200, { ok: true, user: { id: u.id, username: u.username, is_admin: u.is_admin } });
+});
+
+// --- Gastos (autenticado) ---
+route('GET', '/api/expenses', async (req, res) => {
+  const u = await loadUser(req);
+  if (!u || u.__inactive) return bad(req, res, 401, 'Faça login.');
+  const { data, error } = await supabase.from('expenses')
+    .select('id,description,amount_cents,spent_on,category:categories(id,name,color)').eq('user_id', u.id)
+    .order('spent_on', { ascending: false }).order('created_at', { ascending: false });
+  if (error) return bad(req, res, 500, 'Erro ao carregar gastos.');
+  return json(res, 200, { ok: true, expenses: data || [] });
+});
+
+route('POST', '/api/expenses', async (req, res) => {
+  const u = await loadUser(req);
+  if (!u || u.__inactive) return bad(req, res, 401, 'Faça login.');
+  const b = await readBody(req);
+  const description = str(b.description, 1, 120);
+  const cents = toCents(b.amount);
+  const date = safeDate(b.spent_on) || new Date().toISOString().slice(0, 10);
+  const categoryId = str(b.category_id, 36, 36);
+  if (!description) return bad(req, res, 400, 'Escreva uma descrição.');
+  if (cents === null) return bad(req, res, 400, 'Informe um valor válido (ex.: 25,90).');
+  if (!categoryId) return bad(req, res, 400, 'Escolha uma categoria.');
+
+  const { data: cat } = await supabase.from('categories').select('id,is_active').eq('id', categoryId).maybeSingle();
+  if (!cat) return bad(req, res, 400, 'Categoria inválida.');
+  if (cat.is_active === false) return bad(req, res, 400, 'Essa categoria está desativada.');
+
+  const { data, error } = await supabase.from('expenses')
+    .insert({ user_id: u.id, category_id: categoryId, description, amount_cents: cents, spent_on: date })
+    .select('id,description,amount_cents,spent_on,category:categories(id,name,color)').single();
+  if (error) return bad(req, res, 500, 'Não foi possível salvar o gasto.');
+  return json(res, 201, { ok: true, expense: data });
+});
+
+route('DELETE', '/api/expenses/:id', async (req, res) => {
+  const u = await loadUser(req);
+  if (!u || u.__inactive) return bad(req, res, 401, 'Faça login.');
+  const id = str(req.params.id, 36, 36);
+  if (!id) return bad(req, res, 400, 'ID inválido.');
+  const { data, error } = await supabase.from('expenses').delete().eq('id', id).eq('user_id', u.id).select('id');
+  if (error) return bad(req, res, 500, 'Erro ao excluir.');
+  if (!data || !data.length) return bad(req, res, 404, 'Gasto não encontrado.');
+  return json(res, 200, { ok: true });
+});
+
+// --- Categorias (autenticado) ---
+route('GET', '/api/categories', async (req, res) => {
+  const u = await loadUser(req);
+  if (!u || u.__inactive) return bad(req, res, 401, 'Faça login.');
+  const q = supabase.from('categories').select('id,name,color,is_active').order('name', { ascending: true });
+  if (!u.is_admin) q.eq('is_active', true);
+  const { data, error } = await q;
+  if (error) return bad(req, res, 500, 'Erro ao carregar categorias.');
+  return json(res, 200, { ok: true, categories: data || [] });
+});
+
+// --- Admin ---
+function requireAdmin(req, res, u) {
+  if (!u || u.__inactive) return bad(req, res, 401, 'Faça login.');
+  if (!u.is_admin) return bad(req, res, 403, 'Acesso restrito ao administrador.');
+  return null;
+}
+
+route('GET', '/api/admin/overview', async (req, res) => {
+  const u = await loadUser(req);
+  const err = requireAdmin(req, res, u); if (err) return err;
+  const [{ count: userCount }, { data: users }, { data: expenses }] = await Promise.all([
+    supabase.from('users').select('id', { count: 'exact', head: true }),
+    supabase.from('users').select('id,username,is_active'),
+    supabase.from('expenses').select('user_id,amount_cents')
+  ]);
+  const byUser = {};
+  for (const e of (expenses || [])) byUser[e.user_id] = (byUser[e.user_id] || 0) + e.amount_cents;
+  let total = 0; const active = [];
+  const rows = (users || []).map(x => {
+    const cents = byUser[x.id] || 0;
+    total += cents;
+    if (x.is_active) { active.push(x.id); total; }
+    return { id: x.id, username: x.username, is_active: x.is_active, total_cents: cents };
+  });
+  rows.sort((a, b) => b.total_cents - a.total_cents);
+  return json(res, 200, {
+    ok: true,
+    total_cents: total,
+    user_count: userCount || 0,
+    active_count: active.length,
+    avg_cents: active.length ? Math.round(total / active.length) : 0,
+    users: rows
+  });
+});
+
+route('POST', '/api/admin/categories', async (req, res) => {
+  const u = await loadUser(req);
+  const err = requireAdmin(req, res, u); if (err) return err;
+  const b = await readBody(req);
+  const name = str(b.name, 1, 40);
+  const color = str(b.color, 4, 9) || '#64748B';
+  if (!name) return bad(req, res, 400, 'Informe o nome da categoria.');
+  const { data: dup } = await supabase.from('categories').select('id').eq('name', name).maybeSingle();
+  if (dup) return bad(req, res, 409, 'Já existe uma categoria com esse nome.');
+  const { data, error } = await supabase.from('categories')
+    .insert({ name, color, is_active: true }).select().single();
+  if (error) return bad(req, res, 500, 'Não foi possível criar a categoria.');
+  return json(res, 201, { ok: true, category: data });
+});
+
+route('PATCH', '/api/admin/categories/:id', async (req, res) => {
+  const u = await loadUser(req);
+  const err = requireAdmin(req, res, u); if (err) return err;
+  const id = str(req.params.id, 36, 36);
+  if (!id) return bad(req, res, 400, 'ID inválido.');
+  const b = await readBody(req);
+  if (typeof b.is_active !== 'boolean') return bad(req, res, 400, 'Payload inválido.');
+  if (b.is_active === false) {
+    const { count } = await supabase.from('expenses').select('id', { count: 'exact', head: true }).eq('category_id', id);
+    if (count > 0) return bad(req, res, 400, 'Não é possível desativar: já existe gasto nessa categoria.');
+  }
+  const { data, error } = await supabase.from('categories').update({ is_active: b.is_active }).eq('id', id).select().single();
+  if (error) return bad(req, res, 500, 'Erro ao atualizar categoria.');
+  return json(res, 200, { ok: true, category: data });
+});
+
+route('PATCH', '/api/admin/users/:id', async (req, res) => {
+  const u = await loadUser(req);
+  const err = requireAdmin(req, res, u); if (err) return err;
+  const id = str(req.params.id, 36, 36);
+  if (!id) return bad(req, res, 400, 'ID inválido.');
+  if (id === u.id) return bad(req, res, 400, 'Você não pode desativar a sua própria conta.');
+  const b = await readBody(req);
+  if (typeof b.is_active !== 'boolean') return bad(req, res, 400, 'Payload inválido.');
+  const { data, error } = await supabase.from('users').update({ is_active: b.is_active }).eq('id', id).select().single();
+  if (error) return bad(req, res, 500, 'Erro ao atualizar usuário.');
+  return json(res, 200, { ok: true, user: { id: data.id, username: data.username, is_active: data.is_active } });
+});
+
+// ---------- servidor ----------
+function matchPath(pattern, urlPath) {
+  const a = pattern.split('/').filter(Boolean);
+  const b = urlPath.split('/').filter(Boolean);
+  if (a.length !== b.length) return null;
+  const params = {};
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].startsWith(':')) params[a[i].slice(1)] = decodeURIComponent(b[i]);
+    else if (a[i] !== b[i]) return null;
+  }
+  return params;
+}
+
+function makeHandler() {
+  return async function handler(req, res) {
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      const p = url.pathname;
+
+      if (p.startsWith('/api/')) {
+        for (const r of routes) {
+          if (r.method !== req.method) continue;
+          const params = matchPath(r.path, p);
+          if (params === null) continue;
+          req.params = params;
+          return await r.handler(req, res);
+        }
+        return bad(req, res, 404, 'Rota não encontrada.');
+      }
+
+      let filePath;
+      if (p === '/' ) filePath = path.join(PUBLIC_DIR, 'index.html');
+      else {
+        const clean = p.split('?')[0];
+        filePath = path.normalize(path.join(PUBLIC_DIR, clean));
+        if (!filePath.startsWith(PUBLIC_DIR)) { res.writeHead(403); res.end(); return; }
+      }
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        sendFile(res, path.join(PUBLIC_DIR, 'index.html'), 'text/html; charset=utf-8');
+        return;
+      }
+      sendFile(res, filePath, MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream');
+    } catch (e) {
+      console.error(e);
+      try { bad(req, res, 500, 'Erro interno no servidor.'); } catch {}
+    }
+  };
+}
+
+if (typeof fetch === 'undefined') {
+  const http = await import('node:http');
+  const server = http.createServer(makeHandler());
+  server.listen(PORT, () => console.log(`🌱 Servidor rodando em http://localhost:${PORT}`));
+} else {
+  const handler = makeHandler();
+  export default {
+    fetch(req) { return handler(req, { writeHead, end, setHeader }, new URL(req.url)); }
+  };
+}
+
+function fakeRes() {}
+function writeHead(status, headers) {}
+function end(body) {}
+function setHeader() {}
+
+// wrapper para Cloudflare Workers (req é o Request nativo; adaptamos para our handler)
+if (typeof fetch !== 'undefined') {
+  const handler = makeHandler();
+  export default {
+    async fetch(request) {
+      const url = new URL(request.url);
+      const method = request.method;
+      const headersIn = {};
+      request.headers.forEach((v, k) => { headersIn[k.toLowerCase()] = v; });
+      const reqShim = { url: request.url, method, headers: headersIn };
+      const resShim = {
+        statusCode: 200, headersOut: new Map(), bodyChunks: [], ended: false,
+        writeHead(status, headers) { this.statusCode = status; if (headers) { for (const k in headers) this.headersOut.set(k.toLowerCase(), Array.isArray(headers[k]) ? headers[k].join(', ') : String(headers[k])); } },
+        setHeader(k, v) { this.headersOut.set(k.toLowerCase(), String(v)); },
+        end(body) { this.bodyChunks.push(body); this.ended = true; }
+      };
+      await handler(reqShim, resShim);
+      const headers = new Headers(resShim.headersOut);
+      const body = Buffer.concat(resShim.bodyChunks.map(b => b == null ? [] : Buffer.from(b)));
+      return new Response(body.length ? body : null, { status: resShim.statusCode || 200, headers });
+    }
+  };
+}
+
+=== public/app.js ===
+(function () {
+  'use strict';
+
+  // ---------- estado ----------
+  const state = {
+    user: null,
+    categories: [],
+    expenses: [],
+    filterMonth: '',
+    filterCategory: '',
+    view: 'me'
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- helpers de UI ----------
+  const brl = (cents) =>
+    (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const MONTHS = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+  function monthLabel(ym) {
+    const [y, m] = ym.split('-').map(Number);
+    return `${MONTHS[m - 1]} de ${y}`;
+  }
+  function todayISO() { return new Date().toISOString().slice(0, 10); }
+  function currentYM() { return todayISO().slice(0, 7); }
+
+  function ymOf(dateStr) { return dateStr.slice(0, 7); }
+  function dateLabel(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const wd = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' });
+    return `${wd} ${String(d).padStart(2, '0')} de ${MONTHS[m - 1]}`;
+  }
+
+  let toastTimer;
+  function toast(msg, ok = true) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.style.background = ok ? 'var(--ink)' : 'var(--red)';
+    t.classList.remove('hidden');
+    requestAnimationFrame(() => t.classList.add('show'));
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => t.classList.add('hidden'), 300);
+    }, 2600);
+  }
+
+  // ---------- api ----------
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok) throw new Error(data.error || ('Erro ' + res.status));
+    return data;
+  }
+
+  // ---------- telas ----------
+  function showAuth() {
+    $('auth-screen').classList.remove('hidden');
+    $('app').classList.add('hidden');
+    setAuthMode('login');
+  }
+  function showApp() {
+    $('auth-screen').classList.add('hidden');
+    $('app').classList.remove('hidden');
+    $('user-name').textContent = state.user.username;
+    $('admin-badge').classList.toggle('hidden', !state.user.is_admin);
+    $('tab-admin').classList.toggle('hidden', !state.user.is_admin);
+    switchView(state.user.is_admin ? state.view : 'me');
+  }
+
+  function setAuthMode(mode) {
+    const login = mode === 'login';
+    $('tab-login').classList.toggle('active', login);
+    $('tab-register').classList.toggle('active', !login);
+    $('auth-submit').textContent = login ? 'Entrar' : 'Criar conta';
+    $('email-field').classList.toggle('hidden', login);
+    $('auth-message').classList.add('hidden');
+    $('auth-password').setAttribute('autocomplete', login ? 'current-password' : 'new-password');
+  }
+
+  // ---------- login / registro ----------
+  $('tab-login').addEventListener('click', () => setAuthMode('login'));
+  $('tab-register').addEventListener('click', () => setAuthMode('register'));
+
+  $('auth-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const register = $('tab-register').classList.contains('active');
+    const payload = {
+      username: $('auth-username').value.trim(),
+      password: $('auth-password').value
+    };
+    if (register) payload.email = $('auth-email').value.trim();
+    const msg = $('auth-message');
+    msg.classList.add('hidden');
+    try {
+      const data = await api(register ? '/api/register' : '/api/login', { method: 'POST', body: payload });
+      state.user = data.user;
+      toast(register ? 'Conta criada! Bem-vindo(a) 🎉' : 'Bem-vindo(a) de volta');
+      await boot();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.classList.remove('hidden');
+    }
+  });
+
+  $('logout-btn').addEventListener('click', async () => {
+    try { await api('/api/logout', { method: 'POST' }); } catch {}
+    state.user = null;
+    state.expenses = [];
+    state.categories = [];
+    showAuth();
+  });
+
+  // ---------- navegação ----------
+  $('tab-me').addEventListener('click', () => switchView('me'));
+  $('tab-admin').addEventListener('click', () => switchView('admin'));
+  function switchView(v) {
+    if (v === 'admin' && !state.user.is_admin) v = 'me';
+    state.view = v;
+    $('tab-me').classList.toggle('active', v === 'me');
+    $('tab-admin').classList.toggle('active', v === 'admin');
+    $('view-me').classList.toggle('hidden', v !== 'me');
+    $('view-admin').classList.toggle('hidden', v !== 'admin');
+    if (v === 'admin') loadAdmin();
+  }
+
+  // ---------- categorias ----------
+  function populateCategorySelects() {
+    const sel = $('exp-category');
+    sel.innerHTML = '<option value="">Escolha…</option>';
+    state.categories.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name;
+      sel.appendChild(o);
+    });
+    const fsel = $('filter-category');
+    const prev = fsel.value;
+    fsel.innerHTML = '<option value="">Todas as categorias</option>';
+    const names = {};
+    state.expenses.forEach(e => { if (e.category) names[e.category.name] = 1; });
+    Object.keys(names).sort().forEach(n => {
+      const o = document.createElement('option'); o.value = n; o.textContent = n; fsel.appendChild(o);
+    });
+    if ([...fsel.options].some(o => o.value === prev)) fsel.value = prev;
+  }
+
+  function populateMonthSelect() {
+    const sel = $('filter-month');
+    const all = new Set();
+    state.expenses.forEach(e => all.add(ymOf(e.spent_on)));
+    all.add(currentYM());
+    const yms = [...all].sort().reverse();
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'Todos os meses';
+    sel.appendChild(allOpt);
+    yms.forEach(ym => {
+      const o = document.createElement('option'); o.value = ym; o.textContent = monthLabel(ym); sel.appendChild(o);
+    });
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+
+  // ---------- render: meus gastos ----------
+  function statMonth() {
+    const ym = currentYM();
+    const sum = state.expenses.filter(e => ymOf(e.spent_on) === ym).reduce((s, e) => s + e.amount_cents, 0);
+    return sum;
+  }
+  function renderMe() {
+    $('me-month-label').textContent = monthLabel(currentYM());
+    $('stat-month').textContent = brl(statMonth());
+    $('stat-month-hint').textContent = 'só este mês';
+    const total = state.expenses.reduce((s, e) => s + e.amount_cents, 0);
+    $('stat-total').textContent = brl(total);
+    $('stat-total-hint').textContent = 'desde o início';
+    $('stat-count').textContent = state.expenses.length;
+
+    populateMonthSelect();
+    populateCategorySelects();
+    renderList();
+  }
+
+  function filteredExpenses() {
+    return state.expenses.filter(e => {
+      if (state.filterMonth && ymOf(e.spent_on) !== state.filterMonth) return false;
+      if (state.filterCategory && e.category.name !== state.filterCategory) return false;
+      return true;
+    });
+  }
+
+  function renderList() {
+    const list = filteredExpenses();
+    const groups = $('expense-groups');
+    groups.innerHTML = '';
+    const noData = $('no-data');
+    if (!list.length) {
+      noData.classList.remove('hidden');
+      return;
+    }
+    noData.classList.add('hidden');
+
+    const byDate = {};
+    list.forEach(e => {
+      (byDate[e.spent_on] = byDate[e.spent_on] || []).push(e);
+    });
+    const dates = Object.keys(byDate).sort((a, b) => (a < b ? 1 : -1));
+    dates.forEach(date => {
+      const items = byDate[date];
+      const total = items.reduce((s, e) => s + e.amount_cents, 0);
+      const g = document.createElement('div');
+      g.className = 'expense-group';
+
+      const head = document.createElement('div');
+      head.className = 'group-head';
+      const dl = document.createElement('div');
+      dl.innerHTML = `<span class="group-date">${dateLabel(date)}</span>`;
+      const gt = document.createElement('span');
+      gt.className = 'group-total'; gt.textContent = brl(total);
+      head.appendChild(dl); head.appendChild(gt);
+      g.appendChild(head);
+
+      items.forEach(e => {
+        const row = document.createElement('div');
+        row.className = 'expense-item';
+        const chip = document.createElement('span');
+        chip.className = 'cat-chip';
+        chip.innerHTML =
+          `<span class="cat-dot" style="background:${e.category.color}"></span>` +
+          `<span class="exp-desc">${escapeHtml(e.description)}</span>` +
+          `<span class="exp-cat-name">${escapeHtml(e.category.name)}</span>`;
+        const amt = document.createElement('span');
+        amt.className = 'exp-amount'; amt.textContent = brl(e.amount_cents);
+        const del = document.createElement('button');
+        del.className = 'exp-del'; del.type = 'button'; del.title = 'Excluir'; del.textContent = '✕';
+        del.addEventListener('click', () => deleteExpense(e.id));
+        row.appendChild(chip); row.appendChild(amt); row.appendChild(del);
+        g.appendChild(row);
+      });
+      groups.appendChild(g);
+    });
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- adicionar / excluir gasto ----------
+  $('exp-date').value = todayISO();
+  $('expense-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('expense-message'); msg.textContent = '';
+    const btn = e.target.querySelector('button[type=submit]');
+    const original = btn.textContent; btn.disabled = true; btn.textContent = 'Salvando…';
+    try {
+      const payload = {
+        description: $('exp-desc').value.trim(),
+        amount: $('exp-amount').value.trim(),
+        category_id: $('exp-category').value,
+        spent_on: $('exp-date').value
+      };
+      const data = await api('/api/expenses', { method: 'POST', body: payload });
+      state.expenses.unshift(data.expense);
+      $('exp-desc').value = ''; $('exp-amount').value = ''; $('exp-date').value = todayISO();
+      renderMe();
+      toast('Gasto registrado!');
+    } catch (err) { msg.textContent = err.message; }
+    finally { btn.disabled = false; btn.textContent = original; }
+  });
+
+  async function deleteExpense(id) {
+    try {
+      await api('/api/expenses/' + id, { method: 'DELETE' });
+      state.expenses = state.expenses.filter(e => e.id !== id);
+      renderMe();
+      toast('Gasto excluído');
+    } catch (err) { toast(err.message, false); }
+  }
+
+  $('filter-month').addEventListener('change', (e) => { state.filterMonth = e.target.value; renderList(); });
+  $('filter-category').addEventListener('change', (e) => { state.filterCategory = e.target.value; renderList(); });
+  $('me-refresh').addEventListener('click', async () => { await loadExpenses(); toast('Atualizado'); });
+
+  // ---------- admin ----------
+  async function loadAdmin() {
+    try {
+      const data = await api('/api/admin/overview');
+      $('admin-total').textContent = brl(data.total_cents);
+      $('admin-users').textContent = data.active_count;
+      $('admin-avg').textContent = brl(data.avg_cents);
+      renderUsers(data.users);
+    } catch (err) { toast(err.message, false); }
+    try { await loadCategories(true); } catch (err) { toast(err.message, false); }
+  }
+
+  function renderUsers(users) {
+    const tb = $('user-rows'); tb.innerHTML = '';
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      const statusOn = u.is_active;
+      tr.innerHTML =
+        `<td class="user-name">${escapeHtml(u.username)}</td>` +
+        `<td class="user-total">${brl(u.total_cents)}</td>` +
+        `<td><span class="status-pill ${statusOn ? 'status-on' : 'status-off'}">${statusOn ? 'Ativo' : 'Desativado'}</span></td>` +
+        `<td></td>`;
+      const td = tr.lastElementChild;
+      const b = document.createElement('button');
+      b.className = 'toggle' + (statusOn ? '' : ' off');
+      b.type = 'button';
+      b.textContent = statusOn ? 'Desativar' : 'Reativar';
+      b.addEventListener('click', () => toggleUser(u, b));
+      td.appendChild(b);
+      tb.appendChild(tr);
+    });
+    if (!users.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="4" style="color:var(--ink-soft);text-align:center;padding:24px">Nenhum usuário ainda.</td>';
+      tb.appendChild(tr);
+    }
+  }
+
+  async function toggleUser(u, btn) {
+    btn.disabled = true;
+    try {
+      const next = !u.is_active;
+      const data = await api('/api/admin/users/' + u.id, { method: 'PATCH', body: { is_active: next } });
+      u.is_active = data.user.is_active;
+      btn.textContent = u.is_active ? 'Desativar' : 'Reativar';
+      btn.className = 'toggle' + (u.is_active ? '' : ' off');
+      loadAdmin();
+      toast(u.is_active ? 'Conta reativada' : 'Conta desativada');
+    } catch (err) {
+      toast(err.message, false);
+      btn.disabled = false;
+    }
+  }
+
+  async function loadCategories(admin = false) {
+    const data = await api('/api/categories');
+    state.categories = data.categories;
+    if (admin) renderCategories();
+    else populateCategorySelects();
+  }
+
+  function renderCategories() {
+    const list = $('category-list'); list.innerHTML = '';
+    // contagem de gastos por categoria (uso os gastos carregados do admin? não carregamos gastos do admin; usamos só nome/estado)
+    state.categories.forEach(c => {
+      const li = document.createElement('li');
+      li.className = 'category-row' + (c.is_active ? '' : ' is-off');
+      li.innerHTML =
+        `<span class="cat-dot" style="background:${c.color}"></span>` +
+        `<span class="cat-name">${escapeHtml(c.name)}</span>` +
+        `<button class="toggle ${c.is_active ? '' : 'off'}" type="button">${c.is_active ? 'Ativa' : 'Desativada'}</button>`;
+      const b = li.querySelector('button');
+      b.addEventListener('click', () => toggleCategory(c, b));
+      list.appendChild(li);
+    });
+    if (!state.categories.length) {
+      const li = document.createElement('li');
+      li.className = 'empty'; li.style.padding = '16px'; li.textContent = 'Nenhuma categoria ainda.';
+      list.appendChild(li);
+    }
+  }
+
+  async function toggleCategory(c, btn) {
+    btn.disabled = true;
+    try {
+      const next = !c.is_active;
+      const data = await api('/api/admin/categories/' + c.id, { method: 'PATCH', body: { is_active: next } });
+      c.is_active = data.category.is_active;
+      c.name = data.category.name;
+      renderCategories();
+      await loadCategories(false);
+      renderMe();
+      toast(c.is_active ? 'Categoria ativada' : 'Categoria desativada');
+    } catch (err) {
+      toast(err.message, false);
+      btn.disabled = false;
+    }
+  }
+
+  $('category-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('category-message'); msg.textContent = '';
+    try {
+      await api('/api/admin/categories', {
+        method: 'POST',
+        body: { name: $('cat-name').value.trim(), color: $('cat-color').value }
+      });
+      $('cat-name').value = '';
+      await loadCategories(true);
+      toast('Categoria adicionada');
+    } catch (err) { msg.textContent = err.message; }
+  });
+
+  // ---------- carga inicial de dados do usuário ----------
+  async function loadExpenses() {
+    const data = await api('/api/expenses');
+    state.expenses = data.expenses;
+    renderMe();
+  }
+
+  async function boot() {
+    showApp();
+    try {
+      await Promise.all([loadCategories(false), loadExpenses()]);
+    } catch (err) {
+      toast(err.message, false);
+    }
+  }
+
+  // ---------- início ----------
+  (async function init() {
+    try {
+      const data = await api('/api/me');
+      if (data.user) {
+        state.user = data.user;
+        await boot();
+      } else {
+        showAuth();
+      }
+    } catch {
+      showAuth();
+    }
+  })();
+
+})();
+
+=== README.md ===
+# Minhas Despesas
+
+Um site para controle de despesas pessoais. Cada pessoa cria a sua conta, registra os gastos, organiza por categoria e vê quanto gastou no mês. O administrador cadastra as categorias, desativa contas de usuários e vê o total de gastos de todos.
+
+**Tudo fica salvo de verdade** — fecha o navegador, abre de novo, os dados continuam lá. As senhas ficam protegidas. Não depende de serviços de login externo (sem Facebook, Google, etc.).
+
+---
+
+## Como funciona
+
+- **Usuário comum:** entra com a conta → registra gastos (descrição, valor, categoria, data) → vê o total do mês, o total geral, e o histórico agrupado por dia com filtros por mês e categoria → exclui o que quiser.
+- **Administrador:** além de tudo acima, tem uma aba "Administração" → cadastra e desativa categorias → desativa/reativa contas de usuários → vê o total gasto de todos, o total por usuário e a média por usuário.
+
+---
+
+## O que você precisa (1h no máximo, tudo gratuito)
+
+1. Uma conta gratuita no **Supabase** (é o banco de dados). → [supabase.com](https://supabase.com)
+2. Uma conta gratuita no **Cloudflare Workers** (é onde o site fica no ar na internet). → [dash.cloudflare.com](https://dash.cloudflare.com)
+
+O código já está pronto. Você só vai fazer 4 passos: criar o banco, colocar o link dele no site, subir na internet, e cadastrar você como administrador.
+
+> É só clicar e copiar/colar. Se travar em alguma parte, o erro aparece na tela em português.
+
+---
+
+## Passo 1 — Criar o banco de dados (Supabase)
+
+1. Acesse [supabase.com](https://supabase.com) e clique em **Sign up** (crie uma conta grátis com e-mail).
+2. Clique em **New project**.
+   - *Name:* `minhas-despesas` (qualquer nome)
+   - *Database password:* crie uma senha (anote se quiser, mas não é obrigatório)
+   - *Region:* a mais próxima do Brasil (ex.: **South America (São Paulo)**)
+   - Clique em **Create new project**. Espere uns 2–3 minutos aparecer "ready".
+3. No menu lateral esquerdo, clique em **SQL Editor**.
+4. Copie **todo** o conteúdo do arquivo `supabase/schema.sql` (deste projeto) e cole na janela SQL.
+5. Clique no botão **Run** (rodar). Vai aparecer "Success". Pronto, o banco está criado.
+
+### Agora copie os dois "links" do banco
+
+1. Menu lateral → **Project Settings** (engrenagem) → **API**.
+2. Copie a linha **Project URL** (parece `https://abcdefgh.supabase.co`).
+3. Copie a linha **service_role** (a **Service Key**) — é uma chave longa. *Use esta e NÃO a "anon public key".*
+
+Guarde as duas. Vamos usá-las agora e no Passo 3.
+
+---
+
+## Passo 2 — Rodar no seu computador (teste rápido)
+
+Isso testa tudo antes de colocar na internet. Precisa ter [Node.js 18 ou mais novo](https://nodejs.org) instalado (no terminal, digite `node -v`).
+
+```bash
+# 1) Instale as dependências
+npm install
+
+# 2) Configure os dados do seu banco (substitua pelas chaves do Passo 1)
+export SUPABASE_URL="https://SEU_PROJETO.supabase.co"
+export SUPABASE_SERVICE_KEY="eyJhbGciOi..."
+# No Windows (cmd), use:
+#   set SUPABASE_URL=https://SEU_PROJETO.supabase.co
+#   set SUPABASE_SERVICE_KEY=eyJhbGciOi...
+
+# 3) Rode
+npm start
+```
+
+Abra **http://localhost:8787** no navegador.
+
+- Crie uma conta qualquer (nome, e-mail, senha). Ela já entra como usuário comum.
+- Para o **primeiro** usuário virar administrador, faça este comando no terminal **do mesmo lugar** (Substitua `seu-usuario` pelo nome de usuário que você acabou de criar):
+
+```bash
+node -e "
+import('./src/config.js').then(async ({supabase}) => {
+  const { data } = await supabase.from('users').select('id').eq('username', 'seu-usuario').single();
+  if (!data) { console.log('usuário não encontrado'); return; }
+  await supabase.from('users').update({ is_admin: true }).eq('id', data.id);
+  console.log('OK: ' + 'seu-usuario' + ' agora é administrador');
+}).catch(e => console.error('ERRO', e.message));
+"
+```
+
+Agora saia da conta e entre de novo: a aba **Administração** aparece.
+
+Teste: adicione algumas categorias e alguns gastos. Feche o navegador e abra de novo — tudo continua lá. 🎉
+
+---
+
+## Passo 3 — Colocar no ar na internet (Cloudflare Workers)
+
+1. No site do Cloudflare, crie sua conta grátis.
+2. Em um terminal, entre na pasta do projeto e execute:
+
+```bash
+npm install
+npx wrangler login
+```
+
+(Segue o link que aparecer para autorizar no navegador.)
+
+3. Crie o worker:
+
+```bash
+npx wrangler init controle-de-despesas
+```
+
+Se perguntar, pode manter os nomes sugeridos (já existe um `wrangler.toml` configurado — se o `init` reescrever, mantenha as linhas `main = "src/server.js"` e `compatibility_flags = ["nodejs_compat"]`).
+
+4. Cadastre as chaves do Supabase como segredos (a chave nunca fica exposta):
+
+```bash
+npx wrangler secret put SUPABASE_URL
+# cole a Project URL e Enter
+npx wrangler secret put SUPABASE_SERVICE_KEY
+# cole a Service Key e Enter
+```
+
+5. Publicar:
+
+```bash
+npx wrangler deploy
+```
+
+O Cloudflare mostra uma **URL pública** (algo como `https://controle-de-despesas.<seu-usuario>.workers.dev`). **Essa é a página do seu site na internet.** Envie para as pessoas usarem.
+
+> Para atualizar o site depois de mudar alguma coisa: rode de novo `npx wrangler deploy`.
+
+---
+
+## Passo 4 — Cadastrar usuários
+
+- **Usuários comuns:** cada pessoa abre o site no link do Passo 3 e clica em **Criar conta**. Fácil.
+- **Administrador:** como você já tem um admin criado no Passo 2, ele já funciona. Se precisar criar outro administrador depois, repita o comando `node -e "..."` do Passo 2 com o nome do usuário que quiser promover (ou me peça um script).
+
+---
+
+## Estrutura do projeto
+
+```
+public/            ← a parte que o navegador vê (HTML, CSS, JS)
+  index.html
+  styles.css
+  app.js
+src/               ← o servidor
+  server.js        (rotas e lógica)
+  config.js        (liga com o Supabase)
+  hash.js          (proteção das senhas)
+supabase/
+  schema.sql       (cria as tabelas — roda 1x)
+wrangler.toml      (configuração do Cloudflare)
+```
+
+---
+
+## Solução de problemas
+
+| Problema | Causa provável / solução |
+| --- | --- |
+| `ERRO: variáveis de ambiente ... não configuradas` | No Passo 2 você esqueceu de rodar os `export`/`set`. Rode de novo antes de `npm start`. |
+| `Erro 42P01` ou "relation does not exist" | A tabela não foi criada. Volte ao **Passo 1** e rode o `schema.sql` de novo. |
+| `Failed to fetch` ao abrir | Use `http://localhost:8787` (não `https`) no seu computador, ou verifique se o `npm start` está rodando. |
+| Não consigo criar conta | Confira se a **Service Key** (e não a anon key) está certa, e se o `schema.sql` rodou com sucesso. |
+| Categoria não desativa | Já existe gasto naquela categoria. Exclua os gastos dela primeiro (proteção contra perder dados). |
+| Admin não vê a aba | O usuário não foi promovido. Rode o comando `node -e "..."` do Passo 2. |
+
+---
+
+## Segurança (resumo)
+
+- Senhas criptografadas com **bcrypt** (nunca ficam em texto).
+- Sessão por cookie `HttpOnly` (o script da página não consegue roubar).
+- Regras no banco impedem que um usuário leia os gastos de outro.
+- Chaves do banco ficam como *segredos* no Cloudflare, nunca no navegador.
+- Endereços de arquivo validados para evitar sair da pasta do site.

@@ -1,0 +1,44 @@
+{
+  "data_hora_utc": "2026-10-08T19:13:41+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "inscricao_eventos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\inscricao_eventos\\20261008-191341",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um portal de inscrição para eventos. Não sei nada de programação, só quero que funcione.\n\nVão usar os participantes e o organizador. Os participantes precisam poder ver os eventos disponíveis, se inscrever em um evento e ver ou cancelar as inscrições que fizeram. O organizador precisa poder criar, editar e cancelar eventos, confirmar a presença dos inscritos e ver todas as inscrições de todos os participantes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "DeepInfra",
+  "id_geracao": "gen-1791486821-HgV2b181iNaxcpoitTel",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 234,
+  "tokens_saida": 9307,
+  "tokens_raciocinio": 0,
+  "tokens_total": 9541,
+  "custo_usd": 0.0039417,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 78.8,
+  "duracao_api_s": 78.8,
+  "tokens_por_s": 118.1,
+  "n_arquivos": 6,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/styles.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 5,
+  "estado": "gerada",
+  "erro": ""
+}

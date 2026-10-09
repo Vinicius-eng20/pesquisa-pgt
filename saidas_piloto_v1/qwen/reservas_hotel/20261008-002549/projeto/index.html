@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Reservas de Hotel</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="auth-view" class="auth-view">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-mark">🏨</div>
+        <h1>Hotel Aurora</h1>
+        <p>Sistema de reservas</p>
+      </div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="login" type="button">Entrar</button>
+        <button class="tab" data-tab="register" type="button">Criar conta</button>
+      </div>
+
+      <!-- LOGIN -->
+      <form id="login-form" class="form active" novalidate>
+        <label>
+          <span>E-mail</span>
+          <input type="email" id="login-email" required placeholder="voce@exemplo.com" autocomplete="off" />
+        </label>
+        <label>
+          <span>Senha</span>
+          <input type="password" id="login-password" required placeholder="Sua senha" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn primary full">Entrar</button>
+        <p class="error" id="login-error" role="alert"></p>
+      </form>
+
+      <!-- REGISTER -->
+      <form id="register-form" class="form" novalidate>
+        <label>
+          <span>Tipo de conta</span>
+          <div class="seg" id="reg-role">
+            <button type="button" class="seg-btn" data-value="hospede">Hóspede</button>
+            <button type="button" class="seg-btn active" data-value="gerente">Gerente</button>
+          </div>
+        </label>
+        <label>
+          <span>Nome</span>
+          <input type="text" id="reg-name" required placeholder="Seu nome" autocomplete="off" />
+        </label>
+        <label>
+          <span>E-mail</span>
+          <input type="email" id="reg-email" required placeholder="voce@exemplo.com" autocomplete="off" />
+        </label>
+        <label>
+          <span>Senha</span>
+          <input type="password" id="reg-password" required minlength="4" placeholder="Mínimo 4 caracteres" autocomplete="off" />
+        </label>
+        <label>
+          <span>Confirmar senha</span>
+          <input type="password" id="reg-confirm" required placeholder="Repita a senha" autocomplete="off" />
+        </label>
+        <button type="submit" class="btn primary full">Criar conta</button>
+        <p class="error" id="register-error" role="alert"></p>
+        <p class="hint">A primeira conta de <strong>gerente</strong> criada vira o gerente principal (o dono do hotel).</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app-view" class="app-view hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-mark small">🏨</span>
+        <span class="app-name">Hotel Aurora</span>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="topbar-right">
+        <div class="user-box">
+          <span class="avatar" id="user-avatar"></span>
+          <div class="user-meta">
+            <span class="user-name" id="user-name"></span>
+            <span class="user-role" id="user-role"></span>
+          </div>
+        </div>
+        <button class="btn ghost" id="logout-btn" type="button">Sair</button>
+      </div>
+    </header>
+
+    <main class="main" id="main"></main>
+  </div>
+
+  <!-- MODAL -->
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal" id="modal">
+      <div class="modal-head">
+        <h3 id="modal-title"></h3>
+        <button class="modal-close" id="modal-close" type="button" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

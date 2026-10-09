@@ -1,0 +1,2762 @@
+=== package.json ===
+{
+  "name": "marketplace-freelance",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Marketplace de serviços freelance com painel de administração.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+
+=== .gitignore ===
+node_modules/
+data/
+!data/.gitkeep
+.DS_Store
+
+=== README.md ===
+# Marketplace de Serviços Freelance
+
+Um site completo para que pessoas **ofereçam** serviços, **contratem** serviços de outras pessoas e que um **administrador** aprove/remova serviços, suspenda contas e veja tudo.
+
+Tudo fica salvo **dentro do próprio site** (em um arquivo de dados), sem depender de nenhum serviço externo.
+
+## Requisitos
+
+- [Node.js](https://nodejs.org) instalado (versão 18 ou superior).
+  Para checar, abra o terminal e digite: `node -v`
+
+## Como instalar e rodar (no seu computador)
+
+1. Abra o terminal **na pasta do projeto**.
+2. Instale as dependências:
+
+   ```bash
+   npm install
+   ```
+
+3. Inicie o site:
+
+   ```bash
+   npm start
+   ```
+
+4. Abra no navegador: **http://localhost:3000**
+
+> Se você quiser que a porta seja outra (ex.: 8080), use:
+> ```bash
+> PORT=8080 npm start
+```
+
+> **Windows (PowerShell):** `$env:PORT=8080; npm start`
+
+## Conta de administrador (já criada)
+
+- **E-mail:** `admin@marketplace.com`
+- **Senha:** `admin123`
+
+> **Troque essa senha depois que entrar**, em *Minha conta → Alterar senha*.
+
+## Como publicar um serviço
+
+Depois de entrar:
+
+1. Vá em **Publicar serviço**.
+2. Preencha título, categoria, descrição, preço e forma de pagamento.
+3. Clique em **Publicar**.
+
+> O serviço fica **“Pendente”** até o administrador aprovar. Somente serviços **aprovados** aparecem para os outros usuários.
+
+## Como contratar um serviço
+
+1. Abra **Explorar** e escolha um serviço aprovado.
+2. Clique em **Ver detalhes** → **Contratar**.
+3. Escreva uma mensagem para o prestador e confirme.
+
+A partir daí o contrato aparece em **Meus contratos** para as duas pessoas. O prestador pode **Aceitar** ou **Recusar**; quando aceito, o **contratante** pode **Concluir**, encerrando o contrato.
+
+## Como funciona a publicação (resumo do fluxo)
+
+| Ação | Quem |
+|---|---|
+| Publica um serviço (fica “Pendente”) | Usuário que oferece |
+| Aprova ou remove um serviço | Administrador |
+| Contrata um serviço (cria “Contrato pendente”) | Usuário que contrata |
+| Aceita ou recusa um contrato | Prestador do serviço |
+| Conclui um contrato aceito | Contratante |
+| Suspende/reativa contas, vê tudo | Administrador |
+
+## Onde ficam os dados
+
+- Os dados ficam no arquivo `data/dados.json` (criado automaticamente na primeira vez que alguém se cadastra).
+- Para **zerar tudo** (devolver a plataforma ao estado inicial), apague a pasta `data/` e inicie o site de novo.
+
+## Publicar na internet (de verdade)
+
+Como você quer que funcione na internet, você precisa colocar este projeto em um servidor online. Veja 3 caminhos, do mais simples ao mais avançado:
+
+### Opção A — Render (recomendado, grátis, mais fácil)
+1. Crie uma conta gratuita no [Render.com](https://render.com).
+2. Faça push deste projeto para um repositório no **GitHub**.
+3. No Render: *New → Web Service* → escolha o repositório.
+4. O Render detecta o `npm start` automaticamente. Clique em **Deploy**.
+5. Pronto: o Render gera uma URL pública (ex.: `seu-nome.onrender.com`).
+
+### Opção B — Railway (grátis para começar)
+1. Crie uma conta no [Railway.app](https://railway.app).
+2. *New Project → Deploy from GitHub repo* (ou envie as pastas por CLI).
+3. Clique em **Deploy**.
+4. A URL pública aparece na tela.
+
+### Opção C — Seu próprio VPS (DigitalOcean, Hostinger VPS, etc.)
+```bash
+# no servidor
+npm install
+NODE_ENV=production PORT=3000 nohup npm start &
+```
+Depois aponte um domínio para o servidor (via DNS) e, se quiser HTTPS, use o [Caddy](https://caddyserver.com) ou o proxy do seu painel.
+
+### ⚠️ Importante sobre os dados na internet
+O site salva os dados em um arquivo no disco. Em serviços de hospedagem “efêmeros” (como o plano grátis do Render), esse arquivo **pode ser apagado** quando o serviço dorme. Para garantir que nada se perca, você tem duas opções:
+
+1. **Disk permanente (Render):** em *Environment → Disks*, conecte um disco em `/data` e ajuste o caminho no `.env` (`DATA_DIR=/data`).
+2. **Usar um banco de dados externo** (ex.: PostgreSQL + Prisma/Sequelize). É a solução mais robusta para produção. Posso migrar o projeto para um banco se você quiser.
+
+> **Dica de segurança:** defina no ambiente de hospedagem a variável `ADMIN_INITIAL_PASSWORD` com uma senha forte e troque a senha logo após entrar.
+
+## Estrutura do projeto
+
+```
+.
+├── server.js          # Servidor Node.js + Express (a API e o front)
+├── package.json
+├── public/
+│   ├── index.html     # Página inicial do site (SPA)
+│   ├── style.css      # Estilos
+│   └── app.js         # Lógica do front-end (JavaScript)
+└── data/              # (criado em tempo de execução)
+    └── dados.json     # Onde tudo fica salvo
+```
+
+Boa sorte com seu marketplace! 🚀
+
+=== server.js ===
+import express from 'express';
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = process.env.DATA_DIR || join(__dirname, 'data');
+const DB_FILE = join(DATA_DIR, 'dados.json');
+const PORT = process.env.PORT || 3000;
+
+/* ------------------------------------------------------------------ *
+ *  Utilidades: senhas, ids, sessões
+ * ------------------------------------------------------------------ */
+const saltRnd = 1000; // tamanho do salt em bytes
+
+function gerarId() {
+  return crypto.randomBytes(12).toString('hex');
+}
+
+function gerarToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
+function hashSenha(senha, salt) {
+  return crypto
+    .scryptSync(String(senha), salt, 64)
+    .toString('hex');
+}
+
+function senhaCorreta(senha, salt, hash) {
+  const nova = hashSenha(senha, salt);
+  const a = Buffer.from(nova, 'hex');
+  const b = Buffer.from(hash, 'hex');
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+function novoUsuario() {
+  const salt = crypto.randomBytes(saltRnd).toString('hex');
+  return { salt, senhaHash: '' };
+}
+
+/* ------------------------------------------------------------------ *
+ *  Persistência (arquivo JSON local)
+ * ------------------------------------------------------------------ */
+const DB = {
+  usuarios: {},      // id -> { id, nome, email, salt, senhaHash, role, ativo, criadoEm }
+  servicos: {},      // id -> serviço
+  contratos: {},     // id -> contrato
+  sessoes: {},       // token -> userId
+  ordemServicos: [], // ids na ordem de criação
+  ordemContratos: [] // ids na ordem de criação
+};
+
+function carregar() {
+  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+  if (!existsSync(DB_FILE)) {
+    // Cria a conta de administrador inicial.
+    const salt = crypto.randomBytes(saltRnd).toString('hex');
+    const email = (process.env.ADMIN_EMAIL || 'admin@marketplace.com').toLowerCase();
+    const senha = process.env.ADMIN_INITIAL_PASSWORD || 'admin123';
+    DB.usuarios['admin'] = {
+      id: 'admin',
+      nome: 'Administrador',
+      email,
+      salt,
+      senhaHash: hashSenha(senha, salt),
+      role: 'admin',
+      ativo: true,
+      criadoEm: new Date().toISOString()
+    };
+    salvar();
+    console.log('▶ Banco inicializado. Admin: %s', email);
+    return;
+  }
+  try {
+    const dados = JSON.parse(readFileSync(DB_FILE, 'utf8'));
+    Object.assign(DB, dados);
+    console.log('▶ Banco carregado.');
+  } catch (e) {
+    console.error('✖ Erro ao carregar o banco de dados:', e.message);
+    process.exit(1);
+  }
+}
+
+function salvar() {
+  // Grava de forma atômica simples: escreve em .tmp e renomeia.
+  const tmp = DB_FILE + '.tmp';
+  writeFileSync(tmp, JSON.stringify(DB, null, 2));
+  renameSyncSafe(tmp, DB_FILE);
+}
+
+function renameSyncSafe(a, b) {
+  try {
+    const { renameSync } = require('node:fs');
+    renameSync(a, b);
+  } catch {
+    // fallback para ambientes onde renameSync não foi importado no topo
+    writeFileSync(b, readFileSync(a, 'utf8'));
+    try { unlinkSync(a); } catch {}
+  }
+}
+// Import helpers usados acima em alguns paths
+import { renameSync, unlinkSync } from 'node:fs';
+
+/* ------------------------------------------------------------------ *
+ *  Validações
+ * ------------------------------------------------------------------ */
+function emailValido(e) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+function usuarioAtivo(id) {
+  const u = DB.usuarios[id];
+  return u && u.ativo !== false;
+}
+
+function listarServicos() {
+  return DB.ordemServicos
+    .map(id => DB.servicos[id])
+    .filter(Boolean)
+    .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+function listarContratos() {
+  return DB.ordemContratos
+    .map(id => DB.contratos[id])
+    .filter(Boolean)
+    .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm));
+}
+
+function publico(u) {
+  if (!u) return null;
+  return { id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo !== false };
+}
+
+function resumoUsuario(p) {
+  if (!p) return null;
+  return { id: p.id, nome: p.nome, email: p.email, role: p.role };
+}
+
+function servicoPublico(s) {
+  if (!s) return null;
+  return {
+    ...s,
+    prestador: resumoUsuario(DB.usuarios[s.prestadorId])
+  };
+}
+
+function contratoPublico(c) {
+  if (!c) return null;
+  const servico = DB.servicos[c.servicoId];
+  const prestador = DB.usuarios[c.prestadorId];
+  const contratante = DB.usuarios[c.contratanteId];
+  return {
+    ...c,
+    servico: servico ? {
+      id: servico.id,
+      titulo: servico.titulo,
+      categoria: servico.categoria,
+      preco: servico.preco,
+      formaPagamento: servico.formaPagamento
+    } : null,
+    prestador: resumoUsuario(prestador),
+    contratante: resumoUsuario(contratante)
+  };
+}
+
+function servicoAdmin(s) {
+  const u = DB.usuarios[s.prestadorId];
+  return {
+    ...s,
+    prestador: {
+      id: u?.id || s.prestadorId,
+      nome: u?.nome || 'Usuário removido',
+      email: u?.email || '—',
+      ativo: u?.ativo !== false
+    }
+  };
+}
+
+function contratoAdmin(c) {
+  return {
+    ...c,
+    servicoTitulo: DB.servicos[c.servicoId]?.titulo || '—',
+    prestador: DB.usuarios[c.prestadorId]
+      ? { id: c.prestadorId, nome: DB.usuarios[c.prestadorId].nome, email: DB.usuarios[c.prestadorId].email }
+      : { id: c.prestadorId, nome: 'Usuário removido', email: '—' },
+    contratante: DB.usuarios[c.contratanteId]
+      ? { id: c.contratanteId, nome: DB.usuarios[c.contratanteId].nome, email: DB.usuarios[c.contratanteId].email }
+      : { id: c.contratanteId, nome: 'Usuário removido', email: '—' }
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ *  Middlewares
+ * ------------------------------------------------------------------ */
+function auth(req, res, next) {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  if (!token) return res.status(401).json({ erro: 'Não autenticado' });
+  const userId = DB.sessoes[token];
+  if (!userId) return res.status(401).json({ erro: 'Sessão expirada' });
+  const u = DB.usuarios[userId];
+  if (!u || u.ativo === false) return res.status(401).json({ erro: 'Conta suspensa ou inexistente' });
+  req.usuario = u;
+  next();
+}
+
+function admin(req, res, next) {
+  if (req.usuario?.role !== 'admin') {
+    return res.status(403).json({ erro: 'Acesso restrito ao administrador' });
+  }
+  next();
+}
+
+/* ------------------------------------------------------------------ *
+ *  Rotas públicas
+ * ------------------------------------------------------------------ */
+const app = express();
+app.use(express.json({ limit: '256kb' }));
+app.use(express.static(join(__dirname, 'public')));
+
+app.post('/api/registro', (req, res) => {
+  const { nome, email, senha } = req.body || {};
+  if (!nome || String(nome).trim().length < 2)
+    return res.status(400).json({ erro: 'Informe um nome (mínimo 2 caracteres).' });
+  const emailN = String(email || '').toLowerCase().trim();
+  if (!emailValido(emailN))
+    return res.status(400).json({ erro: 'Informe um e-mail válido.' });
+  if (Object.values(DB.usuarios).some(u => u.email === emailN))
+    return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
+  if (!senha || String(senha).length < 6)
+    return res.status(400).json({ erro: 'A senha precisa ter no mínimo 6 caracteres.' });
+
+  const salt = crypto.randomBytes(saltRnd).toString('hex');
+  const id = gerarId();
+  const u = {
+    id,
+    nome: String(nome).trim(),
+    email: emailN,
+    salt,
+    senhaHash: hashSenha(senha, salt),
+    role: 'user',
+    ativo: true,
+    criadoEm: new Date().toISOString()
+  };
+  DB.usuarios[id] = u;
+
+  const token = gerarToken();
+  DB.sessoes[token] = id;
+  salvar();
+  res.status(201).json({ token, usuario: publico(u) });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body || {};
+  const emailN = String(email || '').toLowerCase().trim();
+  const u = Object.values(DB.usuarios).find(x => x.email === emailN);
+  if (!u || !senhaCorreta(senha, u.salt, u.senhaHash))
+    return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+  if (u.ativo === false)
+    return res.status(403).json({ erro: 'Sua conta está suspensa. Fale com a administração.' });
+  const token = gerarToken();
+  DB.sessoes[token] = u.id;
+  salvar();
+  res.json({ token, usuario: publico(u) });
+});
+
+app.get('/api/servicos/publicos', (req, res) => {
+  const lista = listarServicos()
+    .filter(s => s.status === 'aprovado')
+    .map(servicoPublico);
+  res.json({ servicos: lista });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Rotas autenticadas
+ * ------------------------------------------------------------------ */
+app.get('/api/conta', auth, (req, res) => {
+  res.json({ usuario: publico(req.usuario) });
+});
+
+app.post('/api/logout', auth, (req, res) => {
+  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  delete DB.sessoes[token];
+  salvar();
+  res.json({ ok: true });
+});
+
+app.patch('/api/conta/senha', auth, (req, res) => {
+  const { senhaAtual, novaSenha } = req.body || {};
+  if (!senhaAtual || !novaSenha)
+    return res.status(400).json({ erro: 'Informe a senha atual e a nova senha.' });
+  if (!senhaCorreta(senhaAtual, req.usuario.salt, req.usuario.senhaHash))
+    return res.status(400).json({ erro: 'A senha atual está incorreta.' });
+  if (String(novaSenha).length < 6)
+    return res.status(400).json({ erro: 'A nova senha precisa ter no mínimo 6 caracteres.' });
+  const salt = crypto.randomBytes(saltRnd).toString('hex');
+  req.usuario.salt = salt;
+  req.usuario.senhaHash = hashSenha(novaSenha, salt);
+  salvar();
+  res.json({ ok: true });
+});
+
+// ——— Publicar serviço ———
+app.post('/api/servicos', auth, (req, res) => {
+  const b = req.body || {};
+  const titulo = String(b.titulo || '').trim();
+  const categoria = String(b.categoria || '').trim();
+  const descricao = String(b.descricao || '').trim();
+  const preco = Number(b.preco);
+  const formaPagamento = String(b.formaPagamento || 'Por hora').trim();
+
+  if (titulo.length < 4) return res.status(400).json({ erro: 'Título curto demais (mínimo 4 caracteres).' });
+  if (categoria.length < 2) return res.status(400).json({ erro: 'Informe a categoria.' });
+  if (descricao.length < 10) return res.status(400).json({ erro: 'A descrição precisa ter ao menos 10 caracteres.' });
+  if (!Number.isFinite(preco) || preco < 0) return res.status(400).json({ erro: 'Informe um preço válido (número maior ou igual a 0).' });
+
+  const id = gerarId();
+  const s = {
+    id,
+    prestadorId: req.usuario.id,
+    titulo,
+    categoria,
+    descricao,
+    preco,
+    formaPagamento,
+    status: 'pendente',
+    criadoEm: new Date().toISOString()
+  };
+  DB.servicos[id] = s;
+  DB.ordemServicos.push(id);
+  salvar();
+  res.status(201).json({ servico: servicoPublico(s) });
+});
+
+app.get('/api/servicos/meus', auth, (req, res) => {
+  const meus = listarServicos()
+    .filter(s => s.prestadorId === req.usuario.id)
+    .map(servicoPublico);
+  res.json({ servicos: meus });
+});
+
+// ——— Contratos ———
+app.post('/api/contratos', auth, (req, res) => {
+  const { servicoId, mensagem } = req.body || {};
+  const s = DB.servicos[servicoId];
+  if (!s) return res.status(404).json({ erro: 'Serviço não encontrado.' });
+  if (s.status !== 'aprovado') return res.status(400).json({ erro: 'Este serviço não está aprovado.' });
+  if (s.prestadorId === req.usuario.id)
+    return res.status(400).json({ erro: 'Você não pode contratar o seu próprio serviço.' });
+
+  const contrato = {
+    id: gerarId(),
+    servicoId: s.id,
+    prestadorId: s.prestadorId,
+    contratanteId: req.usuario.id,
+    mensagem: String(mensagem || '').trim(),
+    status: 'pendente', // pendente | aceito | recusado | concluido
+    criadoEm: new Date().toISOString()
+  };
+  DB.contratos[contrato.id] = contrato;
+  DB.ordemContratos.push(contrato.id);
+  salvar();
+  res.status(201).json({ contrato: contratoPublico(contrato) });
+});
+
+app.get('/api/contratos/meus', auth, (req, res) => {
+  const meus = listarContratos()
+    .filter(c => c.prestadorId === req.usuario.id || c.contratanteId === req.usuario.id)
+    .map(contratoPublico);
+  res.json({ contratos: meus });
+});
+
+app.post('/api/contratos/:id/acao', auth, (req, res) => {
+  const c = DB.contratos[req.params.id];
+  if (!c) return res.status(404).json({ erro: 'Contrato não encontrado.' });
+  const { acao } = req.body || {};
+  const ePrestador = req.usuario.id === c.prestadorId;
+  const eContratante = req.usuario.id === c.contratanteId;
+
+  if (acao === 'aceitar') {
+    if (!ePrestador) return res.status(403).json({ erro: 'Apenas o prestador pode aceitar.' });
+    if (c.status !== 'pendente') return res.status(400).json({ erro: 'Já houve uma decisão sobre este contrato.' });
+    c.status = 'aceito';
+  } else if (acao === 'recusar') {
+    if (!ePrestador) return res.status(403).json({ erro: 'Apenas o prestador pode recusar.' });
+    if (c.status !== 'pendente') return res.status(400).json({ erro: 'Já houve uma decisão sobre este contrato.' });
+    c.status = 'recusado';
+  } else if (acao === 'concluir') {
+    if (!eContratante) return res.status(403).json({ erro: 'Apenas o contratante pode concluir.' });
+    if (c.status !== 'aceito') return res.status(400).json({ erro: 'Só é possível concluir um contrato aceito.' });
+    c.status = 'concluido';
+  } else {
+    return res.status(400).json({ erro: 'Ação inválida.' });
+  }
+  salvar();
+  res.json({ contrato: contratoPublico(c) });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Rotas do administrador
+ * ------------------------------------------------------------------ */
+app.get('/api/admin/servicos', auth, admin, (req, res) => {
+  res.json({ servicos: listarServicos().map(servicoAdmin) });
+});
+
+app.get('/api/admin/contratos', auth, admin, (req, res) => {
+  res.json({ contratos: listarContratos().map(contratoAdmin) });
+});
+
+app.get('/api/admin/usuarios', auth, admin, (req, res) => {
+  const usuarios = Object.values(DB.usuarios).map(publico);
+  res.json({ usuarios });
+});
+
+app.post('/api/admin/servicos/:id/aprovar', auth, admin, (req, res) => {
+  const s = DB.servicos[req.params.id];
+  if (!s) return res.status(404).json({ erro: 'Serviço não encontrado.' });
+  s.status = 'aprovado';
+  salvar();
+  res.json({ servico: servicoAdmin(s) });
+});
+
+app.post('/api/admin/servicos/:id/remover', auth, admin, (req, res) => {
+  const s = DB.servicos[req.params.id];
+  if (!s) return res.status(404).json({ erro: 'Serviço não encontrado.' });
+  delete DB.servicos[s.id];
+  DB.ordemServicos = DB.ordemServicos.filter(x => x !== s.id);
+  salvar();
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/usuarios/:id/toggle', auth, admin, (req, res) => {
+  const u = DB.usuarios[req.params.id];
+  if (!u) return res.status(404).json({ erro: 'Usuário não encontrado.' });
+  if (u.role === 'admin')
+    return res.status(400).json({ erro: 'Não é possível suspender o administrador.' });
+  u.ativo = u.ativo === false ? true : false;
+  // Remove sessões ativas do usuário suspenso.
+  if (u.ativo === false) {
+    for (const [t, uid] of Object.entries(DB.sessoes)) {
+      if (uid === u.id) delete DB.sessoes[t];
+    }
+  }
+  salvar();
+  res.json({ usuario: publico(u) });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Erros e fallback SPA
+ * ------------------------------------------------------------------ */
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ erro: 'Rota não encontrada' });
+  res.sendFile(join(__dirname, 'public', 'index.html'));
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ erro: 'Erro interno do servidor' });
+});
+
+/* ------------------------------------------------------------------ *
+ *  Start
+ * ------------------------------------------------------------------ */
+carregar();
+app.listen(PORT, () => {
+  console.log(`✔ Marketplace rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Marketplace de Serviços Freelance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💼</text></svg>">
+</head>
+<body>
+  <div id="bg-grid" aria-hidden="true"></div>
+  <div id="bg-dots" aria-hidden="true"></div>
+
+  <header class="topbar" id="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="/" data-nav="/">
+        <span class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7h18l-1.5 12.5a2 2 0 0 1-2 1.5H6.5a2 2 0 0 1-2-1.5L3 7z"/>
+            <path d="M8 7V5a4 4 0 0 1 8 0v2"/>
+          </svg>
+        </span>
+        <span class="brand__text">
+          <span class="brand__name">Oferta<span class="brand__accent">Livre</span></span>
+          <span class="brand__sub">marketplace freelance</span>
+        </span>
+      </a>
+
+      <nav class="main-nav" id="mainNav" aria-label="Navegação principal">
+        <!-- Links preenchidos pelo JS conforme usuário / admin -->
+      </nav>
+
+      <div class="topbar__right">
+        <div id="userBox" class="userbox" hidden></div>
+        <button id="btnAuthTop" class="btn btn--primary" hidden>Entrar</button>
+      </div>
+
+      <button class="nav-toggle" id="navToggle" aria-label="Abrir menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <footer class="footer">
+    <div class="footer__inner">
+      <p class="footer__brand">OfertaLivre · marketplace de serviços freelance</p>
+      <p class="footer__meta">
+        <span>Tudo salvo localmente no próprio site.</span>
+        <span class="footer__dot">·</span>
+        <span id="footerStats"></span>
+      </p>
+    </div>
+  </footer>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+  --bg: #f3efe6;
+  --bg-2: #ece6d8;
+  --surface: #fffdf7;
+  --surface-2: #fbf8f0;
+  --ink: #17181a;
+  --ink-2: #3b3e44;
+  --muted: #6b6f78;
+  --line: #e2dccd;
+  --line-2: #d8d2c1;
+  --accent: #ff5a1f;
+  --accent-soft: #ffe7db;
+  --accent-ink: #7a2405;
+  --green: #0f8a5f;
+  --green-soft: #e1f3ea;
+  --amber: #b77a00;
+  --amber-soft: #fff2cf;
+  --red: #c9302e;
+  --red-soft: #ffe0df;
+  --blue: #1e5fd9;
+  --blue-soft: #e0ebff;
+  --shadow-sm: 0 1px 2px rgba(20, 18, 12, 0.04), 0 2px 6px rgba(20, 18, 12, 0.05);
+  --shadow-md: 0 4px 16px rgba(20, 18, 12, 0.06), 0 12px 40px rgba(20, 18, 12, 0.06);
+  --shadow-lg: 0 12px 40px rgba(20, 18, 12, 0.10), 0 30px 80px rgba(20, 18, 12, 0.08);
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Manrope', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--bg);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#bg-grid, #bg-dots {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+#bg-grid {
+  background-image:
+    linear-gradient(rgba(23,24,26,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23,24,26,0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(1200px 700px at 50% -10%, #000 30%, transparent 75%);
+  opacity: 0.6;
+}
+#bg-dots {
+  background-image: radial-gradient(rgba(255,90,31,0.10) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Topbar
+ * ------------------------------------------------------------------ */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  background: rgba(255, 253, 247, 0.85);
+  backdrop-filter: saturate(1.2) blur(10px);
+  -webkit-backdrop-filter: saturate(1.2) blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.topbar__inner {
+  max-width: 1240px; margin: 0 auto;
+  display: flex; align-items: center; gap: 24px;
+  padding: 14px 24px;
+  position: relative;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 12px;
+  text-decoration: none; color: var(--ink);
+  padding: 6px 8px; border-radius: var(--r);
+  transition: background 180ms ease;
+}
+.brand:hover { background: rgba(23,24,26,0.03); }
+.brand__mark {
+  display: grid; place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, var(--accent), #ff8a4d);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(255,90,31,0.35), inset 0 -2px 0 rgba(0,0,0,0.1);
+}
+.brand__text { display: flex; flex-direction: column; line-height: 1.05; }
+.brand__name { font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: -0.01em; }
+.brand__accent { color: var(--accent); }
+.brand__sub { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.main-nav {
+  display: flex; gap: 4px; margin-left: 8px;
+}
+.nav-link {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--r);
+  color: var(--ink-2);
+  font-weight: 600; font-size: 14px;
+  text-decoration: none;
+  position: relative;
+  transition: color 160ms ease, background 160ms ease;
+}
+.nav-link:hover { color: var(--ink); background: rgba(23,24,26,0.03); }
+.nav-link.is-active { color: var(--ink); }
+.nav-link.is-active::after {
+  content: ''; position: absolute; left: 14px; right: 14px; bottom: 4px;
+  height: 3px; border-radius: 3px;
+  background: var(--accent);
+}
+.nav-link .badge {
+  min-width: 18px; height: 18px; padding: 0 5px;
+  display: inline-grid; place-items: center;
+  border-radius: 999px;
+  background: var(--ink); color: #fff;
+  font-size: 10px; font-weight: 700;
+}
+.nav-link .badge--accent { background: var(--accent); }
+
+.topbar__right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.userbox {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.userbox .avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 13px;
+  font-family: var(--font-display);
+}
+.userbox__name { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.userbox__role {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 2px 6px; border-radius: 4px;
+}
+.userbox__role--admin { background: var(--red-soft); color: var(--red); }
+.userbox__role--user  { background: var(--blue-soft); color: var(--blue); }
+
+.btn {
+  font-family: var(--font-body);
+  font-weight: 700; font-size: 14px;
+  padding: 10px 16px;
+  border-radius: var(--r);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: transform 120ms ease, box-shadow 160ms ease, background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.btn:active { transform: translateY(1px); }
+.btn--primary {
+  background: var(--accent); color: #fff;
+  box-shadow: 0 8px 18px rgba(255,90,31,0.32);
+}
+.btn--primary:hover { background: #ff6a30; box-shadow: 0 10px 22px rgba(255,90,31,0.38); }
+.btn--ghost {
+  background: transparent; color: var(--ink-2);
+  border-color: var(--line);
+}
+.btn--ghost:hover { border-color: var(--ink-2); color: var(--ink); }
+.btn--subtle {
+  background: var(--surface); color: var(--ink);
+  border-color: var(--line);
+}
+.btn--subtle:hover { border-color: var(--ink-2); }
+.btn--danger {
+  background: var(--red-soft); color: var(--red); border-color: transparent;
+}
+.btn--danger:hover { background: #ffd3d2; }
+.btn--small { padding: 7px 12px; font-size: 13px; border-radius: 8px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.nav-toggle {
+  display: none;
+  width: 42px; height: 42px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+}
+.nav-toggle span {
+  display: block; width: 18px; height: 2px; background: var(--ink);
+  margin: 3px auto; border-radius: 2px;
+  transition: transform 200ms ease, opacity 200ms ease;
+}
+.nav-toggle.is-open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.nav-toggle.is-open span:nth-child(2) { opacity: 0; }
+.nav-toggle.is-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+/* ------------------------------------------------------------------ *
+ *  Layout
+ * ------------------------------------------------------------------ */
+.app {
+  position: relative; z-index: 1;
+  max-width: 1240px; margin: 0 auto;
+  padding: 32px 24px 96px;
+  min-height: calc(100vh - 70px - 60px);
+}
+.page { display: none; animation: pageIn 280ms ease both; }
+.page.is-active { display: block; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 24px; margin-bottom: 24px; flex-wrap: wrap;
+}
+.page-header__title {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 34px; letter-spacing: -0.02em; line-height: 1.05;
+  margin: 0;
+}
+.page-header__sub {
+  margin: 6px 0 0; color: var(--muted); font-size: 15px; max-width: 60ch;
+}
+.page-header__actions { display: flex; gap: 10px; }
+
+/* ------------------------------------------------------------------ *
+ *  Hero / Home
+ * ------------------------------------------------------------------ */
+.hero {
+  position: relative;
+  border-radius: var(--r-xl);
+  background:
+    radial-gradient(1200px 400px at -10% -20%, rgba(255,90,31,0.12), transparent 60%),
+    radial-gradient(900px 300px at 110% 110%, rgba(30,95,217,0.10), transparent 60%),
+    var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  padding: 56px 56px 60px;
+  display: grid; grid-template-columns: 1.35fr 1fr; gap: 40px;
+  align-items: stretch;
+}
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(23,24,26,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(23,24,26,0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: radial-gradient(800px 500px at 30% 20%, #000 40%, transparent 80%);
+  pointer-events: none;
+}
+.hero__left { position: relative; z-index: 1; }
+.hero__eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-weight: 700; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid rgba(255,90,31,0.25);
+}
+.hero__eyebrow::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  animation: pulseDot 1.8s ease-in-out infinite;
+}
+@keyframes pulseDot {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,90,31,0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(255,90,31,0); }
+}
+.hero__title {
+  margin: 18px 0 14px;
+  font-family: var(--font-display); font-weight: 700;
+  font-size: clamp(38px, 5.4vw, 62px);
+  line-height: 1.02; letter-spacing: -0.03em;
+}
+.hero__title em {
+  font-style: normal; color: var(--accent);
+  position: relative;
+}
+.hero__title em::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 4px;
+  height: 8px; background: var(--accent-soft);
+  z-index: -1;
+}
+.hero__lead {
+  font-size: 17px; line-height: 1.6; color: var(--ink-2);
+  max-width: 58ch; margin: 0 0 28px;
+}
+.hero__cta { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.hero__right {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  align-content: start;
+}
+.stat-tile {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 6px;
+  position: relative; overflow: hidden;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+.stat-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-2);
+}
+.stat-tile__label {
+  font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+}
+.stat-tile__value {
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 32px; letter-spacing: -0.02em; line-height: 1;
+}
+.stat-tile__hint { font-size: 12px; color: var(--muted); }
+.stat-tile--accent {
+  background: linear-gradient(160deg, #fff, #ffece0);
+  border-color: rgba(255,90,31,0.25);
+}
+.stat-tile--accent .stat-tile__value { color: var(--accent); }
+
+.hero__scroll {
+  margin-top: 40px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+.scroll-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.scroll-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.scroll-card__icon {
+  width: 38px; height: 38px; border-radius: 10px;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--line);
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.scroll-card h4 {
+  margin: 0 0 6px;
+  font-family: var(--font-display); font-weight: 700; font-size: 17px;
+}
+.scroll-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+/* ------------------------------------------------------------------ *
+ *  Cards de serviço
+ * ------------------------------------------------------------------ */
+.toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; margin-bottom: 18px;
+}
+.search-box {
+  flex: 1; min-width: 240px; max-width: 440px;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.search-box:focus-within {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(23,24,26,0.04);
+}
+.search-box svg { color: var(--muted); }
+.search-box input {
+  flex: 1; border: 0; outline: 0; background: transparent;
+  font: inherit; color: var(--ink);
+}
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px; font-weight: 600; color: var(--ink-2);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.chip:hover { border-color: var(--ink-2); }
+.chip.is-active {
+  background: var(--ink); color: #fff; border-color: var(--ink);
+}
+
+.service-grid {
+  display: grid; gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.service-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  transition: transform 180ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  cursor: pointer;
+  overflow: hidden;
+}
+.service-card::before {
+  content: '';
+  position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: var(--cat-color, var(--accent));
+  opacity: 0.85;
+}
+.service-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--line-2);
+}
+.service-card__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.service-card__cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--line);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-2);
+}
+.service-card__cat::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--cat-color, var(--accent));
+}
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.status-pill::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+.status-pill--aprovado { background: var(--green-soft); color: var(--green); }
+.status-pill--pendente { background: var(--amber-soft); color: var(--amber); }
+.status-pill--removido { background: var(--red-soft); color: var(--red); }
+.status-pill--recusado { background: var(--red-soft); color: var(--red); }
+.status-pill--concluido { background: var(--green-soft); color: var(--green); }
+.status-pill--aceito   { background: var(--blue-soft); color: var(--blue); }
+
+.service-card__title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 18px; line-height: 1.25; letter-spacing: -0.01em;
+}
+.service-card__desc {
+  margin: 0; color: var(--muted);
+  font-size: 14px; line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.service-card__foot {
+  margin-top: auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-top: 12px; border-top: 1px dashed var(--line);
+}
+.service-card__price {
+  display: flex; flex-direction: column;
+}
+.service-card__price-label { font-size: 11px; color: var(--muted); }
+.service-card__price-value {
+  font-family: var(--font-display); font-weight: 700; font-size: 18px;
+}
+.service-card__seller {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2); font-weight: 600;
+}
+.service-card__actions {
+  display: flex; gap: 8px; margin-top: 4px;
+}
+
+/* Empty states */
+.empty {
+  padding: 60px 24px;
+  text-align: center;
+  background: var(--surface);
+  border: 1px dashed var(--line-2);
+  border-radius: var(--r-lg);
+  color: var(--muted);
+}
+.empty__icon {
+  width: 56px; height: 56px; margin: 0 auto 14px;
+  display: grid; place-items: center;
+  background: var(--surface-2); border-radius: 50%;
+  color: var(--muted);
+}
+.empty h4 { margin: 0 0 6px; color: var(--ink); font-family: var(--font-display); }
+
+/* ------------------------------------------------------------------ *
+ *  Autenticação
+ * ------------------------------------------------------------------ */
+.auth-wrap {
+  min-height: calc(100vh - 120px);
+  display: grid; place-items: center;
+  padding: 40px 16px;
+}
+.auth-card {
+  width: 100%; max-width: 1040px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  display: grid; grid-template-columns: 0.9fr 1.1fr;
+}
+.auth-side {
+  background:
+    radial-gradient(400px 300px at 100% 0%, rgba(255,90,31,0.18), transparent 70%),
+    linear-gradient(160deg, #fff5ec 0%, #fffdf7 100%);
+  border-right: 1px solid var(--line);
+  padding: 40px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.auth-side__top { display: flex; align-items: center; gap: 12px; }
+.auth-side__title {
+  margin: 24px 0 12px;
+  font-family: var(--font-display); font-weight: 700;
+  font-size: 30px; line-height: 1.1; letter-spacing: -0.02em;
+}
+.auth-side__lead { margin: 0; color: var(--ink-2); font-size: 15px; line-height: 1.55; }
+.auth-side__list { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+.auth-side__list li {
+  display: flex; gap: 10px; align-items: flex-start;
+  font-size: 14px; color: var(--ink-2);
+  list-style: none;
+}
+.auth-side__list li::before {
+  content: '✓';
+  display: inline-grid; place-items: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--green-soft); color: var(--green);
+  font-size: 11px; font-weight: 800;
+  flex: 0 0 auto; margin-top: 1px;
+}
+.auth-side ul { padding: 0; margin: 0; }
+.auth-side__hint {
+  font-size: 12px; color: var(--muted);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.6);
+  border: 1px dashed var(--line);
+}
+.auth-form {
+  padding: 40px;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.tabs {
+  display: inline-flex; padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.tabs__btn {
+  padding: 10px 18px;
+  border: 0; background: transparent;
+  border-radius: 8px;
+  font: inherit; font-weight: 700; color: var(--muted);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.tabs__btn.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+}
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 13px; font-weight: 700; color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.field input, .field textarea, .field select {
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 4px rgba(23,24,26,0.05);
+  background: var(--surface);
+}
+.field textarea { resize: vertical; min-height: 110px; }
+.field__hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.form-error {
+  background: var(--red-soft); color: var(--red);
+  padding: 10px 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 600;
+  margin-bottom: 14px;
+  border: 1px solid rgba(201,48,46,0.2);
+}
+.auth-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+.auth-link {
+  font-size: 13px; color: var(--muted);
+  text-decoration: none; font-weight: 600;
+}
+.auth-link:hover { color: var(--ink); }
+
+/* ------------------------------------------------------------------ *
+ *  Dashboard
+ * ------------------------------------------------------------------ */
+.dash-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.dash-stats .stat-tile { padding: 18px 16px; }
+.dash-stats .stat-tile__value { font-size: 28px; }
+
+.dash-grid {
+  display: grid; grid-template-columns: 1.4fr 1fr; gap: 20px;
+}
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 22px;
+}
+.panel__head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 12px;
+}
+.panel__title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 700; font-size: 18px;
+}
+.panel__sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.panel__list { display: flex; flex-direction: column; gap: 10px; }
+.list-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px; align-items: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.list-item:hover { border-color: var(--line-2); background: #fff; }
+.list-item__icon {
+  width: 34px; height: 34px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--accent);
+}
+.list-item__body { min-width: 0; }
+.list-item__title {
+  font-weight: 700; font-size: 14px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.list-item__meta { font-size: 12px; color: var(--muted); }
+.list-item__actions { display: flex; gap: 6px; align-items: center; }
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+table.data {
+  width: 100%; border-collapse: collapse;
+  font-size: 14px;
+  min-width: 720px;
+}
+table.data th, table.data td {
+  text-align: left; padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+table.data th {
+  font-size: 11px; font-weight: 700;
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--surface-2);
+}
+table.data tr:last-child td { border-bottom: 0; }
+table.data tbody tr { transition: background 140ms ease; }
+table.data tbody tr:hover { background: var(--surface-2); }
+.cell-strong { font-weight: 700; }
+.cell-muted { color: var(--muted); font-size: 13px; }
+.cell-actions { display: inline-flex; gap: 6px; align-items: center; }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 11px;
+  font-family: var(--font-display);
+}
+.avatar--sm { width: 24px; height: 24px; font-size: 10px; }
+.row-toggle {
+  width: 42px; height: 24px; border-radius: 999px;
+  background: var(--line-2);
+  border: 0; cursor: pointer;
+  position: relative;
+  transition: background 160ms ease;
+}
+.row-toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff;
+  transition: transform 180ms ease;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+.row-toggle.is-on { background: var(--green); }
+.row-toggle.is-on::after { transform: translateX(18px); }
+
+/* Tabs para páginas internas */
+.tabs-nav {
+  display: flex; gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.tabs-nav__btn {
+  padding: 10px 16px;
+  border: 0; background: transparent;
+  font: inherit; font-weight: 700; color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 160ms ease, border-color 160ms ease;
+}
+.tabs-nav__btn:hover { color: var(--ink); }
+.tabs-nav__btn.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+.tabs-nav__btn .count {
+  display: inline-block;
+  padding: 2px 8px; margin-left: 6px;
+  border-radius: 999px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 11px; font-weight: 700;
+}
+.tabs-nav__btn.is-active .count { background: var(--accent-soft); color: var(--accent-ink); }
+
+/* Form de serviço */
+.form-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 28px;
+}
+.form-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+}
+.form-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px; border-top: 1px solid var(--line);
+}
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15,16,18,0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 60;
+  display: grid; place-items: center;
+  padding: 24px;
+  animation: fade 180ms ease both;
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.modal {
+  width: 100%; max-width: 640px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  animation: pop 200ms ease both;
+}
+@keyframes pop {
+  from { transform: translateY(10px) scale(0.98); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+.modal__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  gap: 12px;
+}
+.modal__title {
+  margin: 0;
+  font-family: var(--font-display); font-weight: 700; font-size: 20px;
+}
+.modal__close {
+  width: 36px; height: 36px;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface-2);
+  cursor: pointer; color: var(--ink-2);
+  display: grid; place-items: center;
+}
+.modal__close:hover { background: #fff; border-color: var(--ink-2); }
+.modal__body { padding: 24px; }
+.modal__actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--line);
+}
+
+.service-detail__meta {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  margin: 16px 0 20px;
+}
+.meta-tile {
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.meta-tile__label { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.meta-tile__value { font-family: var(--font-display); font-weight: 700; font-size: 16px; margin-top: 2px; }
+.service-detail__seller {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 16px 0;
+}
+
+/* Toasts */
+.toast-stack {
+  position: fixed; bottom: 24px; right: 24px;
+  display: flex; flex-direction: column; gap: 10px;
+  z-index: 80;
+}
+.toast {
+  min-width: 280px; max-width: 380px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-md);
+  display: flex; gap: 10px; align-items: flex-start;
+  animation: toastIn 220ms ease both;
+}
+@keyframes toastIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.toast.is-leaving {
+  animation: toastOut 200ms ease both;
+}
+@keyframes toastOut {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(20px); opacity: 0; }
+}
+.toast__icon {
+  width: 28px; height: 28px; border-radius: 8px;
+  display: grid; place-items: center;
+  flex: 0 0 auto;
+}
+.toast--success .toast__icon { background: var(--green-soft); color: var(--green); }
+.toast--error .toast__icon { background: var(--red-soft); color: var(--red); }
+.toast--info .toast__icon { background: var(--blue-soft); color: var(--blue); }
+.toast__msg { font-size: 14px; color: var(--ink-2); line-height: 1.4; }
+
+/* Footer */
+.footer {
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: 20px 24px;
+}
+.footer__inner {
+  max-width: 1240px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; flex-wrap: wrap;
+  font-size: 13px; color: var(--muted);
+}
+.footer__brand { font-weight: 700; color: var(--ink-2); }
+.footer__meta { display: flex; gap: 10px; align-items: center; }
+.footer__dot { opacity: 0.5; }
+
+/* Utilities */
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.mono { font-family: var(--font-mono); }
+.divider { height: 1px; background: var(--line); margin: 16px 0; }
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .dash-stats { grid-template-columns: repeat(2, 1fr); }
+  .dash-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 36px 24px;
+  }
+  .hero__right { grid-template-columns: repeat(2, 1fr); }
+  .hero__scroll { grid-template-columns: 1fr; }
+  .auth-card { grid-template-columns: 1fr; }
+  .auth-side { display: none; }
+  .form-row { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 780px) {
+  .main-nav {
+    position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    padding: 10px 16px 16px;
+    gap: 2px;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-8px); opacity: 0;
+    pointer-events: none;
+    transition: all 180ms ease;
+  }
+  .main-nav.is-open {
+    transform: translateY(0); opacity: 1; pointer-events: auto;
+  }
+  .nav-link { width: 100%; }
+  .nav-link.is-active::after { display: none; }
+  .nav-link.is-active { background: var(--surface-2); }
+  .nav-toggle { display: block; }
+  .brand__sub { display: none; }
+  .userbox__name { display: none; }
+  .page-header { flex-direction: column; align-items: stretch; }
+  .page-header__title { font-size: 28px; }
+  .toast-stack { left: 16px; right: 16px; bottom: 16px; }
+  .toast { min-width: 0; }
+}
+
+@media (max-width: 520px) {
+  .hero__right { grid-template-columns: 1fr; }
+  .app { padding: 20px 14px 80px; }
+  .service-detail__meta { grid-template-columns: 1fr; }
+  .tabs { width: 100%; }
+  .tabs__btn { flex: 1; }
+  .dash-stats { grid-template-columns: 1fr 1fr; }
+}
+
+=== public/app.js ===
+/* ========================================================= *
+ *  Marketplace de Freelancers — SPA
+ * ========================================================= */
+const API = {
+  token: localStorage.getItem('ml_token') || null,
+  user: JSON.parse(localStorage.getItem('ml_user') || 'null'),
+  setSession(token, user) {
+    this.token = token;
+    this.user = user;
+    if (token) {
+      localStorage.setItem('ml_token', token);
+      localStorage.setItem('ml_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('ml_token');
+      localStorage.removeItem('ml_user');
+    }
+  },
+  logout() { this.setSession(null, null); }
+};
+
+const state = {
+  route: 'home',
+  data: {
+    publicServicos: [],
+    meusServicos: [],
+    meusContratos: [],
+    adminServicos: [],
+    adminContratos: [],
+    adminUsuarios: []
+  },
+  filtro: { q: '', cat: '' },
+  authTab: 'login',
+  adminTab: 'servicos'
+};
+
+const CATEGORIAS = [
+  { id: 'design',     nome: 'Design',        cor: '#ff5a1f' },
+  { id: 'dev',        nome: 'Desenvolvimento', cor: '#1e5fd9' },
+  { id: 'marketing',  nome: 'Marketing',     cor: '#0f8a5f' },
+  { id: 'escrita',    nome: 'Escrita',       cor: '#7c3aed' },
+  { id: 'financas',   nome: 'Finanças',      cor: '#b77a00' },
+  { id: 'traducao',   nome: 'Tradução',      cor: '#0891b2' },
+  { id: 'educacao',   nome: 'Educação',      cor: '#db2777' },
+  { id: 'outro',      nome: 'Outros',        cor: '#6b6f78' }
+];
+
+const categoriaPorId = id => CATEGORIAS.find(c => c.id === id) || { nome: id, cor: '#6b6f78' };
+const corInicial = s => {
+  const palette = ['#ff5a1f','#1e5fd9','#0f8a5f','#7c3aed','#db2777','#b77a00','#0891b2'];
+  let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return palette[h % palette.length];
+};
+
+/* ---------------------------------- *
+ *  Helpers de UI
+ * ---------------------------------- */
+const $ = (sel, ctx = document) => ctx.querySelector(sel);
+const $$ = (sel, ctx = document) => Array.from(ctx.querySelectorAll(sel));
+
+function el(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+function iniciais(nome = '') {
+  const p = String(nome).trim().split(/\s+/).slice(0, 2);
+  return p.map(x => x[0]).join('').toUpperCase() || '?';
+}
+
+function moeda(v) {
+  const n = Number(v || 0);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+}
+
+function dataRelativa(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'agora';
+  if (diff < 3600) return `há ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `há ${Math.floor(diff / 3600)} h`;
+  if (diff < 86400 * 7) return `há ${Math.floor(diff / 86400)} d`;
+  return d.toLocaleDateString('pt-BR');
+}
+
+function toast(msg, tipo = 'info') {
+  const icons = {
+    success: 'M5 12l5 5L20 7',
+    error:   'M6 6l12 12M18 6L6 18',
+    info:    'M12 8v4m0 4h.01'
+  };
+  const t = el(`
+    <div class="toast toast--${tipo}" role="status">
+      <span class="toast__icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="${icons[tipo] || icons.info}"/>
+        </svg>
+      </span>
+      <div class="toast__msg">${esc(msg)}</div>
+    </div>
+  `);
+  $('#toastStack').appendChild(t);
+  setTimeout(() => {
+    t.classList.add('is-leaving');
+    setTimeout(() => t.remove(), 220);
+  }, 3600);
+}
+
+function api(path, opts = {}) {
+  const headers = opts.headers || {};
+  if (opts.body && typeof opts.body !== 'string') headers['Content-Type'] = 'application/json';
+  if (API.token) headers['Authorization'] = 'Bearer ' + API.token;
+  return fetch('/api' + path, {
+    method: opts.method || (opts.body ? 'POST' : 'GET'),
+    headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).then(async res => {
+    let data = null;
+    try { data = await res.json(); } catch { data = {}; }
+    if (!res.ok) {
+      const err = new Error(data.erro || 'Erro');
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  });
+}
+
+/* ---------------------------------- *
+ *  Navegação e layout
+ * ---------------------------------- */
+const PAGES = ['home', 'explorar', 'meus-servicos', 'publicar', 'contratos', 'admin', 'conta', 'auth'];
+
+function navegar(rot) {
+  state.route = rot;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  renderNav();
+  renderPage();
+  fecharMenuMobile();
+}
+
+function fecharMenuMobile() {
+  $('#navToggle')?.classList.remove('is-open');
+  $('#mainNav')?.classList.remove('is-open');
+}
+
+function renderNav() {
+  const nav = $('#mainNav');
+  const userBox = $('#userBox');
+  const btnAuth = $('#btnAuthTop');
+  const isAdmin = API.user?.role === 'admin';
+  const links = [];
+
+  if (API.user) {
+    links.push({ id: 'explorar', label: 'Explorar' });
+    if (isAdmin) {
+      links.push({ id: 'admin', label: 'Administração', badge: 'A' });
+    } else {
+      links.push({ id: 'publicar', label: 'Publicar' });
+      links.push({ id: 'meus-servicos', label: 'Meus serviços' });
+      const pend = state.data.meusContratos.filter(c => c.status === 'pendente' && c.prestadorId === API.user.id).length;
+      links.push({ id: 'contratos', label: 'Meus contratos', badge: pend || null });
+    }
+    links.push({ id: 'conta', label: 'Minha conta' });
+  } else {
+    links.push({ id: 'explorar', label: 'Explorar serviços' });
+  }
+
+  nav.innerHTML = links.map(l => `
+    <a class="nav-link ${state.route === l.id ? 'is-active' : ''}" href="#" data-nav="${l.id}">
+      ${esc(l.label)}
+      ${l.badge ? `<span class="badge ${l.badge === 'A' ? '' : 'badge--accent'}">${l.badge === 'A' ? '★' : l.badge}</span>` : ''}
+    </a>
+  `).join('');
+  $$('.nav-link', nav).forEach(a => a.addEventListener('click', e => {
+    e.preventDefault();
+    navegar(a.dataset.nav);
+  }));
+
+  if (API.user) {
+    userBox.hidden = false;
+    btnAuth.hidden = true;
+    userBox.innerHTML = `
+      <span class="avatar" style="background:${corInicial(API.user.nome)}">${esc(iniciais(API.user.nome))}</span>
+      <div style="display:flex;flex-direction:column;line-height:1.1">
+        <span class="userbox__name">${esc(API.user.nome)}</span>
+      </div>
+      <span class="userbox__role userbox__role--${API.user.role}">${API.user.role === 'admin' ? 'admin' : 'membro'}</span>
+    `;
+  } else {
+    userBox.hidden = true;
+    btnAuth.hidden = false;
+  }
+}
+
+function renderPage() {
+  const root = $('#app');
+  const pag = state.route;
+  if (!API.user && !['home', 'explorar', 'auth'].includes(pag)) {
+    state.route = 'auth';
+    return renderPage();
+  }
+  root.innerHTML = '';
+  let page;
+  switch (pag) {
+    case 'home':         page = renderHome(); break;
+    case 'explorar':     page = renderExplorar(); break;
+    case 'meus-servicos':page = renderMeusServicos(); break;
+    case 'publicar':     page = renderPublicar(); break;
+    case 'contratos':    page = renderContratos(); break;
+    case 'admin':        page = renderAdmin(); break;
+    case 'conta':        page = renderConta(); break;
+    case 'auth':         page = renderAuth(); break;
+    default:             page = renderHome();
+  }
+  page.classList.add('page', 'is-active');
+  root.appendChild(page);
+
+  // dados
+  if (pag === 'home') carregarHome();
+  if (pag === 'explorar') carregarExplorar();
+  if (pag === 'meus-servicos') carregarMeus();
+  if (pag === 'contratos') carregarContratos();
+  if (pag === 'admin') carregarAdmin();
+  if (pag === 'conta' && API.user?.role === 'admin') carregarConteudoAdmin();
+}
+
+/* ---------------------------------- *
+ *  Home
+ * ---------------------------------- */
+async function carregarHome() {
+  try {
+    const r = await api('/servicos/publicos');
+    state.data.publicServicos = r.servicos;
+    $('#footerStats').textContent = `${r.servicos.length} serviços ativos`;
+    // Popula cards de destaque na home
+    const grid = $$('.home-featured', $('#app'));
+    if (grid.length) {
+      const top = r.servicos.slice(0, 4);
+      grid.forEach((g, i) => {
+        const s = top[i];
+        if (!s) { g.innerHTML = emptyHTML('Nenhum serviço ainda'); return; }
+        g.innerHTML = serviceCardHTML(s);
+        g.querySelector('.service-card').addEventListener('click', () => abrirModalServico(s));
+      });
+    }
+    // stats
+    const total = r.servicos.length;
+    const cats = new Set(r.servicos.map(s => s.categoria)).size;
+    const sellers = new Set(r.servicos.map(s => s.prestadorId)).size;
+    const stats = $$('.home-stat', $('#app'));
+    if (stats.length) {
+      stats[0].textContent = total;
+      stats[1].textContent = cats;
+      stats[2].textContent = sellers;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderHome() {
+  return el(`
+    <section class="hero">
+      <div class="hero__left">
+        <span class="hero__eyebrow">Plataforma ativa · dados salvos no próprio site</span>
+        <h1 class="hero__title">Encontre quem faz o trabalho<br/>ou <em>ofereça</em> o seu.</h1>
+        <p class="hero__lead">
+          Um marketplace de serviços freelance com tudo dentro do próprio site:
+          publique, contrate e acompanhe seus contratos — sem depender de serviços externos.
+        </p>
+        <div class="hero__cta">
+          ${API.user
+            ? `<a href="#" data-nav="${API.user.role === 'admin' ? 'admin' : 'publicar'}" class="btn btn--primary">${API.user.role === 'admin' ? 'Ir para o painel' : 'Publicar um serviço'}</a>`
+            : `<a href="#" data-nav="auth" class="btn btn--primary">Começar agora</a>`}
+          <a href="#" data-nav="explorar" class="btn btn--ghost">Explorar serviços</a>
+        </div>
+        <div class="hero__scroll">
+          <div class="scroll-card">
+            <div class="scroll-card__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            </div>
+            <h4>Publique seu serviço</h4>
+            <p>Descreva o que você faz, o preço e a forma de pagamento.</p>
+          </div>
+          <div class="scroll-card">
+            <div class="scroll-card__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+            </div>
+            <h4>Contrate com confiança</h4>
+            <p>Aprovação de serviços e contratos com status claro.</p>
+          </div>
+          <div class="scroll-card">
+            <div class="scroll-card__icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4m0 12v4M2 12h4m12 0h4M5 5l3 3m8 8l3 3M19 5l-3 3M8 16l-3 3"/></svg>
+            </div>
+            <h4>Painel de administração</h4>
+            <p>Aprovações, remoções, suspensões e visão completa.</p>
+          </div>
+        </div>
+      </div>
+      <div class="hero__right">
+        <div class="stat-tile stat-tile--accent">
+          <span class="stat-tile__label">Serviços ativos</span>
+          <span class="stat-tile__value home-stat">0</span>
+          <span class="stat-tile__hint">disponíveis agora</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Categorias</span>
+          <span class="stat-tile__value home-stat">0</span>
+          <span class="stat-tile__hint">áreas diferentes</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">Prestadores</span>
+          <span class="stat-tile__value home-stat">0</span>
+          <span class="stat-tile__hint">pessoas oferecendo</span>
+        </div>
+        <div class="stat-tile">
+          <span class="stat-tile__label">100% local</span>
+          <span class="stat-tile__value" style="font-size:24px">✓</span>
+          <span class="stat-tile__hint">dados no próprio site</span>
+        </div>
+      </div>
+    </section>
+    <section style="margin-top:32px">
+      <div class="page-header">
+        <div>
+          <h2 class="page-header__title">Em destaque</h2>
+          <p class="page-header__sub">Serviços aprovados por ordem mais recentes.</p>
+        </div>
+        <a href="#" data-nav="explorar" class="btn btn--ghost">Ver todos</a>
+      </div>
+      <div class="service-grid">
+        <div class="home-featured"></div>
+        <div class="home-featured"></div>
+        <div class="home-featured"></div>
+        <div class="home-featured"></div>
+      </div>
+    </section>
+  `);
+}
+
+/* ---------------------------------- *
+ *  Explorar
+ * ---------------------------------- */
+async function carregarExplorar() {
+  try {
+    const r = await api('/servicos/publicos');
+    state.data.publicServicos = r.servicos;
+    const grid = $('.service-grid', $('#app'));
+    if (grid) grid.innerHTML = filtrarServicos(state.data.publicServicos)
+      .map(s => serviceCardHTML(s)).join('')
+      || emptyHTML('Nenhum serviço encontrado para esse filtro.');
+    $$('.service-card', grid).forEach(card => {
+      card.addEventListener('click', () => {
+        const s = state.data.publicServicos.find(x => x.id === card.dataset.id);
+        if (s) abrirModalServico(s);
+      });
+    });
+  } catch (e) { console.error(e); }
+}
+
+function filtrarServicos(lista) {
+  const { q, cat } = state.filtro;
+  return lista.filter(s => {
+    if (cat && s.categoria !== cat) return false;
+    if (q) {
+      const t = (s.titulo + ' ' + s.descricao + ' ' + (s.prestador?.nome || '')).toLowerCase();
+      if (!t.includes(q.toLowerCase())) return false;
+    }
+    return true;
+  });
+}
+
+function serviceCardHTML(s) {
+  const c = categoriaPorId(s.categoria);
+  const me = API.user?.id === s.prestadorId;
+  return `
+    <article class="service-card" data-id="${esc(s.id)}" style="--cat-color:${esc(c.cor)}">
+      <div class="service-card__head">
+        <span class="service-card__cat">${esc(c.nome)}</span>
+        <span class="status-pill status-pill--aprovado">aprovado</span>
+      </div>
+      <h3 class="service-card__title">${esc(s.titulo)}</h3>
+      <p class="service-card__desc">${esc(s.descricao)}</p>
+      <div class="service-card__foot">
+        <div class="service-card__price">
+          <span class="service-card__price-label">${esc(s.formaPagamento || 'Preço')}</span>
+          <span class="service-card__price-value">${moeda(s.preco)}</span>
+        </div>
+        <div class="service-card__seller">
+          <span class="avatar avatar--sm" style="background:${corInicial(s.prestador?.nome || '?')}">${esc(iniciais(s.prestador?.nome))}</span>
+          ${esc(s.prestador?.nome || 'Anônimo')}
+        </div>
+      </div>
+      ${!me ? `<div class="service-card__actions">
+        <button class="btn btn--primary btn--small" data-acao="contratar">Contratar</button>
+      </div>` : ''}
+    </article>
+  `;
+}
+
+function emptyHTML(msg) {
+  return `
+    <div class="empty" style="grid-column:1/-1">
+      <div class="empty__icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      </div>
+      <h4>Nada por aqui</h4>
+      <p>${esc(msg)}</p>
+    </div>
+  `;
+}
+
+function renderExplorar() {
+  const chips = ['<button class="chip is-active" data-cat="">Todas</button>']
+    .concat(CATEGORIAS.map(c => `<button class="chip" data-cat="${esc(c.id)}">${esc(c.nome)}</button>`)).join('');
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Explorar serviços</h2>
+        <p class="page-header__sub">Todos os serviços aprovados por outros usuários da plataforma.</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="search-box">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="search" id="searchInput" placeholder="Buscar por título, descrição ou prestador…" />
+      </div>
+      <div class="chips" id="chips">${chips}</div>
+    </div>
+    <div class="service-grid" id="serviceGrid"></div>
+  `);
+}
+
+/* ---------------------------------- *
+ *  Publicar serviço
+ * ---------------------------------- */
+function renderPublicar() {
+  const cats = CATEGORIAS.map(c => `<option value="${esc(c.id)}">${esc(c.nome)}</option>`).join('');
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Publicar serviço</h2>
+        <p class="page-header__sub">Depois de publicado, o serviço fica <strong>pendente</strong> até ser aprovado pela administração.</p>
+      </div>
+    </div>
+    <form class="form-card" id="formPublicar" novalidate>
+      <div class="field">
+        <label for="fTitulo">Título do serviço</label>
+        <input id="fTitulo" name="titulo" type="text" required minlength="4" placeholder="Ex.: Criação de logo para startups" />
+        <div class="field__hint">Mínimo de 4 caracteres.</div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label for="fCat">Categoria</label>
+          <select id="fCat" name="categoria">${cats}</select>
+        </div>
+        <div class="field">
+          <label for="fPreco">Preço</label>
+          <input id="fPreco" name="preco" type="number" min="0" step="0.01" placeholder="Ex.: 150.00" />
+          <div class="field__hint">Valor em reais (BRL).</div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fForma">Forma de pagamento</label>
+        <select id="fForma" name="formaPagamento">
+          <option>Por hora</option>
+          <option>Por projeto</option>
+          <option>Mensal</option>
+          <option>A combinar</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fDesc">Descrição</label>
+        <textarea id="fDesc" name="descricao" required minlength="10" placeholder="Explique o que você oferece, como trabalha, prazos, o que está incluso…"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn--ghost" data-nav="meus-servicos">Cancelar</button>
+        <button type="submit" class="btn btn--primary">Publicar serviço</button>
+      </div>
+    </form>
+  `);
+}
+
+async function submitPublicar(e) {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('/servicos', {
+      method: 'POST',
+      body: {
+        titulo: f.titulo.value,
+        categoria: f.categoria.value,
+        descricao: f.descricao.value,
+        preco: Number(f.preco.value || 0),
+        formaPagamento: f.formaPagamento.value
+      }
+    });
+    toast('Serviço publicado! Aguardando aprovação da administração.', 'success');
+    navegar('meus-servicos');
+  } catch (err) {
+    toast(err.message || 'Erro ao publicar.', 'error');
+  }
+}
+
+/* ---------------------------------- *
+ *  Meus serviços (usuário)
+ * ---------------------------------- */
+async function carregarMeus() {
+  try {
+    const [s, c] = await Promise.all([api('/servicos/meus'), api('/contratos/meus')]);
+    state.data.meusServicos = s.servicos;
+    state.data.meusContratos = c.contratos;
+    renderNav(); // para atualizar o badge
+    const grid = $('#meusGrid');
+    const cards = state.data.meusServicos.map(s => {
+      const c = categoriaPorId(s.categoria);
+      return `
+        <article class="service-card" data-id="${esc(s.id)}" style="--cat-color:${esc(c.cor)}">
+          <div class="service-card__head">
+            <span class="service-card__cat">${esc(c.nome)}</span>
+            <span class="status-pill status-pill--${esc(s.status)}">${esc(s.status)}</span>
+          </div>
+          <h3 class="service-card__title">${esc(s.titulo)}</h3>
+          <p class="service-card__desc">${esc(s.descricao)}</p>
+          <div class="service-card__foot">
+            <div class="service-card__price">
+              <span class="service-card__price-label">${esc(s.formaPagamento || 'Preço')}</span>
+              <span class="service-card__price-value">${moeda(s.preco)}</span>
+            </div>
+            <div class="service-card__actions" style="margin-top:0">
+              <button class="btn btn--subtle btn--small" data-acao="ver">Ver</button>
+            </div>
+          </div>
+        </article>
+      `;
+    }).join('') || emptyHTML('Você ainda não publicou nenhum serviço.');
+    grid.innerHTML = cards;
+    $$('.service-card', grid).forEach(card => {
+      card.addEventListener('click', () => {
+        const s = state.data.meusServicos.find(x => x.id === card.dataset.id);
+        if (s) abrirModalServico(s, { meu: true });
+      });
+    });
+  } catch (e) { console.error(e); }
+}
+
+function renderMeusServicos() {
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Meus serviços</h2>
+        <p class="page-header__sub">Todos os serviços que você publicou, com o status atual.</p>
+      </div>
+      <div class="page-header__actions">
+        <button class="btn btn--primary" data-nav="publicar">+ Publicar novo</button>
+      </div>
+    </div>
+    <div class="service-grid" id="meusGrid"></div>
+  `);
+}
+
+/* ---------------------------------- *
+ *  Contratos (usuário)
+ * ---------------------------------- */
+function renderContratos() {
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Meus contratos</h2>
+        <p class="page-header__sub">Contratos em que você participa como prestador ou contratante.</p>
+      </div>
+    </div>
+    <div class="table-wrap" id="contratosWrap"></div>
+  `);
+}
+
+async function carregarContratos() {
+  try {
+    const r = await api('/contratos/meus');
+    state.data.meusContratos = r.contratos;
+    renderNav();
+    const wrap = $('#contratosWrap');
+    if (!r.contratos.length) {
+      wrap.innerHTML = `<div class="empty" style="border:0;background:transparent">
+        <div class="empty__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+        <h4>Nenhum contrato ainda</h4>
+        <p>Quando você contratar ou ser contratado, o contrato aparecerá aqui.</p>
+      </div>`;
+      return;
+    }
+    const rows = r.contratos.map(c => {
+      const euPrestador = c.prestadorId === API.user.id;
+      const outro = euPrestador ? c.contratante : c.prestador;
+      const acoes = [];
+      if (c.status === 'pendente' && euPrestador) {
+        acoes.push(`<button class="btn btn--primary btn--small" data-acao="aceitar">Aceitar</button>`);
+        acoes.push(`<button class="btn btn--danger btn--small" data-acao="recusar">Recusar</button>`);
+      }
+      if (c.status === 'aceito' && !euPrestador) {
+        acoes.push(`<button class="btn btn--subtle btn--small" data-acao="concluir">Concluir</button>`);
+      }
+      return `
+        <tr>
+          <td>
+            <div class="cell-strong">${esc(c.servico?.titulo || '—')}</div>
+            <div class="cell-muted">Criado ${esc(dataRelativa(c.criadoEm))}</div>
+          </td>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="avatar avatar--sm" style="background:${corInicial(outro?.nome)}">${esc(iniciais(outro?.nome))}</span>
+              ${esc(outro?.nome || '—')}
+            </div>
+            <div class="cell-muted">${euPrestador ? 'contratante' : 'prestador'}</div>
+          </td>
+          <td>
+            <span class="cell-strong">${moeda(c.servico?.preco || 0)}</span>
+            <div class="cell-muted">${esc(c.servico?.formaPagamento || '')}</div>
+          </td>
+          <td><span class="status-pill status-pill--${esc(c.status)}">${esc(c.status)}</span></td>
+          <td>
+            <div class="cell-actions">
+              ${c.mensagem ? `<span class="cell-muted small" title="${esc(c.mensagem)}">✉️ ${esc(truncar(c.mensagem, 40))}</span>` : ''}
+              ${acoes.join('')}
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+    wrap.innerHTML = `
+      <table class="data">
+        <thead><tr><th>Serviço</th><th>Outro participante</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+    $$('#contratosWrap [data-acao]').forEach(b => b.addEventListener('click', e => {
+      const tr = e.target.closest('tr');
+      const id = tr.dataset.id;
+      acaoContrato(id, b.dataset.acao);
+    }));
+    // fix: precisa do id no tr
+    $$('#contratosWrap tbody tr').forEach((tr, i) => tr.dataset.id = r.contratos[i].id);
+  } catch (e) { console.error(e); }
+}
+
+function truncar(s, n) { s = String(s); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+async function acaoContrato(id, acao) {
+  try {
+    await api(`/contratos/${id}/acao`, { method: 'POST', body: { acao } });
+    const msgs = {
+      aceitar: 'Contrato aceito.',
+      recusar: 'Contrato recusado.',
+      concluir: 'Contrato concluído.'
+    };
+    toast(msgs[acao] || 'OK', 'success');
+    carregarContratos();
+  } catch (err) {
+    toast(err.message || 'Erro.', 'error');
+  }
+}
+
+/* ---------------------------------- *
+ *  Modal de serviço (detalhes + contratar)
+ * ---------------------------------- */
+function abrirModalServico(s, opts = {}) {
+  const c = categoriaPorId(s.categoria);
+  const me = opts.meu || (API.user?.id === s.prestadorId);
+  const podeContratar = !me && s.status === 'aprovado';
+  const backdrop = el(`
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div>
+            <h3 class="modal__title">${esc(s.titulo)}</h3>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px">
+              <span class="service-card__cat" style="--cat-color:${esc(c.cor)};display:inline-flex">${esc(c.nome)}</span>
+              <span class="status-pill status-pill--${esc(s.status)}" style="margin-left:8px">${esc(s.status)}</span>
+            </div>
+          </div>
+          <button class="modal__close" data-fechar aria-label="Fechar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="modal__body">
+          <p class="muted" style="margin-top:0">${esc(s.descricao)}</p>
+          <div class="service-detail__meta">
+            <div class="meta-tile">
+              <div class="meta-tile__label">Preço</div>
+              <div class="meta-tile__value">${moeda(s.preco)}</div>
+            </div>
+            <div class="meta-tile">
+              <div class="meta-tile__label">Forma</div>
+              <div class="meta-tile__value">${esc(s.formaPagamento || '—')}</div>
+            </div>
+            <div class="meta-tile">
+              <div class="meta-tile__label">Publicado</div>
+              <div class="meta-tile__value">${esc(dataRelativa(s.criadoEm))}</div>
+            </div>
+          </div>
+          <div class="service-detail__seller">
+            <span class="avatar" style="background:${corInicial(s.prestador?.nome)}">${esc(iniciais(s.prestador?.nome))}</span>
+            <div>
+              <div class="cell-strong">${esc(s.prestador?.nome || 'Anônimo')}</div>
+              <div class="cell-muted">Prestador do serviço</div>
+            </div>
+          </div>
+          ${podeContratar ? `
+            <div class="divider"></div>
+            <div class="field">
+              <label for="msgContrato">Mensagem para o prestador</label>
+              <textarea id="msgContrato" placeholder="Conte o que você precisa, prazos, detalhes…"></textarea>
+            </div>
+          ` : ''}
+        </div>
+        <div class="modal__actions">
+          <button class="btn btn--ghost" data-fechar>Fechar</button>
+          ${podeContratar ? `<button class="btn btn--primary" data-contratar="${esc(s.id)}">Contratar</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `);
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', e => {
+    if (e.target.id === 'modalBackdrop' || e.target.closest('[data-fechar]')) backdrop.remove();
+  });
+  const btn = backdrop.querySelector('[data-contratar]');
+  if (btn) btn.addEventListener('click', async () => {
+    const msg = backdrop.querySelector('#msgContrato').value;
+    try {
+      await api('/contratos', { method: 'POST', body: { servicoId: s.id, mensagem: msg } });
+      toast('Contratação enviada! O prestador foi notificado.', 'success');
+      backdrop.remove();
+      if (!API.user) { /* nunca acontece */ }
+      navegar('contratos');
+    } catch (err) {
+      toast(err.message || 'Erro ao contratar.', 'error');
+    }
+  });
+}
+
+/* ---------------------------------- *
+ *  Autenticação
+ * ---------------------------------- */
+function renderAuth() {
+  const isLogin = state.authTab === 'login';
+  return el(`
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <aside class="auth-side">
+          <div>
+            <div class="auth-side__top">
+              <span class="brand__mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7h18l-1.5 12.5a2 2 0 0 1-2 1.5H6.5a2 2 0 0 1-2-1.5L3 7z"/>
+                  <path d="M8 7V5a4 4 0 0 1 8 0v2"/>
+                </svg>
+              </span>
+              <div>
+                <div style="font-family:var(--font-display);font-weight:700;font-size:16px">OfertaLivre</div>
+                <div class="cell-muted">marketplace freelance</div>
+              </div>
+            </div>
+            <h2 class="auth-side__title">Um só lugar<br/>para oferecer e contratar.</h2>
+            <p class="auth-side__lead">Crie sua conta e comece a publicar seus serviços ou contratar profissionais qualificados.</p>
+          </div>
+          <ul class="auth-side__list">
+            <li>Publicação com aprovação da administração</li>
+            <li>Contratos com status claro (pendente, aceito, concluído)</li>
+            <li>Tudo salvo localmente no próprio site</li>
+          </ul>
+          <div class="auth-side__hint">
+            💡 <strong>Conta de administrador:</strong> admin@marketplace.com · senha admin123
+          </div>
+        </aside>
+        <div class="auth-form">
+          <div class="tabs">
+            <button class="tabs__btn ${isLogin ? 'is-active' : ''}" data-tab="login">Entrar</button>
+            <button class="tabs__btn ${!isLogin ? 'is-active' : ''}" data-tab="registro">Criar conta</button>
+          </div>
+          <div id="authError" class="form-error" hidden></div>
+          ${isLogin ? formLogin() : formRegistro()}
+          <div class="auth-actions">
+            <span class="auth-link">${isLogin ? 'Não tem conta?' : 'Já tem conta?'}</span>
+            <a href="#" class="auth-link" data-switch="${isLogin ? 'registro' : 'login'}">${isLogin ? 'Cadastre-se' : 'Entrar'}</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function formLogin() {
+  return `
+    <form id="formLogin" novalidate>
+      <div class="field">
+        <label for="loginEmail">E-mail</label>
+        <input id="loginEmail" name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com" />
+      </div>
+      <div class="field">
+        <label for="loginSenha">Senha</label>
+        <input id="loginSenha" name="senha" type="password" autocomplete="current-password" required placeholder="Sua senha" />
+      </div>
+      <button type="submit" class="btn btn--primary" style="width:100%;justify-content:center">Entrar</button>
+    </form>
+  `;
+}
+
+function formRegistro() {
+  return `
+    <form id="formRegistro" novalidate>
+      <div class="field">
+        <label for="regNome">Nome completo</label>
+        <input id="regNome" name="nome" type="text" autocomplete="name" required placeholder="Seu nome" />
+      </div>
+      <div class="field">
+        <label for="regEmail">E-mail</label>
+        <input id="regEmail" name="email" type="email" autocomplete="email" required placeholder="voce@exemplo.com" />
+      </div>
+      <div class="field">
+        <label for="regSenha">Senha</label>
+        <input id="regSenha" name="senha" type="password" autocomplete="new-password" required minlength="6" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <button type="submit" class="btn btn--primary" style="width:100%;justify-content:center">Criar conta</button>
+    </form>
+  `;
+}
+
+function mostrarErro(msg) {
+  const e = $('#authError');
+  if (!e) return;
+  e.textContent = msg;
+  e.hidden = false;
+  e.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const form = e.target;
+  const isLogin = form.id === 'formLogin';
+  const body = isLogin
+    ? { email: form.email.value, senha: form.senha.value }
+    : { nome: form.nome.value, email: form.email.value, senha: form.senha.value };
+  try {
+    const r = await api(isLogin ? '/login' : '/registro', { method: 'POST', body });
+    API.setSession(r.token, r.usuario);
+    toast(isLogin ? 'Bem-vindo(a) de volta, ' + r.usuario.nome.split(' ')[0] + '!' : 'Conta criada com sucesso!', 'success');
+    navegar(r.usuario.role === 'admin' ? 'admin' : 'home');
+  } catch (err) {
+    mostrarErro(err.message || 'Erro.');
+  }
+}
+
+/* ---------------------------------- *
+ *  Admin
+ * ---------------------------------- */
+function renderAdmin() {
+  const tabs = [
+    { id: 'servicos',   label: 'Serviços' },
+    { id: 'contratos',  label: 'Contratos' },
+    { id: 'usuarios',   label: 'Usuários' }
+  ];
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Painel de administração</h2>
+        <p class="page-header__sub">Aprove serviços, acompanhe contratos e gerencie contas.</p>
+      </div>
+    </div>
+    <div class="tabs-nav">
+      ${tabs.map(t => `
+        <button class="tabs-nav__btn ${state.adminTab === t.id ? 'is-active' : ''}" data-tab="${t.id}">
+          ${esc(t.label)} <span class="count" data-count="${t.id}">–</span>
+        </button>
+      `).join('')}
+    </div>
+    <div id="adminPanel"></div>
+  `);
+}
+
+async function carregarAdmin() {
+  try {
+    const [s, c, u] = await Promise.all([
+      api('/admin/servicos'), api('/admin/contratos'), api('/admin/usuarios')
+    ]);
+    state.data.adminServicos = s.servicos;
+    state.data.adminContratos = c.contratos;
+    state.data.adminUsuarios = u.usuarios;
+    const counts = {
+      servicos: s.servicos.length,
+      contratos: c.contratos.length,
+      usuarios: u.usuarios.length
+    };
+    $$('[data-count]').forEach(el => el.textContent = counts[el.dataset.count] ?? '–');
+    renderNav();
+    renderConteudoAdmin();
+  } catch (e) { console.error(e); }
+}
+
+function renderConteudoAdmin() {
+  const panel = $('#adminPanel');
+  if (!panel) return;
+  if (state.adminTab === 'servicos') panel.innerHTML = adminServicosHTML();
+  else if (state.adminTab === 'contratos') panel.innerHTML = adminContratosHTML();
+  else if (state.adminTab === 'usuarios') panel.innerHTML = adminUsuariosHTML();
+  $$('#adminPanel [data-acao]').forEach(b => b.addEventListener('click', e => {
+    const tr = e.target.closest('tr, .list-item');
+    const id = tr?.dataset.id;
+    adminAcao(b.dataset.acao, id);
+  }));
+  $$('#adminPanel [data-toggle]').forEach(b => b.addEventListener('click', e => {
+    const tr = e.target.closest('tr');
+    toggleUsuario(tr.dataset.id, b.dataset.toggle);
+  }));
+}
+
+function adminServicosHTML() {
+  const rows = state.data.adminServicos.map(s => {
+    const acoes = [];
+    if (s.status !== 'aprovado') acoes.push(`<button class="btn btn--primary btn--small" data-acao="aprovar">Aprovar</button>`);
+    acoes.push(`<button class="btn btn--danger btn--small" data-acao="remover">Remover</button>`);
+    return `
+      <tr data-id="${esc(s.id)}">
+        <td>
+          <div class="cell-strong">${esc(s.titulo)}</div>
+          <div class="cell-muted">${esc(categoriaPorId(s.categoria).nome)} · ${esc(dataRelativa(s.criadoEm))}</div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="avatar avatar--sm" style="background:${corInicial(s.prestador?.nome)}">${esc(iniciais(s.prestador?.nome))}</span>
+            <div>
+              <div>${esc(s.prestador?.nome || '—')}</div>
+              <div class="cell-muted">${esc(s.prestador?.email || '')}</div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="cell-strong">${moeda(s.preco)}</div>
+          <div class="cell-muted">${esc(s.formaPagamento || '')}</div>
+        </td>
+        <td><span class="status-pill status-pill--${esc(s.status)}">${esc(s.status)}</span></td>
+        <td><div class="cell-actions">${acoes.join('')}</div></td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Serviço</th><th>Prestador</th><th>Valor</th><th>Status</th><th>Ações</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="5"><div class="empty" style="border:0;background:transparent">Nenhum serviço publicado ainda.</div></td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function adminContratosHTML() {
+  const rows = state.data.adminContratos.map(c => `
+    <tr data-id="${esc(c.id)}">
+      <td>
+        <div class="cell-strong">${esc(c.servicoTitulo)}</div>
+        <div class="cell-muted">${esc(dataRelativa(c.criadoEm))}</div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="avatar avatar--sm" style="background:${corInicial(c.prestador?.nome)}">${esc(iniciais(c.prestador?.nome))}</span>
+          <div>
+            <div>${esc(c.prestador?.nome || '—')}</div>
+            <div class="cell-muted">prestador</div>
+          </div>
+        </div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="avatar avatar--sm" style="background:${corInicial(c.contratante?.nome)}">${esc(iniciais(c.contratante?.nome))}</span>
+          <div>
+            <div>${esc(c.contratante?.nome || '—')}</div>
+            <div class="cell-muted">contratante</div>
+          </div>
+        </div>
+      </td>
+      <td><span class="status-pill status-pill--${esc(c.status)}">${esc(c.status)}</span></td>
+    </tr>
+  `).join('');
+  return `
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Serviço</th><th>Prestador</th><th>Contratante</th><th>Status</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="4"><div class="empty" style="border:0;background:transparent">Nenhum contrato ainda.</div></td></tr>`}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function adminUsuariosHTML() {
+  const rows = state.data.adminUsuarios.map(u => {
+    const isMe = u.id === API.user.id;
+    const suspensao = u.ativo === false;
+    const acao = isMe
+      ? `<span class="cell-muted">você</span>`
+      : `<button class="row-toggle ${suspensao ? '' : 'is-on'}" data-toggle="${esc(u.id)}" title="${suspensao ? 'Reativar' : 'Suspender'}" aria-label="${suspensao ? 'Reativar' : 'Suspender'}"></button>`;
+    return `
+      <tr data-id="${esc(u.id)}">
+        <td>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="avatar" style="background:${corInicial(u.nome)}">${esc(iniciais(u.nome))}</span>
+            <div>
+              <div class="cell-strong">${esc(u.nome)}</div>
+              <div class="cell-muted">${esc(u.email)}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="userbox__role userbox__role--${u.role}">${u.role}</span></td>
+        <td>
+          <span class="status-pill ${suspensao ? 'status-pill--removido' : 'status-pill--aprovado'}">${suspensao ? 'suspenso' : 'ativo'}</span>
+        </td>
+        <td class="cell-muted">${esc(new Date(u.criadoEm).toLocaleDateString('pt-BR'))}</td>
+        <td><div class="cell-actions">${acao}</div></td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="table-wrap">
+      <table class="data">
+        <thead><tr><th>Usuário</th><th>Perfil</th><th>Status</th><th>Criado em</th><th>Ação</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <p class="muted small" style="margin-top:10px">Ao suspender um usuário, ele não consegue mais entrar na plataforma até ser reativado.</p>
+  `;
+}
+
+async function adminAcao(acao, id) {
+  if (!id) return;
+  try {
+    if (acao === 'aprovar') {
+      await api(`/admin/servicos/${id}/aprovar`, { method: 'POST' });
+      toast('Serviço aprovado.', 'success');
+    } else if (acao === 'remover') {
+      if (!confirm('Remover este serviço permanentemente?')) return;
+      await api(`/admin/servicos/${id}/remover`, { method: 'POST' });
+      toast('Serviço removido.', 'success');
+    }
+    carregarAdmin();
+  } catch (err) {
+    toast(err.message || 'Erro.', 'error');
+  }
+}
+
+async function toggleUsuario(id, toggle) {
+  try {
+    const r = await api(`/admin/usuarios/${id}/toggle`, { method: 'POST' });
+    toast(r.usuario.ativo ? 'Usuário reativado.' : 'Usuário suspenso.', 'success');
+    carregarAdmin();
+  } catch (err) {
+    toast(err.message || 'Erro.', 'error');
+  }
+}
+
+function carregarConteudoAdmin() { renderConteudoAdmin(); }
+
+/* ---------------------------------- *
+ *  Minha conta
+ * ---------------------------------- */
+function renderConta() {
+  return el(`
+    <div class="page-header">
+      <div>
+        <h2 class="page-header__title">Minha conta</h2>
+        <p class="page-header__sub">Dados do seu perfil e ações.</p>
+      </div>
+    </div>
+    <div class="form-card" style="max-width:560px">
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+        <span class="avatar" style="width:56px;height:56px;font-size:20px;background:${corInicial(API.user.nome)}">${esc(iniciais(API.user.nome))}</span>
+        <div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:18px">${esc(API.user.nome)}</div>
+          <div class="cell-muted">${esc(API.user.email)}</div>
+          <span class="userbox__role userbox__role--${API.user.role}" style="margin-top:6px;display:inline-block">${API.user.role === 'admin' ? 'administrador' : 'membro'}</span>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <form id="formSenha">
+        <div class="field">
+          <label for="sAtual">Senha atual</label>
+          <input id="sAtual" type="password" name="senhaAtual" autocomplete="current-password" required />
+        </div>
+        <div class="field">
+          <label for="sNova">Nova senha</label>
+          <input id="sNova" type="password" name="novaSenha" autocomplete="new-password" required minlength="6" />
+          <div class="field__hint">Mínimo de 6 caracteres.</div>
+        </div>
+        <button type="submit" class="btn btn--primary">Alterar senha</button>
+      </form>
+      <div class="divider"></div>
+      <button class="btn btn--danger" id="btnLogout">Sair da conta</button>
+    </div>
+  `);
+}
+
+async function submitSenha(e) {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api('/conta/senha', { method: 'PATCH', body: { senhaAtual: f.senhaAtual.value, novaSenha: f.novaSenha.value } });
+    toast('Senha alterada com sucesso.', 'success');
+    f.reset();
+  } catch (

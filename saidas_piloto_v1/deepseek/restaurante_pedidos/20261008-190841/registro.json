@@ -1,0 +1,44 @@
+{
+  "data_hora_utc": "2026-10-08T19:08:41+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "restaurante_pedidos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\restaurante_pedidos\\20261008-190841",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um sistema de pedidos para um restaurante. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o gerente do restaurante. Os clientes precisam poder ver o cardápio, fazer um pedido e acompanhar os pedidos que já fizeram. O gerente do restaurante precisa poder cadastrar, editar e remover pratos do cardápio, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "DeepInfra",
+  "id_geracao": "gen-1791486521-blDO8PjqSRNYNkYYhUEJ",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 245,
+  "tokens_saida": 8743,
+  "tokens_raciocinio": 0,
+  "tokens_total": 8988,
+  "custo_usd": 0.00370636,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 75.9,
+  "duracao_api_s": 75.9,
+  "tokens_por_s": 115.1,
+  "n_arquivos": 6,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

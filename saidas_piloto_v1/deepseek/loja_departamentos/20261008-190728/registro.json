@@ -1,0 +1,44 @@
+{
+  "data_hora_utc": "2026-10-08T19:07:28+00:00",
+  "modelo": "deepseek",
+  "modelo_id": "deepseek/deepseek-v4.1-flash",
+  "dominio": "loja_departamentos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\deepseek\\loja_departamentos\\20261008-190728",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma loja virtual de departamentos, com produtos de vários tipos, tipo um shopping online. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o dono da loja. Os clientes precisam poder ver os produtos e colocar no carrinho, finalizar o pedido e ver os pedidos que já fizeram. O dono da loja precisa poder cadastrar, editar e remover produtos, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "InferenceNet",
+  "id_geracao": "gen-1791486449-7REhjQmuj9X8wQkmtAOB",
+  "modelo_servido": "deepseek/deepseek-v4.1-flash",
+  "tokens_entrada": 254,
+  "tokens_saida": 13883,
+  "tokens_raciocinio": 0,
+  "tokens_total": 14137,
+  "custo_usd": 0.00835647,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 44.8,
+  "duracao_api_s": 44.8,
+  "tokens_por_s": 309.9,
+  "n_arquivos": 6,
+  "arquivos": [
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

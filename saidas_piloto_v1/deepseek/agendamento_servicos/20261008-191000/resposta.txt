@@ -1,0 +1,906 @@
+=== README.md ===
+# Sistema de Agendamento de Serviços
+
+Sistema completo de agendamento com login de clientes e administrador. Tudo funciona dentro do próprio site, sem serviços externos.
+
+## Como instalar e rodar
+
+### 1. Instale o Node.js
+Baixe em https://nodejs.org (versão LTS recomendada).
+
+### 2. Instale as dependências
+No terminal, dentro da pasta do projeto, rode:
+
+```
+npm install
+```
+
+### 3. Inicie o servidor
+```
+npm start
+```
+
+O site vai abrir em: **http://localhost:3000**
+
+## Conta do administrador (responsável pelo negócio)
+
+Na primeira vez que o servidor rodar, será criada automaticamente:
+
+- **Email:** admin@admin.com
+- **Senha:** admin123
+
+Use essa conta para cadastrar serviços e horários.
+
+## Como usar
+
+### Cliente
+1. Acesse a página inicial e clique em **Cadastrar**.
+2. Veja os serviços disponíveis, escolha um e clique em **Agendar**.
+3. Escolha um horário livre e confirme.
+4. Em **Meus agendamentos** você pode ver ou cancelar.
+
+### Administrador
+1. Faça login com a conta de admin.
+2. Em **Serviços**: cadastre e edite serviços.
+3. Em **Horários**: cadastre horários disponíveis.
+4. Em **Agendamentos**: confirme, recuse ou veja todos.
+
+## Onde os dados ficam salvos
+
+Tudo é salvo em um arquivo `data.json` na pasta do projeto. Mesmo fechando o site, os dados continuam lá.
+
+## Rodar na internet (produção)
+
+Para deixar no ar, suba este projeto em um serviço como Railway, Render ou em um VPS com Node.js instalado. Basta rodar `npm start` lá. Também é possível definir a porta com a variável de ambiente `PORT`.
+
+---
+
+=== package.json ===
+{
+  "name": "sistema-agendamento",
+  "version": "1.0.0",
+  "description": "Sistema de agendamento de servicos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3"
+  }
+}
+
+---
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_FILE = path.join(__dirname, 'data.json');
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: 'agendamento-secret-key-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+// ---------- Persistencia ----------
+let db = {
+  users: [],
+  services: [],
+  slots: [],
+  appointments: []
+};
+
+function loadData() {
+  if (fs.existsSync(DATA_FILE)) {
+    try {
+      db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+      db.users = db.users || [];
+      db.services = db.services || [];
+      db.slots = db.slots || [];
+      db.appointments = db.appointments || [];
+    } catch (e) {
+      console.error('Erro ao ler data.json, iniciando vazio.');
+    }
+  }
+  // Cria admin padrao se nao existir
+  if (!db.users.find(u => u.role === 'admin')) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    db.users.push({
+      id: Date.now().toString(),
+      name: 'Administrador',
+      email: 'admin@admin.com',
+      password: hash,
+      role: 'admin'
+    });
+    saveData();
+  }
+}
+
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+}
+
+loadData();
+
+// ---------- Helpers ----------
+function requireAuth(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'Nao autenticado' });
+  next();
+}
+function requireAdmin(req, res, next) {
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (!user || user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
+  next();
+}
+
+// ---------- Autenticacao ----------
+app.post('/api/register', (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Preencha todos os campos' });
+  if (db.users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
+    return res.status(400).json({ error: 'Email ja cadastrado' });
+  }
+  const user = {
+    id: Date.now().toString(),
+    name,
+    email,
+    password: bcrypt.hashSync(password, 10),
+    role: 'client'
+  };
+  db.users.push(user);
+  saveData();
+  req.session.userId = user.id;
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body;
+  const user = db.users.find(u => u.email.toLowerCase() === (email || '').toLowerCase());
+  if (!user || !bcrypt.compareSync(password || '', user.password)) {
+    return res.status(400).json({ error: 'Email ou senha invalidos' });
+  }
+  req.session.userId = user.id;
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/me', (req, res) => {
+  if (!req.session.userId) return res.json(null);
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (!user) return res.json(null);
+  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+});
+
+// ---------- Servicos ----------
+app.get('/api/services', (req, res) => {
+  res.json(db.services);
+});
+
+app.post('/api/services', requireAuth, requireAdmin, (req, res) => {
+  const { name, description, duration, price } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nome obrigatorio' });
+  const service = {
+    id: Date.now().toString(),
+    name,
+    description: description || '',
+    duration: duration || '30 min',
+    price: price || ''
+  };
+  db.services.push(service);
+  saveData();
+  res.json(service);
+});
+
+app.put('/api/services/:id', requireAuth, requireAdmin, (req, res) => {
+  const service = db.services.find(s => s.id === req.params.id);
+  if (!service) return res.status(404).json({ error: 'Servico nao encontrado' });
+  service.name = req.body.name || service.name;
+  service.description = req.body.description !== undefined ? req.body.description : service.description;
+  service.duration = req.body.duration !== undefined ? req.body.duration : service.duration;
+  service.price = req.body.price !== undefined ? req.body.price : service.price;
+  saveData();
+  res.json(service);
+});
+
+app.delete('/api/services/:id', requireAuth, requireAdmin, (req, res) => {
+  db.services = db.services.filter(s => s.id !== req.params.id);
+  saveData();
+  res.json({ ok: true });
+});
+
+// ---------- Horarios (slots) ----------
+app.get('/api/slots', (req, res) => {
+  res.json(db.slots);
+});
+
+app.post('/api/slots', requireAuth, requireAdmin, (req, res) => {
+  const { date, time } = req.body;
+  if (!date || !time) return res.status(400).json({ error: 'Data e hora obrigatorios' });
+  if (db.slots.find(s => s.date === date && s.time === time)) {
+    return res.status(400).json({ error: 'Ja existe este horario' });
+  }
+  const slot = { id: Date.now().toString(), date, time };
+  db.slots.push(slot);
+  saveData();
+  res.json(slot);
+});
+
+app.delete('/api/slots/:id', requireAuth, requireAdmin, (req, res) => {
+  db.slots = db.slots.filter(s => s.id !== req.params.id);
+  db.appointments = db.appointments.filter(a => a.slotId !== req.params.id);
+  saveData();
+  res.json({ ok: true });
+});
+
+// ---------- Agendamentos ----------
+app.get('/api/appointments', requireAuth, (req, res) => {
+  const user = db.users.find(u => u.id === req.session.userId);
+  let list;
+  if (user.role === 'admin') {
+    list = db.appointments;
+  } else {
+    list = db.appointments.filter(a => a.userId === user.id);
+  }
+  // Enriquecer com nomes de servicos, horarios e usuarios
+  const enriched = list.map(a => {
+    const s = db.services.find(x => x.id === a.serviceId) || {};
+    const sl = db.slots.find(x => x.id === a.slotId) || {};
+    const u = db.users.find(x => x.id === a.userId) || {};
+    return {
+      ...a,
+      serviceName: s.name || 'Servico removido',
+      servicePrice: s.price || '',
+      date: sl.date || '',
+      time: sl.time || '',
+      clientName: u.name || '',
+      clientEmail: u.email || ''
+    };
+  });
+  enriched.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  res.json(enriched);
+});
+
+app.post('/api/appointments', requireAuth, (req, res) => {
+  const { serviceId, slotId } = req.body;
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (!db.services.find(s => s.id === serviceId)) return res.status(400).json({ error: 'Servico invalido' });
+  const slot = db.slots.find(s => s.id === slotId);
+  if (!slot) return res.status(400).json({ error: 'Horario invalido' });
+  if (db.appointments.find(a => a.slotId === slotId && a.status !== 'recusado' && a.status !== 'cancelado')) {
+    return res.status(400).json({ error: 'Horario ja ocupado' });
+  }
+  const appt = {
+    id: Date.now().toString(),
+    userId: user.id,
+    serviceId,
+    slotId,
+    status: 'pendente',
+    createdAt: new Date().toISOString()
+  };
+  db.appointments.push(appt);
+  saveData();
+  res.json(appt);
+});
+
+app.put('/api/appointments/:id', requireAuth, (req, res) => {
+  const appt = db.appointments.find(a => a.id === req.params.id);
+  if (!appt) return res.status(404).json({ error: 'Agendamento nao encontrado' });
+  const user = db.users.find(u => u.id === req.session.userId);
+  const { status } = req.body;
+
+  // Cliente so pode cancelar o proprio
+  if (user.role !== 'admin') {
+    if (appt.userId !== user.id) return res.status(403).json({ error: 'Acesso negado' });
+    if (status !== 'cancelado') return res.status(403).json({ error: 'Cliente so pode cancelar' });
+  } else {
+    if (!['confirmado', 'recusado', 'pendente'].includes(status)) {
+      return res.status(400).json({ error: 'Status invalido' });
+    }
+  }
+  appt.status = status;
+  saveData();
+  res.json(appt);
+});
+
+app.delete('/api/appointments/:id', requireAuth, (req, res) => {
+  const appt = db.appointments.find(a => a.id === req.params.id);
+  if (!appt) return res.status(404).json({ error: 'Nao encontrado' });
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (user.role !== 'admin' && appt.userId !== user.id) {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+  db.appointments = db.appointments.filter(a => a.id !== req.params.id);
+  saveData();
+  res.json({ ok: true });
+});
+
+// ---------- Horarios livres (para cliente) ----------
+app.get('/api/free-slots', requireAuth, (req, res) => {
+  const busySlotIds = db.appointments
+    .filter(a => a.status !== 'recusado' && a.status !== 'cancelado')
+    .map(a => a.slotId);
+  const free = db.slots.filter(s => !busySlotIds.includes(s.id));
+  free.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  res.json(free);
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+---
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Agendamento</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Sistema de Agendamento</h1>
+  <div id="userBox"></div>
+</header>
+
+<main id="app"></main>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
+
+---
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f4f6f8;
+  color: #222;
+  min-height: 100vh;
+}
+header {
+  background: #1f6feb;
+  color: white;
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+header h1 { font-size: 20px; }
+#userBox { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+#userBox button { margin-left: 6px; }
+main { max-width: 960px; margin: 24px auto; padding: 0 16px; }
+
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+}
+.card h2 { font-size: 18px; margin-bottom: 12px; }
+.card h3 { font-size: 16px; margin-bottom: 8px; }
+
+button {
+  background: #1f6feb;
+  color: white;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background .15s;
+}
+button:hover { background: #1554c0; }
+button.secondary { background: #6c757d; }
+button.secondary:hover { background: #545b62; }
+button.danger { background: #dc3545; }
+button.danger:hover { background: #b02a37; }
+button.success { background: #198754; }
+button.success:hover { background: #146c43; }
+button.small { padding: 5px 10px; font-size: 13px; }
+
+input, select, textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+label { display: block; font-size: 13px; color: #444; margin-bottom: 4px; }
+
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabs button { background: #e9ecef; color: #333; }
+.tabs button.active { background: #1f6feb; color: white; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.item {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fafbfc;
+}
+.item h4 { margin-bottom: 6px; }
+.item p { font-size: 13px; color: #555; margin-bottom: 8px; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge.pendente { background: #fff3cd; color: #856404; }
+.badge.confirmado { background: #d1e7dd; color: #0f5132; }
+.badge.recusado { background: #f8d7da; color: #842029; }
+.badge.cancelado { background: #e2e3e5; color: #41464b; }
+
+.msg { padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+.msg.error { background: #f8d7da; color: #842029; }
+.msg.success { background: #d1e7dd; color: #0f5132; }
+
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: white;
+  padding: 24px;
+  border-radius: 10px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.close { float: right; font-size: 24px; cursor: pointer; color: #888; }
+.close:hover { color: #000; }
+
+.empty { color: #888; font-size: 14px; font-style: italic; }
+.section-title { margin: 20px 0 10px; font-size: 16px; color: #333; }
+
+@media (max-width: 600px) {
+  header { padding: 12px; }
+  header h1 { font-size: 16px; }
+}
+
+---
+
+=== public/app.js ===
+let currentUser = null;
+let activeTab = 'services';
+let servicesCache = [];
+let slotsCache = [];
+let appointmentsCache = [];
+let freeSlotsCache = [];
+
+// ---------- Utils ----------
+async function api(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...options
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erro');
+  return data;
+}
+
+function msg(text, type = 'success') {
+  return `<div class="msg ${type}">${text}</div>`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+function openModal(html) {
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modal').classList.remove('hidden');
+}
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+}
+
+// ---------- Render principal ----------
+async function render() {
+  const header = document.getElementById('userBox');
+  if (currentUser) {
+    header.innerHTML = `
+      <span>Olá, <strong>${currentUser.name}</strong>${currentUser.role === 'admin' ? ' (admin)' : ''}</span>
+      <button class="secondary small" onclick="logout()">Sair</button>
+    `;
+  } else {
+    header.innerHTML = '';
+  }
+
+  const app = document.getElementById('app');
+  if (!currentUser) {
+    app.innerHTML = renderAuth();
+    return;
+  }
+
+  if (currentUser.role === 'admin') {
+    app.innerHTML = `
+      <div class="tabs">
+        <button class="${activeTab==='services'?'active':''}" onclick="setTab('services')">Serviços</button>
+        <button class="${activeTab==='slots'?'active':''}" onclick="setTab('slots')">Horários</button>
+        <button class="${activeTab==='appointments'?'active':''}" onclick="setTab('appointments')">Agendamentos</button>
+      </div>
+      <div id="tabContent"></div>
+    `;
+    if (activeTab === 'services') await renderAdminServices();
+    else if (activeTab === 'slots') await renderAdminSlots();
+    else await renderAdminAppointments();
+  } else {
+    app.innerHTML = `
+      <div class="tabs">
+        <button class="${activeTab==='services'?'active':''}" onclick="setTab('services')">Serviços</button>
+        <button class="${activeTab==='appointments'?'active':''}" onclick="setTab('appointments')">Meus agendamentos</button>
+      </div>
+      <div id="tabContent"></div>
+    `;
+    if (activeTab === 'services') await renderClientServices();
+    else await renderClientAppointments();
+  }
+}
+
+function setTab(t) {
+  activeTab = t;
+  render();
+}
+
+async function login() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  try {
+    currentUser = await api('/api/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    activeTab = currentUser.role === 'admin' ? 'services' : 'services';
+    render();
+  } catch (e) {
+    document.getElementById('authMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+async function register() {
+  const name = document.getElementById('regName').value;
+  const email = document.getElementById('regEmail').value;
+  const password = document.getElementById('regPassword').value;
+  try {
+    currentUser = await api('/api/register', { method: 'POST', body: JSON.stringify({ name, email, password }) });
+    render();
+  } catch (e) {
+    document.getElementById('authMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  currentUser = null;
+  render();
+}
+
+function renderAuth() {
+  return `
+    <div class="card">
+      <h2>Entrar</h2>
+      <div id="authMsg"></div>
+      <label>Email</label>
+      <input id="email" type="email" placeholder="seu@email.com">
+      <label>Senha</label>
+      <input id="password" type="password" placeholder="Sua senha">
+      <button onclick="login()">Entrar</button>
+      <hr style="margin:20px 0; border:none; border-top:1px solid #eee;">
+      <h3>Criar conta</h3>
+      <label>Nome</label>
+      <input id="regName" placeholder="Seu nome">
+      <label>Email</label>
+      <input id="regEmail" type="email" placeholder="seu@email.com">
+      <label>Senha</label>
+      <input id="regPassword" type="password" placeholder="Crie uma senha">
+      <button class="success" onclick="register()">Cadastrar</button>
+      <p style="margin-top:14px;font-size:12px;color:#888;">Admin padrão: admin@admin.com / admin123</p>
+    </div>
+  `;
+}
+
+// ---------- Admin: Serviços ----------
+async function renderAdminServices() {
+  servicesCache = await api('/api/services');
+  const el = document.getElementById('tabContent');
+  const cards = servicesCache.map(s => `
+    <div class="item">
+      <h4>${s.name}</h4>
+      <p>${s.description || 'Sem descrição'}</p>
+      <p><strong>Duração:</strong> ${s.duration} | <strong>Preço:</strong> ${s.price || '-'}</p>
+      <div class="row">
+        <button class="small" onclick="editService('${s.id}')">Editar</button>
+        <button class="small danger" onclick="deleteService('${s.id}')">Excluir</button>
+      </div>
+    </div>
+  `).join('') || '<p class="empty">Nenhum serviço cadastrado.</p>';
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Novo serviço</h2>
+      <div id="svcMsg"></div>
+      <label>Nome</label>
+      <input id="svcName" placeholder="Ex: Corte de cabelo">
+      <label>Descrição</label>
+      <textarea id="svcDesc" rows="2" placeholder="Descrição opcional"></textarea>
+      <label>Duração</label>
+      <input id="svcDur" placeholder="Ex: 30 min">
+      <label>Preço</label>
+      <input id="svcPrice" placeholder="Ex: R$ 50,00">
+      <button onclick="createService()">Cadastrar serviço</button>
+    </div>
+    <div class="card">
+      <h2>Serviços cadastrados</h2>
+      <div class="grid">${cards}</div>
+    </div>
+  `;
+}
+
+async function createService() {
+  const name = document.getElementById('svcName').value;
+  const description = document.getElementById('svcDesc').value;
+  const duration = document.getElementById('svcDur').value;
+  const price = document.getElementById('svcPrice').value;
+  try {
+    await api('/api/services', { method: 'POST', body: JSON.stringify({ name, description, duration, price }) });
+    renderAdminServices();
+  } catch (e) {
+    document.getElementById('svcMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+async function editService(id) {
+  const s = servicesCache.find(x => x.id === id);
+  openModal(`
+    <h3>Editar serviço</h3>
+    <div id="editMsg"></div>
+    <label>Nome</label>
+    <input id="editName" value="${s.name}">
+    <label>Descrição</label>
+    <textarea id="editDesc" rows="2">${s.description || ''}</textarea>
+    <label>Duração</label>
+    <input id="editDur" value="${s.duration || ''}">
+    <label>Preço</label>
+    <input id="editPrice" value="${s.price || ''}">
+    <button onclick="saveService('${id}')">Salvar</button>
+  `);
+}
+
+async function saveService(id) {
+  const name = document.getElementById('editName').value;
+  const description = document.getElementById('editDesc').value;
+  const duration = document.getElementById('editDur').value;
+  const price = document.getElementById('editPrice').value;
+  try {
+    await api('/api/services/' + id, { method: 'PUT', body: JSON.stringify({ name, description, duration, price }) });
+    closeModal();
+    renderAdminServices();
+  } catch (e) {
+    document.getElementById('editMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+async function deleteService(id) {
+  if (!confirm('Excluir este serviço?')) return;
+  await api('/api/services/' + id, { method: 'DELETE' });
+  renderAdminServices();
+}
+
+// ---------- Admin: Horários ----------
+async function renderAdminSlots() {
+  slotsCache = await api('/api/slots');
+  appointmentsCache = await api('/api/appointments');
+  const busyIds = appointmentsCache.filter(a => a.status !== 'recusado' && a.status !== 'cancelado').map(a => a.slotId);
+  const el = document.getElementById('tabContent');
+  const cards = slotsCache.map(s => {
+    const busy = busyIds.includes(s.id);
+    return `
+      <div class="item">
+        <h4>${fmtDate(s.date)}</h4>
+        <p>Horário: <strong>${s.time}</strong></p>
+        <p><span class="badge ${busy ? 'recusado' : 'confirmado'}">${busy ? 'Ocupado' : 'Livre'}</span></p>
+        <button class="small danger" onclick="deleteSlot('${s.id}')">Excluir</button>
+      </div>
+    `;
+  }).join('') || '<p class="empty">Nenhum horário cadastrado.</p>';
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Novo horário</h2>
+      <div id="slotMsg"></div>
+      <label>Data</label>
+      <input id="slotDate" type="date">
+      <label>Hora</label>
+      <input id="slotTime" type="time">
+      <button onclick="createSlot()">Cadastrar horário</button>
+    </div>
+    <div class="card">
+      <h2>Horários cadastrados</h2>
+      <div class="grid">${cards}</div>
+    </div>
+  `;
+}
+
+async function createSlot() {
+  const date = document.getElementById('slotDate').value;
+  const time = document.getElementById('slotTime').value;
+  try {
+    await api('/api/slots', { method: 'POST', body: JSON.stringify({ date, time }) });
+    renderAdminSlots();
+  } catch (e) {
+    document.getElementById('slotMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+async function deleteSlot(id) {
+  if (!confirm('Excluir este horário? Agendamentos vinculados serão removidos.')) return;
+  await api('/api/slots/' + id, { method: 'DELETE' });
+  renderAdminSlots();
+}
+
+// ---------- Admin: Agendamentos ----------
+async function renderAdminAppointments() {
+  appointmentsCache = await api('/api/appointments');
+  const el = document.getElementById('tabContent');
+  const cards = appointmentsCache.map(a => `
+    <div class="item">
+      <h4>${a.serviceName}</h4>
+      <p><strong>Cliente:</strong> ${a.clientName} (${a.clientEmail})</p>
+      <p><strong>Data:</strong> ${fmtDate(a.date)} às ${a.time}</p>
+      <p><strong>Status:</strong> <span class="badge ${a.status}">${a.status}</span></p>
+      <div class="row">
+        ${a.status === 'pendente' ? `
+          <button class="small success" onclick="setApptStatus('${a.id}','confirmado')">Confirmar</button>
+          <button class="small danger" onclick="setApptStatus('${a.id}','recusado')">Recusar</button>
+        ` : ''}
+        ${a.status === 'confirmado' ? `
+          <button class="small danger" onclick="setApptStatus('${a.id}','recusado')">Recusar</button>
+        ` : ''}
+        ${a.status === 'recusado' ? `
+          <button class="small" onclick="setApptStatus('${a.id}','pendente')">Reabrir</button>
+        ` : ''}
+      </div>
+    </div>
+  `).join('') || '<p class="empty">Nenhum agendamento.</p>';
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Todos os agendamentos</h2>
+      <div class="grid">${cards}</div>
+    </div>
+  `;
+}
+
+async function setApptStatus(id, status) {
+  await api('/api/appointments/' + id, { method: 'PUT', body: JSON.stringify({ status }) });
+  renderAdminAppointments();
+}
+
+// ---------- Cliente: Serviços ----------
+async function renderClientServices() {
+  servicesCache = await api('/api/services');
+  freeSlotsCache = await api('/api/free-slots');
+  const el = document.getElementById('tabContent');
+  const cards = servicesCache.map(s => `
+    <div class="item">
+      <h4>${s.name}</h4>
+      <p>${s.description || 'Sem descrição'}</p>
+      <p><strong>Duração:</strong> ${s.duration} | <strong>Preço:</strong> ${s.price || '-'}</p>
+      <button class="small" onclick="openBooking('${s.id}')">Agendar</button>
+    </div>
+  `).join('') || '<p class="empty">Nenhum serviço disponível.</p>';
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Serviços disponíveis</h2>
+      <div class="grid">${cards}</div>
+    </div>
+  `;
+}
+
+function openBooking(serviceId) {
+  const options = freeSlotsCache.map(s =>
+    `<option value="${s.id}">${fmtDate(s.date)} às ${s.time}</option>`
+  ).join('');
+  openModal(`
+    <h3>Escolha um horário</h3>
+    <div id="bookMsg"></div>
+    ${freeSlotsCache.length === 0 ? '<p class="empty">Nenhum horário disponível no momento.</p>' : `
+      <label>Horário disponível</label>
+      <select id="bookSlot">${options}</select>
+      <button onclick="confirmBooking('${serviceId}')">Confirmar agendamento</button>
+    `}
+  `);
+}
+
+async function confirmBooking(serviceId) {
+  const slotId = document.getElementById('bookSlot').value;
+  try {
+    await api('/api/appointments', { method: 'POST', body: JSON.stringify({ serviceId, slotId }) });
+    closeModal();
+    alert('Agendamento enviado! Aguarde a confirmação.');
+    renderClientServices();
+  } catch (e) {
+    document.getElementById('bookMsg').innerHTML = msg(e.message, 'error');
+  }
+}
+
+// ---------- Cliente: Meus agendamentos ----------
+async function renderClientAppointments() {
+  appointmentsCache = await api('/api/appointments');
+  const el = document.getElementById('tabContent');
+  const cards = appointmentsCache.map(a => `
+    <div class="item">
+      <h4>${a.serviceName}</h4>
+      <p><strong>Data:</strong> ${fmtDate(a.date)} às ${a.time}</p>
+      <p><strong>Preço:</strong> ${a.servicePrice || '-'}</p>
+      <p><strong>Status:</strong> <span class="badge ${a.status}">${a.status}</span></p>
+      ${(a.status === 'pendente' || a.status === 'confirmado') ? `
+        <button class="small danger" onclick="cancelAppt('${a.id}')">Cancelar</button>
+      ` : ''}
+    </div>
+  `).join('') || '<p class="empty">Você ainda não tem agendamentos.</p>';
+
+  el.innerHTML = `
+    <div class="card">
+      <h2>Meus agendamentos</h2>
+      <div class="grid">${cards}</div>
+    </div>
+  `;
+}
+
+async function cancelAppt(id) {
+  if (!confirm('Cancelar este agendamento?')) return;
+  await api('/api/appointments/' + id, { method: 'PUT', body: JSON.stringify({ status: 'cancelado' }) });
+  renderClientAppointments();
+}
+
+// ---------- Init ----------
+(async function init() {
+  currentUser = await api('/api/me');
+  render();
+})();

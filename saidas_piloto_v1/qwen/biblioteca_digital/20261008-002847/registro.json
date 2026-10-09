@@ -1,0 +1,45 @@
+{
+  "data_hora_utc": "2026-10-08T00:28:47+00:00",
+  "modelo": "qwen",
+  "modelo_id": "qwen/qwen3.8-27b",
+  "dominio": "biblioteca_digital",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\qwen\\biblioteca_digital\\20261008-002847",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma biblioteca digital com empréstimo de itens. Não sei nada de programação, só quero que funcione.\n\nVão usar os leitores e o bibliotecário. Os leitores precisam poder buscar e ver os itens do acervo, pegar um item emprestado e devolver os itens que pegaram. O bibliotecário precisa poder cadastrar, editar e remover itens do acervo, bloquear novos empréstimos de leitores com atraso e ver o histórico de empréstimos de todos os leitores.\n\nCada pessoa entra com a sua conta. Tudo precisa ficar salvo, mesmo se eu fechar e abrir o site de novo. Quero que funcione de verdade na internet. Não quero ligar com outros serviços, quero tudo dentro do próprio site.",
+  "provedor": "Phala",
+  "id_geracao": "gen-1791419329-3yZdIOL0c0kGd3f2k2tT",
+  "modelo_servido": "qwen/qwen3.8-27b",
+  "tokens_entrada": 232,
+  "tokens_saida": 11629,
+  "tokens_raciocinio": 0,
+  "tokens_total": 11861,
+  "custo_usd": 0.021839175,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 87.4,
+  "duracao_api_s": 87.4,
+  "tokens_por_s": 133.0,
+  "n_arquivos": 7,
+  "arquivos": [
+    "README.md",
+    "package.json",
+    "index.html",
+    "src/main.jsx",
+    "src/storage.js",
+    "src/styles.css",
+    "src/App.jsx"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 1,
+  "estado": "gerada",
+  "erro": ""
+}

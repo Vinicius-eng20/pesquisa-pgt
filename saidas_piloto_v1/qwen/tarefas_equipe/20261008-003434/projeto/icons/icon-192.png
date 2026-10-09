@@ -1,0 +1,12 @@
+PASTE AQUI a imagem PNG de 192x192.
+
+Como gerar (2 passos, grátis, sem programar):
+1. Abra em uma aba: https://coolors.co  ou use o próprio browser.
+   Melhor: use um conversor simples. Abra a imagem abaixo em qualquer site de
+   "SVG to PNG" (ex.: cloudconvert.com, svgto.png) e exporte como PNG 192x192
+   e como PNG 512x512, salvando cada um com o nome icon-192.png e icon-512.png
+   dentro da pasta "icons".
+
+Se você não quiser se preocupar com o ícone: o site funciona normalmente
+mesmo sem os arquivos PNG. O browser simplesmente não mostra o ícone quando
+instalar como aplicativo. Você pode apagar as referências se quiser.

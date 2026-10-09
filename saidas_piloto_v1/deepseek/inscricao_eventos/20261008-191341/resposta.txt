@@ -1,0 +1,911 @@
+# Portal de Inscrição para Eventos
+
+Vou criar um site completo e funcional que atende todos os requisitos: contas de participantes e organizador, persistência de dados em SQLite (banco de dados local em arquivo), inscrições em eventos, e tudo dentro do próprio site.
+
+## Estrutura do projeto
+
+```
+=== package.json ===
+{
+  "name": "portal-eventos",
+ 家常"version": "1.0.0",
+  "description": "Portal de inscrição para eventos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
+```
+
+=== server.js ===
+const express = require('express');
+const path = require('path');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
+const Database = require('better-sqlite3');
+
+const PORT = process.env.PORT || 3000;
+const DB_FILE = path.join(__dirname, 'data.db');
+const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
+
+const db = new Database(DB_FILE);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('participant','organizer')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organizer_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  starts_at TEXT NOT NULL,
+  capacity INTEGER NOT NULL DEFAULT 0,
+  canceled INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (organizer_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS registrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  participant_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','canceled')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(event_id, participant_id),
+  FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+  FOREIGN KEY (participant_id) REFERENCES users(id) ON DELETE CASCADE
+);
+`);
+
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, 'public')));
+
+function signToken(user) {
+  return jwt.sign({ id: user.id, role: user.role, name: user.name }, JWT_SECRET, { expiresIn: '30d' });
+}
+
+function authOptional(req, _res, next) {
+  const token = req.cookies.token;
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (_) {}
+  }
+  next();
+}
+
+function authRequired(req, res, next) {
+  if (!req.user) return res.status(401).json({ error: 'Não autenticado' });
+  next();
+}
+
+function roleRequired(role) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'Não autenticado' });
+    if (req.user.role !== role) return res.status(403).json({ error: 'Sem permissão' });
+    next();
+  };
+}
+
+app.use(authOptional);
+
+// Auth
+app.post('/api/register', (req, res) => {
+  const { name, email, password, role } = req.body || {};
+  if (!name || !email || !password) return res.status(400).json({ error: 'Preencha todos os campos' });
+  if (!['participant', 'organizer'].includes(role)) return res.status(400).json({ error: 'Tipo inválido' });
+  if (password.length < 4) return res.status(400).json({ error: 'Senha muito curta' });
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email.toLowerCase());
+  if (exists) return res.status(400).json({ error: 'E-mail já cadastrado' });
+  const hash = bcrypt.hashSync(password, 10);
+  const info = db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)')
+    .run(name, email.toLowerCase(), hash, role);
+  const user = { id: info.lastInsertRowid, name, role };
+  res.cookie('token', signToken(user), { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
+  res.json({ user });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'Preencha todos os campos' });
+  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+  if (!row || !bcrypt.compareSync(password, row.password_hash)) {
+    return res.status(400).json({ error: 'E-mail ou senha inválidos' });
+  }
+  const user = { id: row.id, name: row.name, role: row.role };
+  res.cookie('token', signToken(user), { httpOnly: true, sameSite: 'lax', maxAge: 30 * 24 * 3600 * 1000 });
+  res.json({ user });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('token');
+  res.json({ ok: true });
+});
+
+app.get('/api/me', (req, res) => {
+  if (!req.user) return res.json({ user: null });
+  res.json({ user: req.user });
+});
+
+// Events
+app.get('/api/events', (req, res) => {
+  const rows = db.prepare(`
+    SELECT e.*, u.name AS organizer_name,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'canceled') AS registrations_count
+    FROM events e JOIN users u ON u.id = e.organizer_id
+    ORDER BY e.starts_at ASC
+  `).all();
+  res.json({ events: rows });
+});
+
+app.post('/api/events', roleRequired('organizer'), (req, res) => {
+  const { title, description, location, starts_at, capacity } = req.body || {};
+  if (!title || !starts_at) return res.status(400).json({ error: 'Título e data obrigatórios' });
+  const info = db.prepare(`
+    INSERT INTO events (organizer_id, title, description, location, starts_at, capacity)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, title, description || '', location || '', starts_at, Number(capacity) || 0);
+  res.json({ id: info.lastInsertRowid });
+});
+
+app.put('/api/events/:id', roleRequired('organizer'), (req, res) => {
+  const id = Number(req.params.id);
+  const ev = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  if (ev.organizer_id !== req.user.id) return res.status(403).json({ error: 'Sem permissão' });
+  const { title, description, location, starts_at, capacity } = req.body || {};
+  db.prepare(`
+    UPDATE events SET title = ?, description = ?, location = ?, starts_at = ?, capacity = ?
+    WHERE id = ?
+  `).run(
+    title ?? ev.title,
+    description ?? ev.description,
+    location ?? ev.location,
+    starts_at ?? ev.starts_at,
+    Number(capacity ?? ev.capacity) || 0,
+    id
+  );
+  res.json({ ok: true });
+});
+
+app.delete('/api/events/:id', roleRequired('organizer'), (req, res) => {
+  const id = Number(req.params.id);
+  const ev = db.prepare('SELECT * FROM events WHERE id = ?').get(id);
+  if (!ev) return res.status(404).json({ error: 'Evento não encontrado' });
+  if (ev.organizer_id !== req.user.id) return res.status(403).json({ error: 'Sem permissão' });
+  db.prepare('UPDATE events SET canceled = 1 WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// Registrations
+app.post('/api/events/:id/register', roleRequired('participant'), (req, res) => {
+  const eventId = Number(req.params.id);
+  const ev = db.prepare('SELECT * FROM events WHERE id = ?').get(eventId);
+  if (!ev || ev.canceled) return res.status(400).json({ error: 'Evento indisponível' });
+  if (ev.capacity > 0) {
+    const count = db.prepare(`SELECT COUNT(*) AS c FROM registrations WHERE event_id = ? AND status != 'canceled'`).get(eventId).c;
+    if (count >= ev.capacity) return res.status(400).json({ error: 'Evento lotado' });
+  }
+  const existing = db.prepare('SELECT * FROM registrations WHERE event_id = ? AND participant_id = ?').get(eventId, req.user.id);
+  if (existing) {
+    if (existing.status === 'canceled') {
+      db.prepare(`UPDATE registrations SET status = 'pending', created_at = datetime('now') WHERE id = ?`).run(existing.id);
+    } else {
+      return res.status(400).json({ error: 'Você já está inscrito' });
+    }
+  } else {
+    db.prepare('INSERT INTO registrations (event_id, participant_id, status) VALUES (?, ?, ?)')
+      .run(eventId, req.user.id, 'pending');
+  }
+  res.json({ ok: true });
+});
+
+app.get('/api/my-registrations', roleRequired('participant'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.id AS registration_id, r.status, r.created_at, e.*
+    FROM registrations r JOIN events e ON e.id = r.event_id
+    WHERE r.participant_id = ?
+    ORDER BY r.created_at DESC
+  `).all(req.user.id);
+  res.json({ registrations: rows });
+});
+
+app.delete('/api/registrations/:id', roleRequired('participant'), (req, res) => {
+  const id = Number(req.params.id);
+  const r = db.prepare('SELECT * FROM registrations WHERE id = ?').get(id);
+  if (!r) return res.status(404).json({ error: 'Inscrição não encontrada' });
+  if (r.participant_id !== req.user.id) return res.status(403).json({ error: 'Sem permissão' });
+  db.prepare(`UPDATE registrations SET status = 'canceled' WHERE id = ?`).run(id);
+  res.json({ ok: true });
+});
+
+// Organizer: all registrations
+app.get('/api/organizer/events', roleRequired('organizer'), (req, res) => {
+  const events = db.prepare(`
+    SELECT e.*, 
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'canceled') AS registrations_count,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'confirmed') AS confirmed_count
+    FROM events e WHERE e.organizer_id = ?
+    ORDER BY e.starts_at DESC
+  `).all(req.user.id);
+  res.json({ events });
+});
+
+app.get('/api/organizer/registrations', roleRequired('organizer'), (req, res) => {
+  const rows = db.prepare(`
+    SELECT r.id AS registration_id, r.status, r.created_at,
+           u.name AS participant_name, u.email AS participant_email,
+           e.id AS event_id, e.title AS event_title, e.starts_at AS event_starts_at,
+           e.organizer_id
+    FROM registrations r
+    JOIN users u ON u.id = r.participant_id
+    JOIN events e ON e.id = r.event_id
+    WHERE e.organizer_id = ?
+    ORDER BY e.starts_at DESC, r.created_at DESC
+  `).all(req.user.id);
+  res.json({ registrations: rows });
+});
+
+app.post('/api/organizer/registrations/:id/status', roleRequired('organizer'), (req, res) => {
+  const id = Number(req.params.id);
+  const { status } = req.body || {};
+  if (!['pending', 'confirmed', 'canceled'].includes(status)) return res.status(400).json({ error: 'Status inválido' });
+  const r = db.prepare(`
+    SELECT r.*, e.organizer_id FROM registrations r JOIN events e ON e.id = r.event_id WHERE r.id = ?
+  `).get(id);
+  if (!r) return res.status(404).json({ error: 'Inscrição não encontrada' });
+  if (r.organizer_id !== req.user.id) return res.status(403).json({ error: 'Sem permissão' });
+  db.prepare('UPDATE registrations SET status = ? WHERE id = ?').run(status, id);
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+```
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portal de Eventos</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">📅 Portal de Eventos</div>
+    <nav id="nav"></nav>
+  </header>
+  <main id="app"></main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+```
+
+=== public/styles.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #f4f6f9;
+  color: #222;
+  min-height: 100vh;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: #1e3a8a;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.brand { font-weight: bold; font-size: 1.2rem; }
+nav button, nav a {
+  background: transparent;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  border-radius: 6px;
+}
+nav button:hover { background: rgba(255,255,255,0.15); }
+nav .user { margin-right: 12px; opacity: 0.9; }
+main {
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+h1 { margin-bottom: 16px; font-size: 1.6rem; color: #1e3a8a; }
+h2 { margin: 24px 0 12px; font-size: 1.2rem; color: #1e3a8a; }
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  border-left: 4px solid #1e3a8a;
+}
+.card h3 { margin-bottom: 6px; }
+.card .meta { color: #666; font-size: 0.9rem; margin-bottom: 8px; }
+.card .desc { margin: 8px 0; white-space: pre-wrap; }
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  margin-right: 6px;
+}
+.badge.pending { background: #fef3c7; color: #92400e; }
+.badge.confirmed { background: #d1fae5; color: #065f46; }
+.badge.canceled { background: #fee2e2; color: #991b1b; }
+.badge.canceled-event { background: #e5e7eb; color: #374151; }
+.actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.15s;
+}
+button:hover { background: #2749a8; }
+button.secondary { background: #6b7280; }
+button.secondary:hover { background: #4b5563; }
+button.danger { background: #dc2626; }
+button.danger:hover { background: #b91c1c; }
+button.success { background: #059669; }
+button.success:hover { background: #047857; }
+button:disabled { background: #9ca3af; cursor: not-allowed; }
+form {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  max-width: 480px;
+}
+form label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #374151;
+}
+form input, form select, form textarea {
+  width: 100%;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+form textarea { min-height: 80px; resize: vertical; }
+form .hint { font-size: 0.85rem; color: #6b7280; margin-bottom: 12px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabs button { background: #e5e7eb; color: #374151; }
+.tabs button.active { background: #1e3a8a; color: white; }
+.empty { color: #6b7280; padding: 20px; text-align: center; background: white; border-radius: 10px; }
+.error { background: #fee2e2; color: #991b1b; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
+.success-msg { background: #d1fae5; color: #065f46; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
+.status-select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #d1d5db;
+  font-size: 0.85rem;
+}
+table { width: 100%; border-collapse: collapse; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 0.9rem; }
+th { background: #f3f4f6; font-weight: 600; color: #374151; }
+tr:last-child td { border-bottom: none; }
+```
+
+=== public/app.js ===
+const app = document.getElementById('app');
+const nav = document.getElementById('nav');
+
+let state = { user: null };
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...options,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || 'Erro');
+  return data;
+}
+
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function statusLabel(s) {
+  return { pending: 'Pendente', confirmed: 'Confirmada', canceled: 'Cancelada' }[s] || s;
+}
+
+function renderNav() {
+  if (state.user) {
+    nav.innerHTML = `
+      <span class="user">${esc(state.user.name)} (${state.user.role === 'organizer' ? 'Organizador' : 'Participante'})</span>
+      <button id="logoutBtn">Sair</button>
+    `;
+    document.getElementById('logoutBtn').onclick = async () => {
+      await api('/api/logout', { method: 'POST' });
+      state.user = null;
+      renderNav();
+      location.hash = '#/events';
+      route();
+    };
+  } else {
+    nav.innerHTML = `
+      <button onclick="location.hash='#/login'">Entrar</button>
+      <button onclick="location.hash='#/register'">Criar conta</button>
+    `;
+  }
+}
+
+// ---------- Pages ----------
+
+function pageAuthLogin() {
+  app.innerHTML = `
+    <h1>Entrar</h1>
+    <div id="msg"></div>
+    <form id="form">
+      <label>E-mail</label>
+      <input type="email" name="email" required />
+      <label>Senha</label>
+      <input type="password" name="password" required />
+      <button type="submit">Entrar</button>
+    </form>
+  `;
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const { user } = await api('/api/login', {
+        method: 'POST',
+        body: { email: f.email.value, password: f.password.value }
+      });
+      state.user = user;
+      renderNav();
+      location.hash = '#/events';
+      route();
+    } catch (err) {
+      document.getElementById('msg').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+  };
+}
+
+function pageAuthRegister() {
+  app.innerHTML = `
+    <h1>Criar conta</h1>
+    <div id="msg"></div>
+    <form id="form">
+      <label>Nome</label>
+      <input name="name" required />
+      <label>E-mail</label>
+      <input type="email" name="email" required />
+      <label>Senha</label>
+      <input type="password" name="password" required minlength="4" />
+      <label>Tipo de conta</label>
+      <select name="role" required>
+        <option value="participant">Participante</option>
+        <option value="organizer">Organizador</option>
+      </select>
+      <div class="hint">Escolha "Organizador" se você vai criar eventos.</div>
+      <button type="submit">Criar conta</button>
+    </form>
+  `;
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      const { user } = await api('/api/register', {
+        method: 'POST',
+        body: {
+          name: f.name.value,
+          email: f.email.value,
+          password: f.password.value,
+          role: f.role.value
+        }
+      });
+      state.user = user;
+      renderNav();
+      location.hash = user.role === 'organizer' ? '#/organizer' : '#/events';
+      route();
+    } catch (err) {
+      document.getElementById('msg').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+  };
+}
+
+async function pageEvents() {
+  app.innerHTML = `<h1>Eventos disponíveis</h1><div id="list">Carregando...</div>`;
+  try {
+    const { events } = await api('/api/events');
+    const list = document.getElementById('list');
+    if (!events.length) {
+      list.innerHTML = `<div class="empty">Nenhum evento cadastrado ainda.</div>`;
+      return;
+    }
+    list.innerHTML = events.map(ev => {
+      const full = ev.capacity > 0 && ev.registrations_count >= ev.capacity;
+      const canceled = ev.canceled;
+      let mainBtn = '';
+      if (state.user?.role === 'participant' && !canceled) {
+        mainBtn = full
+          ? `<button disabled>Lotado</button>`
+          : `<button data-action="register" data-id="${ev.id}">Inscrever-se</button>`;
+      }
+      return `
+        <div class="card">
+          ${canceled ? '<span class="badge canceled-event">Cancelado</span>' : ''}
+          <h3>${esc(ev.title)}</h3>
+          <div class="meta">
+            🗓 ${fmtDate(ev.starts_at)} · 📍 ${esc(ev.location || 'Local a definir')} · Organizador: ${esc(ev.organizer_name)}
+          </div>
+          <div>${ev.registrations_count} inscrito(s)${ev.capacity > 0 ? ` de ${ev.capacity}` : ''}</div>
+          ${ev.description ? `<div class="desc">${esc(ev.description)}</div>` : ''}
+          <div class="actions">${mainBtn}</div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('[data-action="register"]').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          await api(`/api/events/${btn.dataset.id}/register`, { method: 'POST' });
+          alert('Inscrição realizada com sucesso!');
+          pageEvents();
+        } catch (err) { alert(err.message); }
+      };
+    });
+  } catch (err) {
+    document.getElementById('list').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  }
+}
+
+async function pageMyRegistrations() {
+  app.innerHTML = `<h1>Minhas inscrições</h1><div id="list">Carregando...</div>`;
+  try {
+    const { registrations } = await api('/api/my-registrations');
+    const list = document.getElementById('list');
+    if (!registrations.length) {
+      list.innerHTML = `<div class="empty">Você ainda não tem inscrições.</div>`;
+      return;
+    }
+    list.innerHTML = registrations.map(r => {
+      const canCancel = (r.status === 'pending') && !r.canceled;
+      return `
+        <div class="card">
+          ${r.canceled ? '<span class="badge canceled-event">Evento cancelado</span>' : ''}
+          <span class="badge ${r.status}">${statusLabel(r.status)}</span>
+          <h3>${esc(r.title)}</h3>
+          <div class="meta">🗓 ${fmtDate(r.starts_at)} · 📍 ${esc(r.location || 'Local a definir')}</div>
+          ${r.description ? `<div class="desc">${esc(r.description)}</div>` : ''}
+          <div class="actions">
+            ${canCancel ? `<button class="danger" data-action="cancel" data-id="${r.registration_id}">Cancelar inscrição</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    list.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Cancelar esta inscrição?')) return;
+        try {
+          await api(`/api/registrations/${btn.dataset.id}`, { method: 'DELETE' });
+          pageMyRegistrations();
+        } catch (err) { alert(err.message); }
+      };
+    });
+  } catch (err) {
+    document.getElementById('list').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  }
+}
+
+async function pageOrganizer() {
+  app.innerHTML = `
+    <h1>Painel do Organizador</h1>
+    <div class="tabs">
+      <button class="active" data-tab="events">Meus Eventos</button>
+      <button data-tab="registrations">Todas as Inscrições</button>
+    </div>
+    <div id="content"><div class="empty">Carregando...</div></div>
+  `;
+  document.querySelectorAll('.tabs button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (btn.dataset.tab === 'events') renderOrganizerEvents();
+      else renderOrganizerRegistrations();
+    };
+  });
+  renderOrganizerEvents();
+}
+
+async function renderOrganizerEvents() {
+  const content = document.getElementById('content');
+  content.innerHTML = `<button id="newEventBtn" style="margin-bottom:12px">+ Novo evento</button><div id="list"></div>`;
+  document.getElementById('newEventBtn').onclick = () => showEventForm();
+  const { events } = await api('/api/organizer/events');
+  const list = document.getElementById('list');
+  if (!events.length) {
+    list.innerHTML = `<div class="empty">Você ainda não criou eventos.</div>`;
+    return;
+  }
+  list.innerHTML = events.map(ev => `
+    <div class="card">
+      ${ev.canceled ? '<span class="badge canceled-event">Cancelado</span>' : ''}
+      <h3>${esc(ev.title)}</h3>
+      <div class="meta">🗓 ${fmtDate(ev.starts_at)} · 📍 ${esc(ev.location || 'Local a definir')}</div>
+      <div>${ev.registrations_count} inscrito(s) · ${ev.confirmed_count} confirmado(s)${ev.capacity > 0 ? ` · capacidade ${ev.capacity}` : ''}</div>
+      ${ev.description ? `<div class="desc">${esc(ev.description)}</div>` : ''}
+      <div class="actions">
+        <button data-action="edit" data-id="${ev.id}">Editar</button>
+        ${!ev.canceled ? `<button class="danger" data-action="cancel" data-id="${ev.id}">Cancelar evento</button>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-action="edit"]').forEach(btn => {
+    btn.onclick = () => {
+      const ev = events.find(e => e.id == btn.dataset.id);
+      showEventForm(ev);
+    };
+  });
+  list.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+    btn.onclick = async () => {
+      if (!confirm('Cancelar este evento? Os inscritos continuarão listados.')) return;
+      try {
+        await api(`/api/events/${btn.dataset.id}`, { method: 'DELETE' });
+        renderOrganizerEvents();
+      } catch (err) { alert(err.message); }
+    };
+  });
+}
+
+function toLocalInput(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d)) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function showEventForm(ev) {
+  const content = document.getElementById('content');
+  content.innerHTML = `
+    <h2>${ev ? 'Editar evento' : 'Novo evento'}</h2>
+    <div id="msg"></div>
+    <form id="form">
+      <label>Título</label>
+      <input name="title" required value="${esc(ev?.title || '')}" />
+      <label>Descrição</label>
+      <textarea name="description">${esc(ev?.description || '')}</textarea>
+      <label>Local</label>
+      <input name="location" value="${esc(ev?.location || '')}" />
+      <label>Data e hora</label>
+      <input type="datetime-local" name="starts_at" required value="${toLocalInput(ev?.starts_at)}" />
+      <label>Capacidade (0 = sem limite)</label>
+      <input type="number" name="capacity" min="0" value="${ev?.capacity || 0}" />
+      <div class="actions">
+        <button type="submit">Salvar</button>
+        <button type="button" class="secondary" id="cancelBtn">Voltar</button>
+      </div>
+    </form>
+  `;
+  document.getElementById('cancelBtn').onclick = renderOrganizerEvents;
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const body = {
+      title: f.title.value,
+      description: f.description.value,
+      location: f.location.value,
+      starts_at: new Date(f.starts_at.value).toISOString(),
+      capacity: Number(f.capacity.value) || 0,
+    };
+    try {
+      if (ev) await api(`/api/events/${ev.id}`, { method: 'PUT', body });
+      else await api('/api/events', { method: 'POST', body });
+      renderOrganizerEvents();
+    } catch (err) {
+      document.getElementById('msg').innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+  };
+}
+
+async function renderOrganizerRegistrations() {
+  const content = document.getElementById('content');
+  content.innerHTML = `<div class="empty">Carregando...</div>`;
+  try {
+    const { registrations } = await api('/api/organizer/registrations');
+    if (!registrations.length) {
+      content.innerHTML = `<div class="empty">Nenhuma inscrição ainda.</div>`;
+      return;
+    }
+    content.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Evento</th><th>Data</th><th>Participante</th><th>E-mail</th><th>Status</th><th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${registrations.map(r => `
+            <tr>
+              <td>${esc(r.event_title)}</td>
+              <td>${fmtDate(r.event_starts_at)}</td>
+              <td>${esc(r.participant_name)}</td>
+              <td>${esc(r.participant_email)}</td>
+              <td><span class="badge ${r.status}">${statusLabel(r.status)}</span></td>
+              <td>
+                ${r.status === 'pending' ? `
+                  <button class="success" data-status="confirmed" data-id="${r.registration_id}">Confirmar</button>
+                  <button class="danger" data-status="canceled" data-id="${r.registration_id}">Cancelar</button>
+                ` : r.status === 'confirmed' ? `
+                  <button class="secondary" data-status="pending" data-id="${r.registration_id}">Reverter</button>
+                ` : `
+                  <button class="secondary" data-status="pending" data-id="${r.registration_id}">Reativar</button>
+                `}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    content.querySelectorAll('button[data-status]').forEach(btn => {
+      btn.onclick = async () => {
+        try {
+          await api(`/api/organizer/registrations/${btn.dataset.id}/status`, {
+            method: 'POST',
+            body: { status: btn.dataset.status }
+          });
+          renderOrganizerRegistrations();
+        } catch (err) { alert(err.message); }
+      };
+    });
+  } catch (err) {
+    content.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  }
+}
+
+// ---------- Router ----------
+
+function route() {
+  const hash = location.hash || '#/events';
+  if (!state.user) {
+    if (hash === '#/register') return pageAuthRegister();
+    return pageAuthLogin();
+  }
+  if (state.user.role === 'participant') {
+    if (hash === '#/my') return pageMyRegistrations();
+    return pageEvents();
+  }
+  // organizer
+  if (hash === '#/events') return pageEvents();
+  return pageOrganizer();
+}
+
+window.addEventListener('hashchange', route);
+
+async function init() {
+  try {
+    const { user } = await api('/api/me');
+    state.user = user;
+  } catch (_) {}
+  renderNav();
+  route();
+}
+init();
+```
+
+=== README.md ===
+# Portal de Inscrição para Eventos
+
+Site completo (frontend + backend + banco de dados) para gerenciar eventos e inscrições.
+
+## O que faz
+
+**Participantes:**
+- Ver eventos disponíveis
+- Inscrever-se em um evento
+- Ver suas inscrições
+- Cancelar inscrições
+
+**Organizadores:**
+- Criar, editar e cancelar eventos
+- Ver todas as inscrições de todos os participantes
+- Confirmar / cancelar / reativar a presença de cada inscrito
+
+Todos os dados ficam salvos em um arquivo `data.db` (SQLite) na pasta do projeto. Não é necessário nenhum serviço externo.
+
+## Como instalar e executar
+
+Pré-requisitos: ter o **Node.js** instalado (versão 18 ou superior). Baixe em https://nodejs.org
+
+No terminal, dentro da pasta do projeto, execute:
+
+```bash
+npm install
+npm start
+```
+
+Depois abra no navegador:
+
+```
+http://localhost:3000
+```
+
+## Como usar
+
+1. Clique em **Criar conta** e escolha o tipo:
+   - **Participante** — para se inscrever nos eventos.
+   - **Organizador** — para criar e gerenciar eventos.
+2. Cada pessoa cria a própria conta com e-mail e senha. O login fica salvo por 30 dias.
+3. O organizador cria os eventos no menu **Painel do Organizador**.
+4. Os participantes veem os eventos e se inscrevem.
+5. O organizador confirma a presença dos inscritos em **Todas as Inscrições**.
+
+## Publicar na internet
+
+Para deixar disponível na internet, hospede este projeto em qualquer serviço que rode Node.js (Render, Railway, Fly.io, etc.). Basta:
+
+1. Enviar o projeto para o serviço.
+2. Definir o comando de start como `npm start`.
+3. Opcional (recomendado): definir a variável de ambiente `JWT_SECRET` com um texto aleatório longo, para as sessões não expirarem quando o servidor reiniciar.
+
+Os dados ficam salvos no arquivo `data.db` no disco do servidor.
+```
+
+## Como rodar
+
+1. Instale o [Node.js](https://nodejs.org) (versão 18+).
+2. Abra o terminal na pasta do projeto e execute `npm install` e depois `npm start`.
+3. Acesse `http://localhost:3000` no navegador.
+
+Crie uma conta escolhendo **Participante** ou **Organizador** conforme o uso. Depois:
+- O **organizador** cria eventos no painel e gerencia as inscrições (confirmar/cancelar presença).
+- O **participante** vê os eventos, se inscreve, e pode ver/cancelar suas inscrições.
+
+Tudo é salvo automaticamente no arquivo `data.db` criado na pasta do projeto — feche e reabra o site, os dados continuarão lá.
