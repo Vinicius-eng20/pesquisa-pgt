@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Acervo - Biblioteca Digital{% endblock %}
+
+{% block content %}
+<div class="search-bar">
+  <form action="{{ url_for('index') }}" method="GET" style="display: flex; flex-wrap: wrap; gap: 0.8rem; width: 100%;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Pesquisar por título, autor ou ISBN..." class="form-control search-input">
+
+    <select name="category" class="form-control search-select">
+      <option value="">Todos os Gêneros</option>
+      {% for cat in categories %}
+        <option value="{{ cat }}" {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; cursor: pointer;">
+      <input type="checkbox" name="available" value="1" {% if available_only %}checked{% endif %}>
+      Apenas disponíveis
+    </label>
+
+    <button type="submit" class="btn btn-primary">Buscar</button>
+    {% if query or selected_category or available_only %}
+      <a href="{{ url_for('index') }}" class="btn btn-outline">Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+  <h2>Acervo de Livros ({{ books|length }})</h2>
+  {% if session.get('role') == 'librarian' %}
+    <a href="{{ url_for('librarian_add_book') }}" class="btn btn-success">+ Adicionar Novo Livro</a>
+  {% endif %}
+</div>
+
+{% if books %}
+  <div class="books-grid">
+    {% for book in books %}
+      <div class="book-card">
+        <div class="book-cover-placeholder">
+          <span class="icon">📚</span>
+          <span style="font-size: 0.8rem; opacity: 0.9;">{{ book.category }}</span>
+        </div>
+        <div class="book-card-body">
+          <span class="book-category">{{ book.category }}</span>
+          <h3 class="book-title">{{ book.title }}</h3>
+          <p class="book-author">por {{ book.author }}</p>
+
+          <p style="font-size: 0.85rem; color: var(--gray-700); margin-bottom: 1rem; line-height: 1.4;">
+            {{ book.description[:110] }}{% if book.description|length > 110 %}...{% endif %}
+          </p>
+
+          <div class="book-footer">
+            {% if book.available_copies > 0 %}
+              <span class="badge badge-success">{{ book.available_copies }} de {{ book.total_copies }} disponíveis</span>
+            {% else %}
+              <span class="badge badge-danger">Esgotado</span>
+            {% endif %}
+
+            <a href="{{ url_for('book_detail', book_id=book.id) }}" class="btn btn-sm btn-outline">Ver Detalhes</a>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card" style="text-align: center; padding: 3rem;">
+    <h3>Nenhum livro encontrado</h3>
+    <p style="color: var(--gray-500); margin-top: 0.5rem;">Tente fazer uma busca diferente ou limpe os filtros.</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary" style="margin-top: 1rem;">Ver Todos os Livros</a>
+  </div>
+{% endif %}
+{% endblock %}

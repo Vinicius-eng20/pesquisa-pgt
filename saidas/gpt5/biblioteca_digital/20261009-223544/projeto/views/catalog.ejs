@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acervo - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card hero">
+      <h1>Acervo da Biblioteca Digital</h1>
+      <p class="muted">Busque itens, consulte disponibilidade e faça empréstimos usando sua conta.</p>
+    </section>
+
+    <section class="card">
+      <form class="search" action="/catalog" method="get">
+        <input name="q" placeholder="Buscar por título, autor, tipo ou descrição" value="<%= q %>">
+        <button type="submit">Buscar</button>
+        <% if (q) { %>
+          <a class="button secondary" href="/catalog">Limpar</a>
+        <% } %>
+      </form>
+    </section>
+
+    <section class="grid">
+      <% if (items.length === 0) { %>
+        <div class="card">
+          <p>Nenhum item encontrado.</p>
+        </div>
+      <% } %>
+
+      <% items.forEach(item => { %>
+        <article class="card item-card">
+          <div>
+            <span class="badge"><%= item.type %></span>
+            <% if (item.available > 0) { %>
+              <span class="badge success"><%= item.available %> disponível(is)</span>
+            <% } else { %>
+              <span class="badge danger">Indisponível</span>
+            <% } %>
+          </div>
+
+          <h2><%= item.title %></h2>
+          <% if (item.author) { %>
+            <p class="muted"><%= item.author %></p>
+          <% } %>
+          <% if (item.description) { %>
+            <p><%= item.description.length > 140 ? item.description.substring(0, 140) + '...' : item.description %></p>
+          <% } %>
+
+          <div class="actions">
+            <a class="button" href="/items/<%= item.id %>">Ver detalhes</a>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,1066 @@
+=== package.json ===
+{
+  "name": "agenda-servicos",
+  "version": "1.0.0",
+  "description": "Sistema de agendamento de serviços - clientes e responsável",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.0.0"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const path = require('path');
+const crypto = require('crypto');
+const Database = require('better-sqlite3');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DB_FILE = process.env.DB_FILE || path.join(__dirname, 'agendamentos.db');
+
+// ===== Banco de dados =====
+const db = new Database(DB_FILE);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    salt TEXT NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('client','owner')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    price REAL NOT NULL DEFAULT 0,
+    duration_min INTEGER NOT NULL DEFAULT 30,
+    active INTEGER NOT NULL DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS time_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    weekday INTEGER NOT NULL,
+    time TEXT NOT NULL,
+    UNIQUE (weekday, time)
+  );
+
+  CREATE TABLE IF NOT EXISTS bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER NOT NULL,
+    service_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    time TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending','confirmed','rejected','cancelled')) DEFAULT 'pending',
+    note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (client_id) REFERENCES users(id),
+    FOREIGN KEY (service_id) REFERENCES services(id)
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_booking_unique
+    ON bookings (service_id, date, time)
+    WHERE status IN ('pending','confirmed');
+`);
+
+// ===== Senhas (hash) =====
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64).toString('hex');
+}
+function makeSalt() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function checkAuth(req, res, next) {
+  const user = req.session && req.session.user;
+  if (!user) return res.status(401).json({ error: 'Faça login.' });
+  next();
+}
+function requireOwner(req, res, next) {
+  checkAuth(req, res, () => {
+    if (req.session.user.role !== 'owner') return res.status(403).json({ error: 'Acesso negado.' });
+    next();
+  });
+}
+
+// ===== Sessões simples (JWT-like com expiração) =====
+const sessions = new Map(); // token -> { user, expires }
+const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { user, expires: Date.now() + SESSION_MS });
+  return token;
+}
+function readSession(req) {
+  const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
+  const s = sessions.get(token);
+  if (s && s.expires > Date.now()) {
+    req.session = s;
+    return true;
+  }
+  sessions.delete(token);
+  return false;
+}
+
+// ===== Helpers de data =====
+function todayISO() {
+  const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+function addDaysISO(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function weekdayOf(dateStr) {
+  // 1970-01-01 era quarta-feira (4). Usamos 0=Seg..6=Dom.
+  const dt = new Date(dateStr + 'T12:00:00Z');
+  const js = dt.getUTCDay(); // 0=Dom
+  return (js + 6) % 7; // 0=Seg ... 6=Dom
+}
+
+// ===== Middleware =====
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== Rotas: autenticação =====
+app.post('/api/register', (req, res) => {
+  const { username, password, name, phone } = req.body || {};
+  if (!username || !password || !name || !phone) {
+    return res.status(400).json({ error: 'Preencha nome, telefone, usuário e senha.' });
+  }
+  if (String(username).trim().length < 3) {
+    return res.status(400).json({ error: 'Usuário deve ter pelo menos 3 caracteres.' });
+  }
+  if (String(password).length < 4) {
+    return res.status(400).json({ error: 'Senha deve ter pelo menos 4 caracteres.' });
+  }
+  const u = db.prepare('SELECT id FROM users WHERE username = ?').get(String(username).trim());
+  if (u) return res.status(409).json({ error: 'Este usuário já existe.' });
+
+  const salt = makeSalt();
+  const hash = hashPassword(String(password), salt);
+  const info = db.prepare(
+    'INSERT INTO users (username, password_hash, salt, name, phone, role) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(String(username).trim(), hash, salt, String(name).trim(), String(phone).trim(), 'client');
+
+  const user = db.prepare('SELECT id, username, name, phone, role FROM users WHERE id = ?').get(info.lastInsertRowid);
+  const token = createSession(user);
+  res.json({ token, user });
+});
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'Usuário e senha são obrigatórios.' });
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username).trim());
+  if (!row) return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+  const hash = hashPassword(String(password), row.salt);
+  if (hash !== row.password_hash) return res.status(401).json({ error: 'Usuário ou senha incorretos.' });
+  const user = { id: row.id, username: row.username, name: row.name, phone: row.phone, role: row.role };
+  const token = createSession(user);
+  res.json({ token, user });
+});
+
+app.get('/api/me', (req, res) => {
+  if (!readSession(req)) return res.status(401).json({ error: 'Faça login.' });
+  res.json({ user: req.session.user });
+});
+
+app.post('/api/logout', (req, res) => {
+  const token = (req.get('Authorization') || '').replace(/^Bearer /, '');
+  sessions.delete(token);
+  res.json({ ok: true });
+});
+
+// ===== Rotas: serviços (público) =====
+app.get('/api/services', (req, res) => {
+  const rows = db.prepare('SELECT id, name, description, price, duration_min FROM services WHERE active = 1 ORDER BY name').all();
+  res.json(rows);
+});
+
+// ===== Rotas: horários livres =====
+// Retorna, para um serviço e um intervalo de dias, quais horários estão livres.
+app.get('/api/availability', checkAuth, (req, res) => {
+  const { serviceId, days } = req.query;
+  const sid = parseInt(serviceId, 10);
+  const n = Math.min(parseInt(days, 10) || 14, 60);
+  if (!sid) return res.status(400).json({ error: 'Informe o serviço.' });
+
+  const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(sid);
+  if (!svc) return res.status(404).json({ error: 'Serviço não encontrado.' });
+
+  const slots = db.prepare('SELECT weekday, time FROM time_slots ORDER BY weekday, time').all();
+  const taken = db.prepare(
+    `SELECT date, time FROM bookings
+     WHERE service_id = ? AND status IN ('pending','confirmed') AND date >= ? AND date <= ?`
+  ).all(sid, addDaysISO(0), addDaysISO(n - 1));
+  const takenSet = new Set(taken.map(t => t.date + '|' + t.time));
+
+  const result = [];
+  for (let i = 0; i < n; i++) {
+    const date = addDaysISO(i);
+    const wd = weekdayOf(date);
+    const free = slots.filter(s => s.weekday === wd && !takenSet.has(date + '|' + s.time)).map(s => s.time);
+    result.push({ date, weekday: wd, freeTimes: free });
+  }
+  res.json({ serviceId: sid, durationMin: svc.duration_min, days: result });
+});
+
+// ===== Rotas: agendamentos (cliente) =====
+app.post('/api/bookings', checkAuth, (req, res) => {
+  const { serviceId, date, time, note } = req.body || {};
+  const clientId = req.session.user.id;
+  const sid = parseInt(serviceId, 10);
+  if (!sid || !date || !time) return res.status(400).json({ error: 'Preencha serviço, data e horário.' });
+
+  const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(sid);
+  if (!svc) return res.status(404).json({ error: 'Serviço não encontrado.' });
+
+  // Valida se existe slot para esse dia da semana
+  const wd = weekdayOf(date);
+  const slotOk = db.prepare('SELECT 1 FROM time_slots WHERE weekday = ? AND time = ?').get(wd, time);
+  if (!slotOk) return res.status(400).json({ error: 'Este horário não está disponível para este dia.' });
+
+  // Verifica conflito (mesmo serviço, mesma data/hora)
+  const conflict = db.prepare(
+    "SELECT id FROM bookings WHERE service_id = ? AND date = ? AND time = ? AND status IN ('pending','confirmed')"
+  ).get(sid, date, time);
+  if (conflict) return res.status(409).json({ error: 'Este horário acabou de ser ocupado. Escolha outro.' });
+
+  const info = db.prepare(
+    "INSERT INTO bookings (client_id, service_id, date, time, status, note) VALUES (?, ?, ?, ?, 'pending', ?)"
+  ).run(clientId, sid, date, time, note ? String(note).slice(0, 500) : null);
+
+  const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(info.lastInsertRowid);
+  res.status(201).json(row);
+});
+
+app.get('/api/bookings/mine', checkAuth, (req, res) => {
+  const clientId = req.session.user.id;
+  const rows = db.prepare(
+    `SELECT b.id, b.date, b.time, b.status, b.created_at, b.note,
+            s.name AS service_name, s.price
+     FROM bookings b JOIN services s ON s.id = b.service_id
+     WHERE b.client_id = ?
+     ORDER BY b.date DESC, b.time DESC`
+  ).all(clientId);
+  res.json(rows);
+});
+
+app.post('/api/bookings/:id/cancel', checkAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const clientId = req.session.user.id;
+  const row = db.prepare('SELECT * FROM bookings WHERE id = ?').get(id);
+  if (!row) return res.status(404).json({ error: 'Agendamento não encontrado.' });
+  if (row.client_id !== clientId && req.session.user.role !== 'owner') {
+    return res.status(403).json({ error: 'Você não pode cancelar este agendamento.' });
+  }
+  if (!['pending', 'confirmed'].includes(row.status)) {
+    return res.status(400).json({ error: 'Este agendamento já não pode ser cancelado.' });
+  }
+  db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").run(id);
+  res.json(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
+});
+
+// ===== Rotas: responsável =====
+app.get('/api/owner/bookings', requireOwner, (req, res) => {
+  const { status } = req.query;
+  let sql = `SELECT b.id, b.date, b.time, b.status, b.created_at, b.note,
+            s.name AS service_name, s.price,
+            u.name AS client_name, u.phone AS client_phone, u.username AS client_username
+     FROM bookings b
+     JOIN services s ON s.id = b.service_id
+     JOIN users u ON u.id = b.client_id`;
+  const params = [];
+  if (status) {
+    sql += ' WHERE b.status = ?';
+    params.push(status);
+  }
+  sql += ' ORDER BY b.date DESC, b.time DESC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.post('/api/owner/bookings/:id/confirm', requireOwner, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  db.prepare("UPDATE bookings SET status = 'confirmed' WHERE id = ?").run(id);
+  res.json(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
+});
+
+app.post('/api/owner/bookings/:id/reject', requireOwner, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  db.prepare("UPDATE bookings SET status = 'rejected' WHERE id = ?").run(id);
+  res.json(db.prepare('SELECT * FROM bookings WHERE id = ?').get(id));
+});
+
+// Serviços CRUD (responsável)
+app.get('/api/owner/services', requireOwner, (req, res) => {
+  res.json(db.prepare('SELECT * FROM services ORDER BY name').all());
+});
+app.post('/api/owner/services', requireOwner, (req, res) => {
+  const { name, description, price, duration_min } = req.body || {};
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Informe o nome do serviço.' });
+  const priceNum = parseFloat(price);
+  const dur = parseInt(duration_min, 10) || 30;
+  const info = db.prepare(
+    'INSERT INTO services (name, description, price, duration_min, active) VALUES (?, ?, ?, ?, 1)'
+  ).run(String(name).trim(), description ? String(description) : '', isNaN(priceNum) ? 0 : priceNum, dur);
+  res.status(201).json(db.prepare('SELECT * FROM services WHERE id = ?').get(info.lastInsertRowid));
+});
+app.put('/api/owner/services/:id', requireOwner, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const existing = db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+  if (!existing) return res.status(404).json({ error: 'Serviço não encontrado.' });
+  const { name, description, price, duration_min, active } = req.body || {};
+  const nameVal = name !== undefined ? String(name).trim() : existing.name;
+  const descVal = description !== undefined ? String(description) : existing.description;
+  const priceNum = price !== undefined ? (isNaN(parseFloat(price)) ? 0 : parseFloat(price)) : existing.price;
+  const dur = duration_min !== undefined ? (parseInt(duration_min, 10) || existing.duration_min) : existing.duration_min;
+  const act = active !== undefined ? (active ? 1 : 0) : existing.active;
+  db.prepare('UPDATE services SET name=?, description=?, price=?, duration_min=?, active=? WHERE id=?')
+    .run(nameVal, descVal, priceNum, dur, act, id);
+  res.json(db.prepare('SELECT * FROM services WHERE id = ?').get(id));
+});
+app.delete('/api/owner/services/:id', requireOwner, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  db.prepare('DELETE FROM services WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// Horários de atendimento CRUD (responsável)
+app.get('/api/owner/slots', requireOwner, (req, res) => {
+  res.json(db.prepare('SELECT * FROM time_slots ORDER BY weekday, time').all());
+});
+app.post('/api/owner/slots', requireOwner, (req, res) => {
+  const { weekday, time } = req.body || {};
+  const wd = parseInt(weekday, 10);
+  if (!time || wd < 0 || wd > 6) return res.status(400).json({ error: 'Dia e horário inválidos.' });
+  const exists = db.prepare('SELECT 1 FROM time_slots WHERE weekday = ? AND time = ?').get(wd, time);
+  if (exists) return res.status(409).json({ error: 'Este horário já foi cadastrado.' });
+  const info = db.prepare('INSERT INTO time_slots (weekday, time) VALUES (?, ?)').run(wd, time);
+  res.status(201).json(db.prepare('SELECT * FROM time_slots WHERE id = ?').get(info.lastInsertRowid));
+});
+app.delete('/api/owner/slots/:id', requireOwner, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  db.prepare('DELETE FROM time_slots WHERE id = ?').run(id);
+  res.json({ ok: true });
+});
+
+// ===== Seed: cria a conta do responsável na primeira execução =====
+(function seedOwner() {
+  const count = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'owner'").get().c;
+  if (count === 0) {
+    const salt = makeSalt();
+    const hash = hashPassword('admin123', salt);
+    db.prepare(
+      "INSERT INTO users (username, password_hash, salt, name, phone, role) VALUES (?, ?, ?, ?, ?, 'owner')"
+    ).run('admin', hash, salt, 'Responsável', '', );
+    console.log('=====================================================');
+    console.log(' Conta do responsável criada:');
+    console.log('   Usuário: admin');
+    console.log('   Senha:   admin123');
+    console.log(' Mude essa senha depois de entrar, se quiser.');
+    console.log('=====================================================');
+  }
+})();
+
+// ===== Roda o servidor =====
+app.listen(PORT, () => {
+  console.log('Sistema de agendamento rodando em http://localhost:' + PORT);
+  console.log('Dados salvos em: ' + DB_FILE);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Agenda de Serviços</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" id="brand" style="cursor:pointer">
+        <span class="logo">📅</span>
+        <span class="brand-name">Agenda de Serviços</span>
+      </div>
+      <div id="authArea"></div>
+    </div>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1e40af;
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --pending: #d97706;
+  --confirmed: #16a34a;
+  --rejected: #dc2626;
+  --cancelled: #6b7280;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; }
+.logo { font-size: 22px; }
+.brand-name { color: var(--primary-dark); }
+
+#authArea { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.user-chip { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.user-chip .un { font-weight: 600; font-size: 14px; }
+.user-chip .ur { font-size: 12px; color: var(--muted); }
+.user-chip .ur.owner { color: var(--primary); }
+
+.app { max-width: 1080px; margin: 0 auto; padding: 20px 16px 60px; }
+
+/* Buttons */
+.btn {
+  border: 1px solid transparent;
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, transform .05s;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.secondary { background: #fff; color: var(--text); border-color: var(--border); }
+.btn.secondary:hover { background: #f9fafb; }
+.btn.small { padding: 6px 10px; font-size: 13px; border-radius: 8px; }
+.btn.danger { background: var(--bad); }
+.btn.danger:hover { background: #b91c1c; }
+.btn.ghost { background: transparent; color: var(--primary); }
+.btn.ghost:hover { background: rgba(37,99,235,.08); }
+
+/* Forms */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--muted); }
+.field input, .field select, .field textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  background: #fff;
+  color: var(--text);
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+.field textarea { resize: vertical; min-height: 70px; }
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+.card + .card { margin-top: 16px; }
+.card h2 { margin: 0 0 4px; font-size: 19px; }
+.card h3 { margin: 0 0 10px; font-size: 16px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+/* Auth page */
+.auth-wrap { max-width: 420px; margin: 40px auto; }
+.tabs { display: flex; gap: 6px; margin-bottom: 16px; background: #eef1f6; padding: 5px; border-radius: 12px; }
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--muted);
+}
+.tab.active { background: #fff; color: var(--primary); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* Tabs (app) */
+.tabbar { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.tabbar .tab { flex: 0 0 auto; }
+
+/* Services grid */
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.service-card { cursor: pointer; transition: border-color .15s, transform .05s; }
+.service-card:hover { border-color: var(--primary); }
+.service-card.selected { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,.18); }
+.service-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.service-desc { font-size: 13px; color: var(--muted); margin-bottom: 10px; min-height: 18px; }
+.service-meta { display: flex; justify-content: space-between; align-items: center; }
+.price { font-weight: 700; color: var(--primary-dark); font-size: 15px; }
+.duration { font-size: 12px; color: var(--muted); }
+
+/* Availability */
+.avail-wrap { margin-top: 16px; }
+.avail-days { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+.day-chip {
+  flex: 0 0 auto;
+  text-align: center;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  min-width: 62px;
+  background: #fff;
+}
+.day-chip .dw { font-size: 12px; color: var(--muted); }
+.day-chip .dd { font-size: 16px; font-weight: 700; }
+.day-chip.active { background: var(--primary); border-color: var(--primary); }
+.day-chip.active .dw, .day-chip.active .dd { color: #fff; }
+.day-chip.nofree { opacity: .4; }
+
+.slots { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); margin-top: 12px; }
+.slot {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  text-align: center;
+  cursor: pointer;
+  font-weight: 600;
+  background: #fff;
+}
+.slot:hover { border-color: var(--primary); color: var(--primary); }
+.slot.selected { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+.summary-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  background: #eef4ff;
+  border-radius: 12px;
+  flex-wrap: wrap;
+}
+
+/* Booking list */
+.booking {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 10px;
+  background: #fff;
+  flex-wrap: wrap;
+}
+.booking .info { min-width: 0; }
+.booking .sname { font-weight: 700; font-size: 15px; }
+.booking .stime { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.booking .client { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.badge.pending { background: var(--pending); }
+.badge.confirmed { background: var(--confirmed); }
+.badge.rejected { background: var(--rejected); }
+.badge.cancelled { background: var(--cancelled); }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Table (owner slots) */
+.slots-editor { margin-top: 12px; }
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.slot-row .st { font-weight: 700; min-width: 52px; }
+.slot-row .del { margin-left: auto; }
+
+.filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filter-row select { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: #fff; }
+
+.empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+.modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal h3 { margin-top: 0; }
+.modal .row { display: flex; gap: 10px; }
+.modal .row > div { flex: 1; }
+
+/* Toast */
+#toastRoot { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.toast {
+  background: #111827;
+  color: #fff;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
+  animation: slideup .2s ease;
+  max-width: 90vw;
+}
+.toast.error { background: var(--bad); }
+.toast.success { background: var(--ok); }
+@keyframes slideup { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+.section-title { font-size: 14px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 22px 0 12px; }
+
+@media (max-width: 520px) {
+  .booking { flex-direction: column; align-items: flex-start; }
+  .actions { width: 100%; }
+}
+
+=== public/app.js ===
+// ===== Estado =====
+const state = {
+  token: localStorage.getItem('token') || null,
+  user: JSON.parse(localStorage.getItem('user') || 'null'),
+  view: 'services', // services, mybookings, owner
+  selectedService: null,
+  selectedDay: null,
+  selectedTime: null,
+};
+
+const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
+const WEEKDAYS_FULL = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+const STATUS_LABEL = { pending: 'Pendente', confirmed: 'Confirmado', rejected: 'Recusado', cancelled: 'Cancelado' };
+
+// ===== API =====
+async function api(path, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (state.token) opts.headers['Authorization'] = 'Bearer ' + state.token;
+  if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch('/api' + path, opts);
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) {
+    const msg = (data && data.error) ? data.error : 'Erro inesperado. Tente novamente.';
+    throw new Error(msg);
+  }
+  return data;
+}
+
+function fmtDate(dateStr) {
+  // dateStr = AAAA-MM-DD -> DD/MM/AAAA
+  const [y, m, d] = dateStr.split('-');
+  return d + '/' + m + '/' + y;
+}
+function fmtPrice(p) {
+  const n = parseFloat(p || 0);
+  if (!isFinite(n)) return 'Gratuito';
+  return 'R$ ' + n.toFixed(2).replace('.', ',');
+}
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ===== Toast / Modal =====
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toastRoot').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+function closeModal() {
+  document.getElementById('modalRoot').innerHTML = '';
+}
+function openModal(html) {
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal">' + html + '</div></div>';
+  return root;
+}
+
+// ===== Auth UI =====
+function renderAuthArea() {
+  const area = document.getElementById('authArea');
+  if (state.user) {
+    const isOwner = state.user.role === 'owner';
+    area.innerHTML = `
+      <div class="user-chip">
+        <span class="un">${esc(state.user.name)}</span>
+        <span class="ur ${isOwner ? 'owner' : ''}">${isOwner ? 'Responsável' : 'Cliente'}</span>
+      </div>
+      <button class="btn small secondary" onclick="doLogout()">Sair</button>`;
+  } else {
+    area.innerHTML = `<button class="btn small" onclick="renderAuth()">Entrar / Cadastrar</button>`;
+  }
+}
+
+async function doLogout() {
+  try { await api('/logout', { method: 'POST' }); } catch (e) {}
+  state.token = null; state.user = null;
+  localStorage.removeItem('token'); localStorage.removeItem('user');
+  state.view = 'services';
+  renderAuthArea();
+  render();
+}
+
+function renderAuth() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="tabs">
+        <div class="tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</div>
+        <div class="tab" id="tabReg" onclick="switchAuthTab('register')">Criar conta</div>
+      </div>
+      <div class="card" id="authForm"></div>
+    </div>`;
+  switchAuthTab('login');
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+  document.getElementById('tabReg').classList.toggle('active', tab === 'register');
+  const f = document.getElementById('authForm');
+  if (tab === 'login') {
+    f.innerHTML = `
+      <h2>Bem-vindo(a) 👋</h2>
+      <p class="muted" style="margin-top:0">Entre com a sua conta para ver serviços e horários.</p>
+      <div class="field"><label>Usuário</label><input id="lUser" autocomplete="username" /></div>
+      <div class="field"><label>Senha</label><input id="lPass" type="password" autocomplete="current-password" /></div>
+      <button class="btn" style="width:100%" onclick="doLogin()">Entrar</button>`;
+  } else {
+    f.innerHTML = `
+      <h2>Criar conta de cliente</h2>
+      <p class="muted" style="margin-top:0">Preencha seus dados para marcar serviços.</p>
+      <div class="field"><label>Nome completo</label><input id="rName" /></div>
+      <div class="field"><label>Telefone / WhatsApp</label><input id="rPhone" placeholder="(11) 99999-9999" /></div>
+      <div class="field"><label>Usuário</label><input id="rUser" autocomplete="username" /></div>
+      <div class="field"><label>Senha</label><input id="rPass" type="password" autocomplete="new-password" /></div>
+      <button class="btn" style="width:100%" onclick="doRegister()">Criar conta</button>`;
+  }
+}
+
+async function doLogin() {
+  const username = document.getElementById('lUser').value.trim();
+  const password = document.getElementById('lPass').value;
+  if (!username || !password) return toast('Preencha usuário e senha.', 'error');
+  try {
+    const d = await api('/login', { method: 'POST', body: { username, password } });
+    state.token = d.token; state.user = d.user;
+    localStorage.setItem('token', d.token); localStorage.setItem('user', JSON.stringify(d.user));
+    state.view = d.user.role === 'owner' ? 'owner' : 'services';
+    renderAuthArea(); render();
+    toast('Olá, ' + d.user.name + '!');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function doRegister() {
+  const name = document.getElementById('rName').value.trim();
+  const phone = document.getElementById('rPhone').value.trim();
+  const username = document.getElementById('rUser').value.trim();
+  const password = document.getElementById('rPass').value;
+  if (!name || !phone || !username || !password) return toast('Preencha todos os campos.', 'error');
+  try {
+    const d = await api('/register', { method: 'POST', body: { name, phone, username, password } });
+    state.token = d.token; state.user = d.user;
+    localStorage.setItem('token', d.token); localStorage.setItem('user', JSON.stringify(d.user));
+    state.view = 'services';
+    renderAuthArea(); render();
+    toast('Conta criada! Agora escolha um serviço.');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===== Tabs do app =====
+function renderTabbar() {
+  const isOwner = state.user.role === 'owner';
+  let html = `<div class="tabbar">`;
+  html += `<div class="tab ${state.view === 'services' ? 'active' : ''}" onclick="setView('services')">Marcar serviço</div>`;
+  html += `<div class="tab ${state.view === 'mybookings' ? 'active' : ''}" onclick="setView('mybookings')">Meus agendamentos</div>`;
+  if (isOwner) html += `<div class="tab ${state.view === 'owner' ? 'active' : ''}" onclick="setView('owner')">Painel</div>`;
+  html += `</div>`;
+  document.getElementById('app').insertAdjacentHTML('afterbegin', html);
+}
+function setView(v) {
+  state.view = v;
+  state.selectedService = null; state.selectedDay = null; state.selectedTime = null;
+  render();
+}
+
+// ===== Render principal =====
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  if (!state.user) { renderAuth(); return; }
+  renderTabbar();
+  if (state.view === 'services') renderServices(app);
+  else if (state.view === 'mybookings') renderMyBookings(app);
+  else if (state.view === 'owner') renderOwner(app);
+}
+
+// ===== Serviços (cliente) =====
+async function renderServices(app) {
+  app.innerHTML += `<div class="card"><h2>Escolha um serviço</h2><p class="muted" style="margin-top:0">Toque em um serviço para ver os horários livres.</p><div class="grid" id="svcGrid"><p class="muted">Carregando...</p></div></div><div class="avail-wrap" id="availWrap"></div>`;
+  let services;
+  try { services = await api('/services'); }
+  catch (e) { document.getElementById('svcGrid').innerHTML = '<p class="muted">Erro ao carregar serviços: ' + esc(e.message) + '</p>'; return; }
+  if (!services.length) {
+    document.getElementById('svcGrid').innerHTML = '<p class="empty">Nenhum serviço cadastrado ainda.</p>';
+    return;
+  }
+  const grid = document.getElementById('svcGrid');
+  grid.innerHTML = services.map(s => `
+    <div class="card service-card ${state.selectedService && state.selectedService.id === s.id ? 'selected' : ''}" onclick="pickService(${s.id})">
+      <div class="service-name">${esc(s.name)}</div>
+      <div class="service-desc">${esc(s.description || '')}</div>
+      <div class="service-meta">
+        <span class="price">${fmtPrice(s.price)}</span>
+        <span class="duration">⏱ ${esc(s.duration_min)} min</span>
+      </div>
+    </div>`).join('');
+}
+
+async function pickService(id) {
+  const s = await api('/services').then(a => a.find(x => x.id === id));
+  state.selectedService = s;
+  state.selectedDay = null; state.selectedTime = null;
+  renderServices(document.getElementById('app'));
+  loadAvailability();
+}
+
+async function loadAvailability() {
+  const wrap = document.getElementById('availWrap');
+  wrap.innerHTML = '<div class="card"><p class="muted">Carregando horários...</p></div>';
+  let data;
+  try { data = await api('/availability?serviceId=' + state.selectedService.id + '&days=21'); }
+  catch (e) { wrap.innerHTML = '<div class="card"><p class="muted">Erro: ' + esc(e.message) + '</p></div>'; return; }
+  wrap.innerHTML = `<div class="card">
+    <h2>Horários para: ${esc(state.selectedService.name)}</h2>
+    <p class="muted" style="margin-top:0">Escolha um dia e um horário livre.</p>
+    <div class="avail-days" id="dayChips"></div>
+    <div id="slotsArea"><p class="muted" style="margin-top:12px">Selecione um dia acima.</p></div>
+    <div id="summaryArea"></div>
+  </div>`;
+  const chips = document.getElementById('dayChips');
+  chips.innerHTML = data.days.map(d => {
+    const hasFree = d.freeTimes.length > 0;
+    return `<div class="day-chip ${!hasFree ? 'nofree' : ''}" data-date="${d.date}" onclick="${hasFree ? 'pickDay(\'' + d.date + '\')' : ''}">
+      <div class="dw">${WEEKDAYS[d.weekday]}</div>
+      <div class="dd">${d.date.slice(8,10)}</div>
+    </div>`;
+  }).join('');
+  state._days = data.days;
+}
+
+function pickDay(date) {
+  state.selectedDay = date;
+  state.selectedTime = null;
+  const day = state._days.find(d => d.date === date);
+  document.querySelectorAll('.day-chip').forEach(c => c.classList.toggle('active', c.dataset.date === date));
+  const area = document.getElementById('slotsArea');
+  if (!day.freeTimes.length) { area.innerHTML = '<p class="muted" style="margin-top:12px">Nenhum horário livre neste dia.</p>'; }
+  else {
+    area.innerHTML = '<div class="slots">' + day.freeTimes.map(t =>
+      `<div class="slot" onclick="pickTime('${t}')">${t}</div>`).join('') + '</div>';
+  }
+  document.getElementById('summaryArea').innerHTML = '';
+}
+
+function pickTime(time) {
+  state.selectedTime = time;
+  document.querySelectorAll('.slot').forEach(s => s.classList.toggle('selected', s.textContent === time));
+  const s = state.selectedService;
+  document.getElementById('summaryArea').innerHTML = `
+    <div class="summary-bar">
+      <div>
+        <div style="font-weight:700">${esc(s.name)}</div>
+        <div class="muted">${fmtDate(state.selectedDay)} às ${time} · ${fmtPrice(s.price)}</div>
+      </div>
+      <button class="btn" onclick="confirmBooking()">Confirmar agendamento</button>
+    </div>`;
+}
+
+async function confirmBooking() {
+  if (!state.selectedDay || !state.selectedTime) return toast('Escolha dia e horário.', 'error');
+  try {
+    const row = await api('/bookings', {
+      method: 'POST',
+      body: { serviceId: state.selectedService.id, date: state.selectedDay, time: state.selectedTime }
+    });
+    toast('Agendamento marcado! Aguardando confirmação.');
+    state.selectedTime = null; state.selectedDay = null;
+    setView('mybookings');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===== Meus agendamentos (cliente) =====
+async function renderMyBookings(app) {
+  app.innerHTML += `<div class="card"><h2>Meus agendamentos</h2><div id="myList"><p class="muted">Carregando...</p></div></div>`;
+  let rows;
+  try { rows = await api('/bookings/mine'); }
+  catch (e) { document.getElementById('myList').innerHTML = '<p class="muted">Erro: ' + esc(e.message) + '</p>'; return; }
+  const list = document.getElementById('myList');
+  if (!rows.length) { list.innerHTML = '<p class="empty">Você ainda não tem agendamentos. Marque um serviço! 📅</p>'; return; }
+  list.innerHTML = rows.map(b => `
+    <div class="booking">
+      <div class="info">
+        <div class="sname">${esc(b.service_name)}</div>
+        <div class="stime">${fmtDate(b.date)} às ${esc(b.time)}</div>
+        <div class="client">${fmtPrice(b.price)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+        <span class="badge ${b.status}">${STATUS_LABEL[b.status]}</span>
+        ${(b.status === 'pending' || b.status === 'confirmed')
+          ? `<button class="btn small danger" onclick="cancelBooking(${b.id})">Cancelar</button>`
+          : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function cancelBooking(id) {
+  if (!confirm('Deseja cancelar este agendamento?')) return;
+  try {
+    await api('/bookings/' + id + '/cancel', { method: 'POST' });
+    toast('Agendamento cancelado.');
+    renderMyBookings(document.getElementById('app'));
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ===== Painel do responsável =====
+let ownerTab = 'bookings';
+async function renderOwner(app) {
+  app.innerHTML += `<div class="card">
+    <h2>Painel do responsável</h2>
+    <div class="filter-row">
+      <select id="ownerTabSel" onchange="ownerTab=this.value;renderOwner(document.getElementById('app'))">
+        <option value="bookings">Agendamentos</option>
+        <option value="services">Serviços</option>
+        <option value="slots">Horários de atendimento</option>
+      </select>
+    </div>
+    <div id="ownerContent"><p class="muted">Carregando...</p></div>
+  </div>`;
+  const c = document.getElementById('ownerContent');
+  if (ownerTab === 'bookings') ownerLoadBookings(c);
+  else if (ownerTab === 'services') ownerLoadServices(c);
+  else if (ownerTab === 'slots') ownerLoadSlots(c);
+}
+
+async function ownerLoadBookings(c) {
+  let rows;
+  try { rows = await api('/owner/bookings'); }
+  catch (e) { c.innerHTML = '<p class="muted">Erro: ' + esc(e.message) + '</p>'; return; }
+  let filter = 'all';
+  if (!rows.length) { c.innerHTML = '<p class="empty">Nenhum agendamento ainda.</p>'; return; }
+  function draw() {
+    const shown = rows.filter(r => filter === 'all' ? true : r.status === filter);
+    if (!shown.length) { c.innerHTML = '<p class="empty">Nenhum agendamento nesta situação.</p>'; return; }
+    c.innerHTML = `<div class="filter-row" style="margin-top:14px">
+        <select onchange="ownerFilterStatus(this.value)">
+          <option value="all">Todos</option>
+          <option value="pending">Pendentes</option>
+          <option value="confirmed">Confirmados</option>
+          <option value="rejected">Recusados</option>
+          <option value="cancelled">Cancelados</option>
+        </select>
+      </div>
+      <div class="section-title">Lista</div>
+      ${shown.map(b => `
+        <div class="booking">
+          <div class="info">
+            <div class="sname">${esc(b.service_name)}</div>
+            <div class="stime">${fmtDate(b.date)} às ${esc(b.time)}</div>
+            <div class="client">👤 ${esc(b.client_name)} · 📞 ${esc(b.client_phone)} · <span class="badge ${b.status}" style="margin-left:4px">${STATUS_LABEL[b.status]}</span></div>
+          </div>
+          <div class="actions">
+            ${b.status === 'pending' ? `
+              <button class="btn small" onclick="ownerAction(${b.id},'confirm')">Confirmar</button>
+              <button class="btn small danger" onclick="ownerAction(${b.id},'reject')">Recusar</button>` : ''}
+          </div>
+        </div>`).join('')}
+    `;
+  }
+  draw();
+  window._ownerRows = rows;
+}
+function ownerFilterStatus(v) {
+  const c = document.getElementById('ownerContent');
+  const rows = window._ownerRows || [];
+  const shown = rows.filter(r => v === 'all' ? true : r.status === v);
+  if (!shown.length) { c.innerHTML = '<p class="empty">Nenhum agendamento nesta situação.</p>'; return; }
+  c.innerHTML = `<div class="filter-row"><select onchange="ownerFilterStatus(this.value)">
+      <option value="all">Todos</option>
+      <option value="pending" ${v==='pending'?'selected':''}>Pendentes</option>
+      <option value="confirmed" ${v==='

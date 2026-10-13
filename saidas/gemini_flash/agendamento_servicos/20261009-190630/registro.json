@@ -1,0 +1,46 @@
+{
+  "data_hora_utc": "2026-10-09T19:06:30+00:00",
+  "modelo": "gemini_flash",
+  "modelo_id": "google/gemini-3.8-flash",
+  "dominio": "agendamento_servicos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": true
+    }
+  },
+  "pasta": "saidas\\gemini_flash\\agendamento_servicos\\20261009-190630",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um sistema de agendamento de serviços. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o responsável pelo negócio. Os clientes precisam poder ver os serviços e os horários livres, marcar um horário e ver ou cancelar os horários que marcaram. O responsável pelo negócio precisa poder cadastrar e editar os serviços e os horários disponíveis, confirmar ou recusar agendamentos e ver todos os agendamentos de todos os clientes.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "prompt_versao": "v2",
+  "provedor": "Google",
+  "id_geracao": "gen-1791572790-xenj7XcioSLZDPbT0xgs",
+  "modelo_servido": "google/gemini-3.8-flash",
+  "tokens_entrada": 277,
+  "tokens_saida": 26866,
+  "tokens_raciocinio": 2010,
+  "tokens_total": 27143,
+  "custo_usd": 0.10095525,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 152.4,
+  "duracao_api_s": 152.4,
+  "tokens_por_s": 176.3,
+  "n_arquivos": 7,
+  "arquivos": [
+    "package.json",
+    "database.js",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

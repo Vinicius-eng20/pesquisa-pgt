@@ -1,0 +1,815 @@
+=== package.json ===
+{
+  "name": "controle-despesas",
+  "version": "1.0.0",
+  "description": "Sistema de controle de despesas pessoais",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "connect-sqlite3": "^0.9.13",
+    "sqlite3": "^5.1.6",
+    "ejs": "^3.1.9",
+    "body-parser": "^1.20.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const bodyParser = require('body-parser');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Diretório de dados persistente
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const db = new sqlite3.Database(path.join(DATA_DIR, 'app.db'));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    ativo INTEGER NOT NULL DEFAULT 1,
+    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS categorias (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT UNIQUE NOT NULL,
+    ativa INTEGER NOT NULL DEFAULT 1
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS despesas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    categoria_id INTEGER NOT NULL,
+    descricao TEXT,
+    valor REAL NOT NULL,
+    data TEXT NOT NULL,
+    criado_em TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(usuario_id) REFERENCES usuarios(id),
+    FOREIGN KEY(categoria_id) REFERENCES categorias(id)
+  )`);
+  // Admin padrão
+  db.get(`SELECT id FROM usuarios WHERE is_admin = 1 LIMIT 1`, (err, row) => {
+    if (!row) {
+      const hash = bcrypt.hashSync('admin123', 10);
+      db.run(`INSERT INTO usuarios (nome, email, senha, is_admin, ativo) VALUES (?, ?, ?, 1, 1)`,
+        ['Administrador', 'admin@admin.com', hash]);
+      console.log('Usuário admin padrão criado: admin@admin.com / admin123');
+    }
+  });
+  // Categorias padrão
+  db.get(`SELECT id FROM categorias LIMIT 1`, (err, row) => {
+    if (!row) {
+      const cats = ['Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Lazer', 'Outros'];
+      cats.forEach(c => db.run(`INSERT INTO categorias (nome) VALUES (?)`, [c]));
+    }
+  });
+});
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: DATA_DIR }),
+  secret: process.env.SESSION_SECRET || 'segredo-controle-despesas-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+}));
+
+function requireLogin(req, res, next) {
+  if (!req.session.userId) return res.redirect('/login');
+  db.get(`SELECT * FROM usuarios WHERE id = ?`, [req.session.userId], (err, user) => {
+    if (err || !user || !user.ativo) {
+      req.session.destroy(() => res.redirect('/login'));
+      return;
+    }
+    req.user = user;
+    next();
+  });
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.user || !req.user.is_admin) return res.status(403).send('Acesso negado');
+  next();
+}
+
+// --- Rotas de autenticação ---
+
+app.get('/', (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  res.redirect('/login');
+});
+
+app.get('/login', (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  res.render('login', { erro: null });
+});
+
+app.post('/login', (req, res) => {
+  const { email, senha } = req.body;
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email], (err, user) => {
+    if (err || !user) return res.render('login', { erro: 'Email ou senha inválidos' });
+    if (!user.ativo) return res.render('login', { erro: 'Conta desativada. Contate o administrador.' });
+    if (!bcrypt.compareSync(senha, user.senha)) return res.render('login', { erro: 'Email ou senha inválidos' });
+    req.session.userId = user.id;
+    res.redirect('/dashboard');
+  });
+});
+
+app.get('/cadastro', (req, res) => {
+  if (req.session.userId) return res.redirect('/dashboard');
+  res.render('cadastro', { erro: null });
+});
+
+app.post('/cadastro', (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) return res.render('cadastro', { erro: 'Preencha todos os campos' });
+  if (senha.length < 4) return res.render('cadastro', { erro: 'Senha muito curta' });
+  const hash = bcrypt.hashSync(senha, 10);
+  db.run(`INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)`, [nome, email, hash], function(err) {
+    if (err) return res.render('cadastro', { erro: 'Email já cadastrado' });
+    req.session.userId = this.lastID;
+    res.redirect('/dashboard');
+  });
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
+});
+
+// --- Rotas do usuário ---
+
+app.get('/dashboard', requireLogin, (req, res) => {
+  const hoje = new Date();
+  const mes = req.query.mes || `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+  const inicio = mes + '-01';
+  const [ano, m] = mes.split('-').map(Number);
+  const fim = new Date(ano, m, 0).toISOString().slice(0, 10);
+
+  db.all(`
+    SELECT d.id, d.descricao, d.valor, d.data, c.nome AS categoria, c.id AS categoria_id
+    FROM despesas d JOIN categorias c ON c.id = d.categoria_id
+    WHERE d.usuario_id = ? AND d.data >= ? AND d.data <= ?
+    ORDER BY d.data DESC, d.id DESC
+  `, [req.user.id, inicio, fim], (err, despesas) => {
+    if (err) despesas = [];
+    const total = despesas.reduce((s, d) => s + d.valor, 0);
+
+    const porCategoria = {};
+    despesas.forEach(d => {
+      porCategoria[d.categoria] = (porCategoria[d.categoria] || 0) + d.valor;
+    });
+
+    db.all(`SELECT * FROM categorias WHERE ativa = 1 ORDER BY nome`, (err, categorias) => {
+      if (err) categorias = [];
+      res.render('dashboard', {
+        user: req.user,
+        despesas,
+        categorias: categorias || [],
+        total,
+        porCategoria,
+        mes
+      });
+    });
+  });
+});
+
+app.post('/despesas', requireLogin, (req, res) => {
+  const { descricao, valor, data, categoria_id } = req.body;
+  const v = parseFloat(String(valor).replace(',', '.'));
+  if (!v || v <= 0 || !data || !categoria_id) return res.redirect('/dashboard');
+  db.run(`INSERT INTO despesas (usuario_id, categoria_id, descricao, valor, data) VALUES (?, ?, ?, ?, ?)`,
+    [req.user.id, categoria_id, descricao || '', v, data],
+    () => {
+      const mes = data.slice(0, 7);
+      res.redirect('/dashboard?mes=' + mes);
+    });
+});
+
+app.post('/despesas/:id/excluir', requireLogin, (req, res) => {
+  db.run(`DELETE FROM despesas WHERE id = ? AND usuario_id = ?`, [req.params.id, req.user.id],
+    () => res.redirect('back'));
+});
+
+// --- Rotas do administrador ---
+
+app.get('/admin', requireLogin, requireAdmin, (req, res) => {
+  db.all(`
+    SELECT u.id, u.nome, u.email, u.ativo, u.criado_em,
+      COALESCE((SELECT SUM(valor) FROM despesas WHERE usuario_id = u.id), 0) AS total_gasto
+    FROM usuarios u ORDER BY u.id
+  `, (err, usuarios) => {
+    if (err) usuarios = [];
+    db.all(`SELECT c.*, (SELECT COUNT(*) FROM despesas WHERE categoria_id = c.id) AS qtd FROM categorias c ORDER BY c.nome`,
+      (err, categorias) => {
+        if (err) categorias = [];
+        const totalGeral = (usuarios || []).reduce((s, u) => s + (u.total_gasto || 0), 0);
+        res.render('admin', {
+          user: req.user,
+          usuarios: usuarios || [],
+          categorias: categorias || [],
+          totalGeral
+        });
+      });
+  });
+});
+
+app.post('/admin/categorias', requireLogin, requireAdmin, (req, res) => {
+  const { nome } = req.body;
+  if (!nome || !nome.trim()) return res.redirect('/admin');
+  db.run(`INSERT INTO categorias (nome) VALUES (?)`, [nome.trim()], (err) => {
+    res.redirect('/admin');
+  });
+});
+
+app.post('/admin/categorias/:id/toggle', requireLogin, requireAdmin, (req, res) => {
+  db.get(`SELECT ativa FROM categorias WHERE id = ?`, [req.params.id], (err, row) => {
+    if (!row) return res.redirect('/admin');
+    db.run(`UPDATE categorias SET ativa = ? WHERE id = ?`, [row.ativa ? 0 : 1, req.params.id],
+      () => res.redirect('/admin'));
+  });
+});
+
+app.post('/admin/usuarios/:id/toggle', requireLogin, requireAdmin, (req, res) => {
+  db.get(`SELECT is_admin, ativo FROM usuarios WHERE id = ?`, [req.params.id], (err, row) => {
+    if (!row || row.is_admin) return res.redirect('/admin');
+    db.run(`UPDATE usuarios SET ativo = ? WHERE id = ?`, [row.ativo ? 0 : 1, req.params.id],
+      () => res.redirect('/admin'));
+  });
+});
+
+app.listen(PORT, () => {
+  console.log('Servidor rodando na porta ' + PORT);
+  console.log('Admin padrão: admin@admin.com / admin123');
+});
+
+=== views/login.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="auth-box">
+  <h1>💰 Controle de Despesas</h1>
+  <h2>Entrar</h2>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <form method="POST" action="/login">
+    <label>Email</label>
+    <input type="email" name="email" required autocomplete="username">
+    <label>Senha</label>
+    <input type="password" name="senha" required autocomplete="current-password">
+    <button type="submit">Entrar</button>
+  </form>
+  <p class="link">Não tem conta? <a href="/cadastro">Cadastre-se</a></p>
+</div>
+</body>
+</html>
+
+=== views/cadastro.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastro - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="auth-box">
+  <h1>💰 Controle de Despesas</h1>
+  <h2>Criar conta</h2>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <form method="POST" action="/cadastro">
+    <label>Nome</label>
+    <input type="text" name="nome" required>
+    <label>Email</label>
+    <input type="email" name="email" required autocomplete="username">
+    <label>Senha</label>
+    <input type="password" name="senha" required autocomplete="new-password">
+    <button type="submit">Cadastrar</button>
+  </form>
+  <p class="link">Já tem conta? <a href="/login">Entrar</a></p>
+</div>
+</body>
+</html>
+
+=== views/dashboard.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meu Painel - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>💰 Controle de Despesas</h1>
+    <nav>
+      <span>Olá, <%= user.nome %></span>
+      <% if (user.is_admin) { %><a href="/admin">Painel Admin</a><% } %>
+      <a href="/logout">Sair</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Registrar despesa</h2>
+    <form method="POST" action="/despesas" class="form-despesa">
+      <div>
+        <label>Valor (R$)</label>
+        <input type="text" name="valor" placeholder="0,00" required>
+      </div>
+      <div>
+        <label>Data</label>
+        <input type="date" name="data" required value="<%= new Date().toISOString().slice(0,10) %>">
+      </div>
+      <div>
+        <label>Categoria</label>
+        <select name="categoria_id" required>
+          <option value="">Selecione</option>
+          <% categorias.forEach(c => { %>
+            <option value="<%= c.id %>"><%= c.nome %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label>Descrição</label>
+        <input type="text" name="descricao" placeholder="Opcional">
+      </div>
+      <button type="submit">Adicionar</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="mes-header">
+      <h2>Resumo do mês</h2>
+      <form method="GET" action="/dashboard" class="form-mes">
+        <input type="month" name="mes" value="<%= mes %>" onchange="this.form.submit()">
+      </form>
+    </div>
+    <div class="total-box">
+      <span>Total gasto em <%= mes %>:</span>
+      <strong>R$ <%= total.toFixed(2).replace('.', ',') %></strong>
+    </div>
+
+    <% const catKeys = Object.keys(porCategoria); %>
+    <% if (catKeys.length > 0) { %>
+      <h3>Por categoria</h3>
+      <ul class="categorias-resumo">
+        <% catKeys.forEach(k => { %>
+          <li><span><%= k %></span><strong>R$ <%= porCategoria[k].toFixed(2).replace('.', ',') %></strong></li>
+        <% }) %>
+      </ul>
+    <% } %>
+  </section>
+
+  <section class="card">
+    <h2>Despesas do mês</h2>
+    <% if (despesas.length === 0) { %>
+      <p class="vazio">Nenhuma despesa registrada neste mês.</p>
+    <% } else { %>
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Valor</th><th></th></tr>
+        </thead>
+        <tbody>
+          <% despesas.forEach(d => { %>
+            <tr>
+              <td><%= d.data.split('-').reverse().join('/') %></td>
+              <td><%= d.categoria %></td>
+              <td><%= d.descricao || '-' %></td>
+              <td>R$ <%= d.valor.toFixed(2).replace('.', ',') %></td>
+              <td>
+                <form method="POST" action="/despesas/<%= d.id %>/excluir" onsubmit="return confirm('Excluir?')">
+                  <button class="btn-excluir">×</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+</main>
+</body>
+</html>
+
+=== views/admin.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Admin - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>💰 Controle de Despesas — Admin</h1>
+    <nav>
+      <span>Olá, <%= user.nome %></span>
+      <a href="/dashboard">Meu Painel</a>
+      <a href="/logout">Sair</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Total geral de gastos (todos os usuários)</h2>
+    <div class="total-box destaque">
+      <strong>R$ <%= totalGeral.toFixed(2).replace('.', ',') %></strong>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Gerenciar categorias</h2>
+    <form method="POST" action="/admin/categorias" class="form-cat">
+      <input type="text" name="nome" placeholder="Nome da nova categoria" required>
+      <button type="submit">Adicionar categoria</button>
+    </form>
+    <table>
+      <thead>
+        <tr><th>Categoria</th><th>Despesas</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% categorias.forEach(c => { %>
+          <tr>
+            <td><%= c.nome %></td>
+            <td><%= c.qtd %></td>
+            <td><%= c.ativa ? 'Ativa' : 'Inativa' %></td>
+            <td>
+              <form method="POST" action="/admin/categorias/<%= c.id %>/toggle">
+                <button class="<%= c.ativa ? 'btn-desativar' : 'btn-ativar' %>">
+                  <%= c.ativa ? 'Desativar' : 'Ativar' %>
+                </button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Usuários</h2>
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Email</th><th>Total gasto</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% usuarios.forEach(u => { %>
+          <tr>
+            <td><%= u.nome %><%= u.is_admin ? ' (admin)' : '' %></td>
+            <td><%= u.email %></td>
+            <td>R$ <%= u.total_gasto.toFixed(2).replace('.', ',') %></td>
+            <td><%= u.ativo ? 'Ativo' : 'Desativado' %></td>
+            <td>
+              <% if (!u.is_admin) { %>
+                <form method="POST" action="/admin/usuarios/<%= u.id %>/toggle">
+                  <button class="<%= u.ativo ? 'btn-desativar' : 'btn-ativar' %>">
+                    <%= u.ativo ? 'Desativar' : 'Ativar' %>
+                  </button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: #f0f2f5;
+  color: #1a1a2e;
+  line-height: 1.5;
+}
+header {
+  background: #1a1a2e;
+  color: white;
+  padding: 1rem;
+}
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+header h1 { font-size: 1.2rem; }
+header nav { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+header nav a {
+  color: #8ab4f8;
+  text-decoration: none;
+  font-weight: 500;
+}
+header nav a:hover { text-decoration: underline; }
+header nav span { font-size: 0.9rem; color: #ccc; }
+
+main {
+  max-width: 1100px;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.card h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: #1a1a2e;
+}
+.card h3 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+  color: #555;
+}
+
+label { display: block; font-size: 0.85rem; color: #555; margin-bottom: 0.25rem; font-weight: 500; }
+input, select {
+  width: 100%;
+  padding: 0.6rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+input:focus, select:focus { outline: none; border-color: #4a6cf7; }
+
+button {
+  background: #4a6cf7;
+  color: white;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+button:hover { background: #3b5bdb; }
+
+.form-despesa {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.8rem;
+  align-items: end;
+}
+.form-despesa button { padding: 0.6rem 1rem; }
+
+.form-cat {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+.form-cat input { flex: 1; }
+
+.mes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.form-mes input { width: auto; }
+
+.total-box {
+  background: #f8f9fc;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1.1rem;
+  margin-top: 0.5rem;
+}
+.total-box strong { color: #4a6cf7; font-size: 1.4rem; }
+.total-box.destaque {
+  justify-content: center;
+  background: #eef1ff;
+}
+.total-box.destaque strong { font-size: 2rem; }
+
+.categorias-resumo {
+  list-style: none;
+  margin-top: 0.5rem;
+}
+.categorias-resumo li {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+}
+.categorias-resumo li:last-child { border-bottom: none; }
+.categorias-resumo strong { color: #1a1a2e; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+table th {
+  text-align: left;
+  padding: 0.6rem 0.5rem;
+  font-size: 0.85rem;
+  color: #777;
+  border-bottom: 2px solid #eee;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+table td {
+  padding: 0.6rem 0.5rem;
+  border-bottom: 1px solid #eee;
+  font-size: 0.95rem;
+}
+table tr:last-child td { border-bottom: none; }
+
+.btn-excluir {
+  background: #ff4757;
+  padding: 0.2rem 0.55rem;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: 6px;
+}
+.btn-excluir:hover { background: #e03e4d; }
+
+.btn-desativar {
+  background: #ffa502;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+.btn-desativar:hover { background: #e69200; }
+.btn-ativar {
+  background: #2ed573;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+.btn-ativar:hover { background: #26b862; }
+
+.vazio { color: #888; text-align: center; padding: 1rem; }
+
+/* Auth */
+.auth-box {
+  max-width: 400px;
+  margin: 4rem auto;
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+.auth-box h1 {
+  font-size: 1.3rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  color: #1a1a2e;
+}
+.auth-box h2 {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: #444;
+}
+.auth-box form { display: flex; flex-direction: column; gap: 0.5rem; }
+.auth-box button { margin-top: 0.5rem; padding: 0.7rem; }
+.auth-box .link {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+.auth-box .link a { color: #4a6cf7; text-decoration: none; font-weight: 500; }
+.erro {
+  background: #ffe0e0;
+  color: #c0392b;
+  padding: 0.6rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .card { padding: 1rem; }
+  table { font-size: 0.85rem; }
+  table th, table td { padding: 0.4rem 0.3rem; }
+  .total-box strong { font-size: 1.2rem; }
+}
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+header { flex-shrink: 0; }
+
+=== README.md ===
+# Controle de Despesas Pessoais
+
+Sistema web completo de controle de despesas pessoais, com contas de usuário, categorias e painel administrativo.
+
+## Como instalar e executar
+
+1. Instale o **Node.js** (versão 18 ou superior): https://nodejs.org
+2. Abra o terminal (Prompt de Comando / Terminal) na pasta do projeto.
+3. Instale as dependências:
+
+```
+npm install
+```
+
+4. Inicie o servidor:
+
+```
+npm start
+```
+
+5. Abra no navegador: http://localhost:3000
+
+## Acesso do administrador padrão
+
+- **Email:** admin@admin.com
+- **Senha:** admin123
+
+Recomenda-se trocar a senha após o primeiro acesso. Para criar outro usuário administrador, edite o banco ou crie um novo cadastro e altere o campo `is_admin` para `1` no banco de dados.
+
+## O que cada tipo de usuário pode fazer
+
+**Usuário comum:**
+- Cadastrar-se e fazer login de qualquer dispositivo.
+- Registrar despesas com valor, data, categoria e descrição.
+- Ver o total gasto no mês e o resumo por categoria.
+- Navegar entre meses.
+- Excluir suas próprias despesas.
+
+**Administrador:**
+- Tudo que o usuário comum pode, mais:
+- Cadastrar novas categorias de despesa.
+- Desativar / ativar categorias.
+- Desativar / ativar contas de usuários.
+- Ver o total de gastos de todos os usuários e o valor individual de cada um.
+
+## Onde os dados ficam salvos
+
+Todos os dados ficam armazenados em banco de dados SQLite dentro do site, na pasta `data/`:
+- `data/app.db` — usuários, categorias e despesas.
+- `data/sessions.db` — sessões de login.
+
+Nada é salvo apenas no aparelho do usuário: tudo fica no servidor, então ao entrar de qualquer computador ou celular os mesmos dados aparecem.
+
+## Colocar na internet
+
+O projeto funciona em qualquer serviço que hospede Node.js (Render, Railway, Fly.io, VPS, etc.). Basta:
+
+1. Subir o projeto para o serviço.
+2. Definir as variáveis de ambiente (opcional):
+   - `PORT` — porta (a maioria dos serviços define automaticamente).
+   - `SESSION_SECRET` — string aleatória para segurança das sessões.
+   - `DATA_DIR` — pasta onde salvar o banco (importante em hospedagens com disco persistente, ex.: `/data`).
+3. Usar um disco persistente apontando para a pasta de dados, para que nada seja perdido entre reinicializações.
+
+Comando de start: `npm start`
+```

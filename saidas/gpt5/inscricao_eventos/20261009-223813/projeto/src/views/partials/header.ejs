@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title ? title + ' - ' : '' %>Portal de Eventos</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="header">
+  <nav class="nav">
+    <a class="brand" href="/">Portal de Eventos</a>
+    <div class="nav-links">
+      <a href="/">Eventos</a>
+      <% if (user) { %>
+        <% if (user.role === 'organizer') { %>
+          <a href="/organizer">Organizador</a>
+          <a href="/organizer/registrations">Inscrições</a>
+        <% } else { %>
+          <a href="/my-registrations">Minhas inscrições</a>
+        <% } %>
+        <span class="nav-user"><%= user.name %></span>
+        <form class="inline-form" method="post" action="/logout">
+          <button class="secondary" type="submit">Sair</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Entrar</a>
+        <a class="btn" href="/register">Criar conta</a>
+      <% } %>
+    </div>
+  </nav>
+</header>
+<main class="main">
+  <% if (flash) { %>
+    <div class="flash <%= flash.type %>"><%= flash.message %></div>
+  <% } %>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Cursos Online</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Tela de Login/Registro -->
+        <div id="auth-screen" class="screen">
+            <div class="auth-container">
+                <h1>Plataforma de Cursos</h1>
+                
+                <div class="auth-tabs">
+                    <button class="tab-btn active" onclick="mostrarLogin()">Entrar</button>
+                    <button class="tab-btn" onclick="mostrarRegistro()">Criar Conta</button>
+                </div>
+
+                <!-- Formulário de Login -->
+                <form id="login-form" class="auth-form" onsubmit="fazerLogin(event)">
+                    <h2>Entrar</h2>
+                    <input type="email" id="login-email" placeholder="Email" required>
+                    <input type="password" id="login-senha" placeholder="Senha" required>
+                    <button type="submit">Entrar</button>
+                    <p id="login-erro" class="erro"></p>
+                </form>
+
+                <!-- Formulário de Registro -->
+                <form id="registro-form" class="auth-form hidden" onsubmit="fazerRegistro(event)">
+                    <h2>Criar Conta</h2>
+                    <input type="text" id="registro-nome" placeholder="Nome completo" required>
+                    <input type="email" id="registro-email" placeholder="Email" required>
+                    <input type="password" id="registro-senha" placeholder="Senha" required minlength="6">
+                    <button type="submit">Criar Conta</button>
+                    <p id="registro-erro" class="erro"></p>
+                    <p class="info">O primeiro usuário criado será o administrador</p>
+                </form>
+            </div>
+        </div>
+
+        <!-- Tela Principal -->
+        <div id="main-screen" class="screen hidden">
+            <nav class="navbar">
+                <h1>Plataforma de Cursos</h1>
+                <div class="nav-buttons">
+                    <button onclick="mostrarCursos()">Cursos</button>
+                    <button onclick="mostrarMeusCursos()">Meus Cursos</button>
+                    <button id="btn-admin" onclick="mostrarAdmin()" class="hidden">Administração</button>
+                    <button onclick="logout()">Sair</button>
+                </div>
+                <div id="user-info"></div>
+            </nav>
+
+            <!-- Lista de Cursos -->
+            <div id="cursos-section" class="content-section">
+                <h2>Cursos Disponíveis</h2>
+                <div id="lista-cursos" class="cards-container"></div>
+            </div>
+
+            <!-- Meus Cursos -->
+            <div id="meus-cursos-section" class="content-section hidden">
+                <h2>Meus Cursos</h2>
+                <div id="lista-meus-cursos" class="cards-container"></div>
+            </div>
+
+            <!-- Painel Admin -->
+            <div id="admin-section" class="content-section hidden">
+                <h2>Painel Administrativo</h2>
+                
+                <div class="admin-tabs">
+                    <button class="admin-tab-btn active" onclick="mostrarGerenciarCursos()">Gerenciar Cursos</button>
+                    <button class="admin-tab-btn" onclick="mostrarTodasMatriculas()">Todas as Matrículas</button>
+                </div>
+
+                <!-- Gerenciar Cursos -->
+                <div id="gerenciar-cursos" class="admin-content">
+                    <button onclick="mostrarFormCurso()" class="btn-primary">+ Novo Curso</button>
+                    
+                    <!-- Formulário de Curso -->
+                    <div id="form-curso" class="modal hidden">
+                        <div class="modal-content">
+                            <h3 id="form-curso-titulo">Novo Curso</h3>
+                            <form onsubmit="salvarCurso(event)">
+                                <input type="hidden" id="curso-id">
+                                <input type="text" id="curso-titulo" placeholder="Título do curso" required>
+                                <textarea id="curso-descricao" placeholder="Descrição" rows="4"></textarea>
+                                <input type="text" id="curso-instrutor" placeholder="Instrutor">
+                                <input type="text" id="curso-duracao" placeholder="Duração (ex: 40 horas)">
+                                <div class="modal-buttons">
+                                    <button type="submit">Salvar</button>
+                                    <button type="button" onclick="fecharFormCurso()">Cancelar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="lista-cursos-admin" class="admin-list"></div>
+                </div>
+
+                <!-- Todas as Matrículas -->
+                <div id="todas-matriculas" class="admin-content hidden">
+                    <div id="lista-matriculas-admin" class="admin-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

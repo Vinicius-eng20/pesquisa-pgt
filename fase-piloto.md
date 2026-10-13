@@ -11,7 +11,7 @@ Registro do que aconteceu na primeira rodada de gerações do grupo vibe coding,
 | Domínios | os 10 domínios de `DOMINIOS` |
 | Parâmetros | `max_tokens` = 32000, raciocínio desligado, prompt de sistema igual ao atual |
 | Execuções | uma geração por combinação de modelo e domínio |
-| Custo total | cerca de US$ 1,96 (Kimi US$ 1,45; Qwen US$ 0,44; DeepSeek US$ 0,07), incluindo reparo, continuação e reenvio |
+| Custo total | US$ 2,00 (Kimi US$ 1,45; Qwen US$ 0,48; DeepSeek US$ 0,07), incluindo reparo, continuação e reenvio |
 
 Os modelos Claude Sonnet 4.5, GPT-5.5 e Gemini 3.8 Flash não foram executados nesta fase.
 

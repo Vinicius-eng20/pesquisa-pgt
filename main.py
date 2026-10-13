@@ -6,7 +6,7 @@ from time import sleep
 #   - agendamento_serviços, cursos_online, reservas_hotel, biblioteca_digital
 #   - marketplace_freelance, inscricao_eventos, tarefas_equipe
 
-MODELO = "deepseek"
+MODELO = "gpt5"
 
 DOMINIOS = ['loja_departamentos', 'despesas_pessoais', 'restaurante_pedidos', 'agendamento_servicos', 'cursos_online', 'reservas_hotel', 'biblioteca_digital', 'marketplace_freelance', 'inscricao_eventos', 'tarefas_equipe']
 

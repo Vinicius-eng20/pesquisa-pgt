@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leitores - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Leitores</h1>
+      <p class="muted">Leitores com empréstimos em atraso ficam automaticamente bloqueados para novos empréstimos.</p>
+    </section>
+
+    <section class="card table-wrap">
+      <% if (readers.length === 0) { %>
+        <p>Nenhum leitor cadastrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Leitor</th>
+              <th>Status</th>
+              <th>Total de empréstimos</th>
+              <th>Ativos</th>
+              <th>Atrasados</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% readers.forEach(reader => { %>
+              <tr>
+                <td>
+                  <strong><%= reader.name %></strong><br>
+                  <span class="muted"><%= reader.email %></span>
+                </td>
+                <td>
+                  <% if (reader.blocked) { %>
+                    <span class="badge danger">Bloqueado</span>
+                  <% } else { %>
+                    <span class="badge success">Liberado</span>
+                  <% } %>
+                </td>
+                <td><%= reader.total_loans %></td>
+                <td><%= reader.active_loans %></td>
+                <td><%= reader.overdue_loans %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>

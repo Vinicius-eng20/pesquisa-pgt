@@ -1,0 +1,33 @@
+<%- include('partials/head', { title: 'Entrar' }) %>
+<%- include('partials/header') %>
+
+<div class="auth card">
+  <h1>Entrar</h1>
+
+  <form action="/login" method="POST">
+    <label>
+      Email
+      <input type="email" name="email" required autocomplete="email">
+    </label>
+
+    <label>
+      Senha
+      <input type="password" name="password" required autocomplete="current-password">
+    </label>
+
+    <button class="button full" type="submit">Entrar</button>
+  </form>
+
+  <p class="muted">
+    Ainda não tem conta?
+    <a href="/cadastro">Criar conta</a>
+  </p>
+
+  <div class="hint">
+    <strong>Gerente inicial:</strong><br>
+    gerente@restaurante.com<br>
+    senha: gerente123
+  </div>
+</div>
+
+<%- include('partials/footer') %>

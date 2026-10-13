@@ -1,0 +1,72 @@
+<%- include('../partials/header') %>
+
+<div class="page-title">
+  <div>
+    <h1>Painel do administrador</h1>
+    <p>Resumo da plataforma.</p>
+  </div>
+</div>
+
+<section class="grid four">
+  <div class="stat-card">
+    <strong><%= stats.courses %></strong>
+    <span>Cursos</span>
+  </div>
+  <div class="stat-card">
+    <strong><%= stats.users %></strong>
+    <span>Alunos</span>
+  </div>
+  <div class="stat-card">
+    <strong><%= stats.activeEnrollments %></strong>
+    <span>Matrículas ativas</span>
+  </div>
+  <div class="stat-card">
+    <strong><%= stats.totalEnrollments %></strong>
+    <span>Matrículas totais</span>
+  </div>
+</section>
+
+<div class="page-title compact">
+  <div>
+    <h2>Últimas matrículas</h2>
+  </div>
+  <a class="button secondary" href="/admin/enrollments">Ver todas</a>
+</div>
+
+<% if (latestEnrollments.length === 0) { %>
+  <div class="empty">Nenhuma matrícula registrada.</div>
+<% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Aluno</th>
+          <th>Curso</th>
+          <th>Status</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% latestEnrollments.forEach(enrollment => { %>
+          <tr>
+            <td>
+              <strong><%= enrollment.student_name %></strong><br>
+              <span class="muted"><%= enrollment.student_email %></span>
+            </td>
+            <td><%= enrollment.course_title %></td>
+            <td>
+              <% if (enrollment.status === 'active') { %>
+                <span class="badge success">Ativa</span>
+              <% } else { %>
+                <span class="badge danger">Cancelada</span>
+              <% } %>
+            </td>
+            <td><%= enrollment.created_at %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('../partials/footer') %>

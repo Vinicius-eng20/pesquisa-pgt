@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Biblioteca Digital{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <!-- BARRA DE NAVEGAÇÃO -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="nav-brand">
+        <a href="{{ url_for('index') }}">
+          📖 Biblioteca Digital
+          {% if session.get('role') == 'librarian' %}
+            <span class="tag">Bibliotecário</span>
+          {% endif %}
+        </a>
+      </div>
+
+      <div class="nav-links">
+        <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Acervo</a>
+
+        {% if session.get('user_id') %}
+          {% if session.get('role') == 'reader' %}
+            <a href="{{ url_for('my_loans') }}" class="{% if request.endpoint == 'my_loans' %}active{% endif %}">Meus Empréstimos</a>
+          {% elif session.get('role') == 'librarian' %}
+            <a href="{{ url_for('librarian_loans') }}" class="{% if request.endpoint == 'librarian_loans' %}active{% endif %}">Todos Empréstimos</a>
+            <a href="{{ url_for('librarian_books') }}" class="{% if request.endpoint in ['librarian_books', 'librarian_add_book', 'librarian_edit_book'] %}active{% endif %}">Gerenciar Livros</a>
+            <a href="{{ url_for('librarian_readers') }}" class="{% if request.endpoint == 'librarian_readers' %}active{% endif %}">Leitores</a>
+          {% endif %}
+
+          <div class="nav-user">
+            <span class="user-badge">Olá, <strong>{{ session.get('user_name') }}</strong></span>
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-danger">Sair</a>
+          </div>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline" style="color: white; border-color: white;">Entrar</a>
+          <a href="{{ url_for('register') }}" class="btn btn-sm btn-primary">Cadastre-se</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <!-- MENSAGENS FLASH -->
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- RODAPÉ -->
+  <footer>
+    <p>Biblioteca Digital &copy; Todos os dados salvos localmente e sincronizados em rede.</p>
+  </footer>
+
+</body>
+</html>

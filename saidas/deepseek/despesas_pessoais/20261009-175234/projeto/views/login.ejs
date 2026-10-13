@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="auth-box">
+  <h1>💰 Controle de Despesas</h1>
+  <h2>Entrar</h2>
+  <% if (erro) { %><p class="erro"><%= erro %></p><% } %>
+  <form method="POST" action="/login">
+    <label>Email</label>
+    <input type="email" name="email" required autocomplete="username">
+    <label>Senha</label>
+    <input type="password" name="senha" required autocomplete="current-password">
+    <button type="submit">Entrar</button>
+  </form>
+  <p class="link">Não tem conta? <a href="/cadastro">Cadastre-se</a></p>
+</div>
+</body>
+</html>

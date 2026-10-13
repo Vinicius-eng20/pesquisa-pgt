@@ -1,0 +1,71 @@
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Área do organizador</h1>
+  <p>Crie, edite e cancele eventos.</p>
+</section>
+
+<div class="card actions">
+  <a class="btn" href="/organizer/events/new">Criar novo evento</a>
+  <a class="btn secondary" href="/organizer/registrations">Ver todas as inscrições</a>
+</div>
+
+<div class="card">
+  <h2>Eventos</h2>
+
+  <% if (events.length === 0) { %>
+    <div class="empty">Nenhum evento criado.</div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Evento</th>
+            <th>Data</th>
+            <th>Local</th>
+            <th>Status</th>
+            <th>Inscrições</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% events.forEach(event => { %>
+            <tr>
+              <td><%= event.title %></td>
+              <td><%= new Date(event.event_date).toLocaleString('pt-BR') %></td>
+              <td><%= event.location %></td>
+              <td>
+                <% if (event.status === 'ativo') { %>
+                  <span class="badge success">Ativo</span>
+                <% } else { %>
+                  <span class="badge danger">Cancelado</span>
+                <% } %>
+              </td>
+              <td>
+                <%= event.active_registrations %>
+                <% if (event.capacity) { %>
+                  / <%= event.capacity %>
+                <% } %>
+                <br>
+                <span class="meta">Total histórico: <%= event.total_registrations %></span>
+              </td>
+              <td>
+                <div class="actions">
+                  <a class="btn secondary" href="/events/<%= event.id %>">Ver</a>
+                  <a class="btn" href="/organizer/events/<%= event.id %>/edit">Editar</a>
+                  <% if (event.status !== 'cancelado') { %>
+                    <form method="post" action="/organizer/events/<%= event.id %>/cancel" onsubmit="return confirm('Cancelar este evento?')">
+                      <button class="danger" type="submit">Cancelar</button>
+                    </form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

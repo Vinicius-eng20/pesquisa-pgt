@@ -48,7 +48,7 @@ MAX_TOKENS = 32000
 # Se algum modelo exigir raciocínio ligado, registre a exceção aqui.
 REASONING_PADRAO = {"enabled": False}
 REASONING_POR_MODELO = {
-    # "qwen": {"enabled": True},
+    "gemini_flash": {"enabled": True}
 }
 
 MAX_TENTATIVAS = 6          # tentativas em caso de 429/5xx
@@ -177,6 +177,13 @@ CAMPOS_CSV = [
 # Aceita a linha '=== caminho ===' e também a variante em que o modelo cola uma
 # cerca (``` , ''' ou """) no início da mesma linha, por exemplo '``` === server.js ==='.
 # O nome do arquivo não pode começar com '=' (evita sublinhados de títulos '=====').
+# Variante em que o modelo abre um bloco de código usando o nome do arquivo no lugar da
+# linguagem, por exemplo '```README.md'. Só é aceita antes do primeiro marcador '=== ... ==='
+# (ou na resposta inteira, se não houver nenhum), para não confundir com exemplos de código.
+MARCADOR_CERCA_ARQUIVO = re.compile(
+    r"^[ \t]*(?:`{3,}|~{3,})[ \t]*(?P<nome>[\w.\-/\\]+\.[A-Za-z0-9]+)[ \t]*\r?$",
+    re.MULTILINE,
+)
 CERCAS = ("```", "'''", '"""')
 MARCADOR_ARQUIVO = re.compile(
     r"^[ \t]*(?P<cerca>(?:`{3,}|'{3,}|\"{3,})[ \t]*)?===[ \t]*(?P<nome>[^=\s][^\n]*?)[ \t]*===[ \t]*\r?$",
@@ -351,9 +358,21 @@ def _remover_cerca(conteudo):
 def extrair_arquivos(texto):
     """Separa a resposta em arquivos pelas linhas '=== caminho ==='.
     Devolve (dict caminho->conteúdo, quantidade de cercas tratadas). Conta como cerca tratada
-    tanto a removida do conteúdo quanto a colada ao marcador (padrão '``` === arquivo ===')."""
+    tanto a removida do conteúdo quanto a colada ao marcador (padrão '``` === arquivo ===').
+    O trecho anterior ao primeiro marcador também é examinado: se nele houver um bloco aberto
+    com o nome de um arquivo ('```README.md'), esse bloco vira arquivo."""
     marcas = list(MARCADOR_ARQUIVO.finditer(texto))
     arquivos, cercas = {}, 0
+
+    inicio = texto[:marcas[0].start()] if marcas else texto
+    marcas_cerca = list(MARCADOR_CERCA_ARQUIVO.finditer(inicio))
+    for i, m in enumerate(marcas_cerca):
+        fim = marcas_cerca[i + 1].start() if i + 1 < len(marcas_cerca) else len(inicio)
+        conteudo, _ = _remover_cerca(inicio[m.end():fim].strip("\r\n"))
+        if conteudo.strip():
+            arquivos[m.group("nome").strip()] = conteudo
+            cercas += 1
+
     for i, m in enumerate(marcas):
         fim = marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)
         bruto = texto[m.end():fim].strip("\n")

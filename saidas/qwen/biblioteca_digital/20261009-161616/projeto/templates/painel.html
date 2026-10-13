@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<h1>Painel</h1>
+<p class="sub">
+  {% if u.papel == "bibliotecario" %}Você é <b>bibliotecário</b>.
+  {% else %}Olá, <b>{{ u.nome }}</b>!{% endif %}
+  Aqui ficam seus empréstimos em andamento.
+</p>
+
+{% if msg %}<div class="alerta ok">{{ msg }}</div>{% endif %}
+{% if tem_atraso %}
+<div class="alerta erro">
+  <b>Atenção:</b> você tem <b>{{ atrasados|length }}</b> item(ns) em atraso.
+  Devolva para poder pegar novos itens.
+</div>
+{% endif %}
+
+<div class="grid c2">
+  <div class="cartao">
+    <h2>Empréstimos em andamento</h2>
+    {% if meus %}
+      <div class="grid" style="gap:10px">
+        {% for e in meus %}
+        <div class="item">
+          <div class="info">
+            <h3>{{ e.titulo }}</h3>
+            <p>Previsto até: {{ e.previsto_devolucao[:10] }}</p>
+            {% if _atrasado(e) %}<span class="selo erro">Em atraso</span>
+            {% else %}<span class="selo ok">No prazo</span>{% endif %}
+          </div>
+          <div class="acao">
+            <form method="post" action="/devolver/{{ e.id }}">
+              <button class="btn mini" type="submit"
+                      onclick="return confirm('Devolver {{ e.titulo }}?')">Devolver</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="vazio">Nenhum empréstimo em andamento. <a href="/acervo">Ver o acervo</a>.</div>
+    {% endif %}
+  </div>
+
+  <div class="cartao">
+    <h2>Últimas devoluções</h2>
+    {% if historico %}
+      <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Item</th><th>Devolvido em</th></tr></thead>
+        <tbody>
+          {% for e in historico[:8] %}
+          <tr><td>{{ e.titulo }}</td><td>{{ e.devolvido_em[:10] }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <div class="vazio">Você ainda não devolveu itens.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if u.papel == "bibliotecario" %}
+<div class="grid c3">
+  <div class="cartao"><h2 style="margin-bottom:4px">{{ total_itens }}</h2><p class="sub" style="margin:0">Itens no acervo</p></div>
+  <a href="/admin" class="cartao" style="display:block"><h2 style="margin-bottom:4px">Gerenciar acervo</h2><p class="sub" style="margin:0">Cadastrar, editar e remover itens</p></a>
+  <a href="/admin/historico" class="cartao" style="display:block"><h2 style="margin-bottom:4px">Histórico geral</h2><p class="sub" style="margin:0">Todos os empréstimos</p></a>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,84 @@
+<%- include('partials/header') %>
+
+<div class="page-title">
+  <div>
+    <h1>Minha área</h1>
+    <p>Olá, <%= user.name %>. Aqui você acompanha seus serviços e contratos.</p>
+  </div>
+  <a class="button" href="/services/new">Publicar serviço</a>
+</div>
+
+<section class="panel">
+  <h2>Meus serviços publicados</h2>
+
+  <% if (myServices.length === 0) { %>
+    <div class="empty">Você ainda não publicou serviços.</div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Preço</th>
+            <th>Status</th>
+            <th>Publicado em</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% myServices.forEach(service => { %>
+            <tr>
+              <td><%= service.title %></td>
+              <td>R$ <%= Number(service.price).toFixed(2).replace('.', ',') %></td>
+              <td><span class="badge <%= service.status %>"><%= service.status %></span></td>
+              <td><%= service.created_at %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>Contratos de que participo</h2>
+
+  <% if (myContracts.length === 0) { %>
+    <div class="empty">Você ainda não participa de contratos.</div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Serviço</th>
+            <th>Prestador</th>
+            <th>Cliente</th>
+            <th>Status</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% myContracts.forEach(contract => { %>
+            <tr>
+              <td><%= contract.service_title %></td>
+              <td><%= contract.provider_name %></td>
+              <td><%= contract.client_name %></td>
+              <td><span class="badge <%= contract.status %>"><%= contract.status %></span></td>
+              <td>
+                <form action="/contracts/<%= contract.id %>/status" method="POST" class="row-actions">
+                  <select name="status">
+                    <option value="active" <%= contract.status === 'active' ? 'selected' : '' %>>Ativo</option>
+                    <option value="completed" <%= contract.status === 'completed' ? 'selected' : '' %>>Concluído</option>
+                    <option value="cancelled" <%= contract.status === 'cancelled' ? 'selected' : '' %>>Cancelado</option>
+                  </select>
+                  <button class="small-button" type="submit">Salvar</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

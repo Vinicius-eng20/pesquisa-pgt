@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Histórico de empréstimos - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Histórico de empréstimos</h1>
+      <p class="muted">Todos os empréstimos de todos os leitores.</p>
+    </section>
+
+    <section class="card table-wrap">
+      <% if (loans.length === 0) { %>
+        <p>Nenhum empréstimo registrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Leitor</th>
+              <th>Item</th>
+              <th>Empréstimo</th>
+              <th>Prazo</th>
+              <th>Status</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% loans.forEach(loan => { %>
+              <tr>
+                <td>
+                  <strong><%= loan.user_name %></strong><br>
+                  <span class="muted"><%= loan.user_email %></span><br>
+                  <% if (loan.blocked) { %>
+                    <span class="badge danger">Bloqueado para novos empréstimos</span>
+                  <% } %>
+                </td>
+                <td>
+                  <strong><%= loan.item_title %></strong><br>
+                  <span class="muted"><%= loan.item_author || '' %></span>
+                </td>
+                <td><%= loan.borrowed_at %></td>
+                <td><%= loan.due_at %></td>
+                <td>
+                  <% if (loan.returned_at) { %>
+                    <span class="badge success">Devolvido</span><br>
+                    <span class="muted"><%= loan.returned_at %></span>
+                  <% } else if (loan.overdue) { %>
+                    <span class="badge danger">Em atraso</span>
+                  <% } else { %>
+                    <span class="badge warning">Emprestado</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (!loan.returned_at) { %>
+                    <form action="/loans/<%= loan.id %>/return" method="post">
+                      <button type="submit">Registrar devolução</button>
+                    </form>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>

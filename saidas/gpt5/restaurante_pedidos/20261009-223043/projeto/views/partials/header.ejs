@@ -1,0 +1,38 @@
+<header class="topbar">
+  <a class="brand" href="/">🍽️ Restaurante</a>
+
+  <button class="menu-toggle" type="button" onclick="document.body.classList.toggle('menu-open')">
+    ☰
+  </button>
+
+  <nav class="nav">
+    <% if (user) { %>
+      <% if (user.role === 'manager') { %>
+        <a href="/gerente/cardapio">Cardápio</a>
+        <a href="/gerente/pedidos">Pedidos</a>
+      <% } else { %>
+        <a href="/">Cardápio</a>
+        <a href="/meus-pedidos">Meus pedidos</a>
+      <% } %>
+
+      <span class="user-pill"><%= user.name %></span>
+
+      <form action="/sair" method="POST" class="inline-form">
+        <button type="submit" class="link-button">Sair</button>
+      </form>
+    <% } else { %>
+      <a href="/">Cardápio</a>
+      <a href="/login">Entrar</a>
+      <a class="button small" href="/cadastro">Criar conta</a>
+    <% } %>
+  </nav>
+</header>
+
+<main class="container">
+  <% if (error) { %>
+    <div class="alert error"><%= error %></div>
+  <% } %>
+
+  <% if (success) { %>
+    <div class="alert success"><%= success %></div>
+  <% } %>

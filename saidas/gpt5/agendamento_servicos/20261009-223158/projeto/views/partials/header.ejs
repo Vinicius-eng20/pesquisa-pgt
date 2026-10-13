@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sistema de Agendamento</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Agenda Fácil</a>
+
+  <nav>
+    <% if (user) { %>
+      <% if (user.role === 'admin') { %>
+        <a href="/admin">Painel</a>
+      <% } else { %>
+        <a href="/cliente">Minha área</a>
+      <% } %>
+      <span class="user-name"><%= user.name %></span>
+      <form action="/logout" method="post" class="inline">
+        <button type="submit" class="link-button">Sair</button>
+      </form>
+    <% } else { %>
+      <a href="/login">Entrar</a>
+      <a href="/register">Criar conta</a>
+    <% } %>
+  </nav>
+</header>
+
+<main class="container">
+  <% if (message) { %>
+    <div class="message <%= message.type %>"><%= message.text %></div>
+  <% } %>

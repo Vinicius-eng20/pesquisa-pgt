@@ -1,0 +1,16 @@
+<%- include('layout-header') %>
+<div class="form-box">
+  <h1>Criar Conta</h1>
+  <% if (error) { %><div class="error"><%= error %></div><% } %>
+  <form method="POST" action="/register">
+    <label>Nome completo</label>
+    <input type="text" name="name" required>
+    <label>E-mail</label>
+    <input type="email" name="email" required>
+    <label>Senha</label>
+    <input type="password" name="password" required minlength="4">
+    <button class="btn" type="submit" style="width:100%;">Cadastrar</button>
+  </form>
+  <p style="margin-top:14px; text-align:center;">Já tem conta? <a href="/login">Entrar</a></p>
+</div>
+<%- include('layout-footer') %>

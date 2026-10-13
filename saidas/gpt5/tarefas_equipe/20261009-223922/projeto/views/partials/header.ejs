@@ -1,0 +1,18 @@
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/tarefas">Equipe Tarefas</a>
+
+    <% if (currentUser) { %>
+      <nav class="nav">
+        <a href="/tarefas">Tarefas</a>
+        <% if (currentUser.role === 'manager') { %>
+          <a href="/usuarios">Usuários</a>
+        <% } %>
+        <a href="/minha-conta">Minha conta</a>
+        <form action="/logout" method="post" class="inline-form">
+          <button type="submit" class="link-button">Sair</button>
+        </form>
+      </nav>
+    <% } %>
+  </div>
+</header>

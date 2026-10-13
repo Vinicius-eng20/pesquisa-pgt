@@ -1,0 +1,29 @@
+<header class="header">
+  <nav class="nav">
+    <a class="brand" href="/catalog">Biblioteca Digital</a>
+
+    <div class="nav-links">
+      <a href="/catalog">Acervo</a>
+
+      <% if (currentUser && currentUser.role === 'reader') { %>
+        <a href="/my-loans">Meus empréstimos</a>
+      <% } %>
+
+      <% if (currentUser && currentUser.role === 'librarian') { %>
+        <a href="/admin">Painel</a>
+        <a href="/admin/loans">Histórico</a>
+        <a href="/admin/readers">Leitores</a>
+      <% } %>
+
+      <% if (currentUser) { %>
+        <span class="muted"><%= currentUser.name %></span>
+        <form class="inline-form" action="/logout" method="post">
+          <button class="secondary" type="submit">Sair</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Entrar</a>
+        <a class="button" href="/register">Criar conta de leitor</a>
+      <% } %>
+    </div>
+  </nav>
+</header>

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administração - Controle de Despesas</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="admin">
+  <header class="topbar">
+    <div>
+      <strong>Administração do sistema</strong>
+      <div class="subtitle">Olá, <span id="userName"></span></div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="logoutBtn" class="secondary">Sair</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="grid grid-3">
+      <div class="stat">
+        <div class="stat-title">Total gasto por todos os usuários</div>
+        <div id="totalExpenses" class="stat-value">R$ 0,00</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-title">Usuários cadastrados</div>
+        <div id="totalUsers" class="stat-value">0</div>
+      </div>
+
+      <div class="stat">
+        <div class="stat-title">Despesas registradas</div>
+        <div id="expenseCount" class="stat-value">0</div>
+      </div>
+    </section>
+
+    <section class="grid grid-2" style="margin-top: 18px;">
+      <div class="card">
+        <h2>Cadastrar categoria</h2>
+
+        <form id="categoryForm">
+          <label for="categoryName">Nome da categoria</label>
+          <input id="categoryName" type="text" placeholder="Ex: Supermercado" required>
+          <button type="submit">Criar categoria</button>
+        </form>
+
+        <div id="categoryMessage" class="message"></div>
+      </div>
+
+      <div class="card">
+        <h2>Como funciona</h2>
+        <p class="subtitle">
+          Categorias ativas aparecem para os usuários ao registrar despesas.
+          Usuários desativados não conseguem entrar no sistema.
+        </p>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <h2>Usuários</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Tipo</th>
+              <th>Status</th>
+              <th>Total gasto</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <h2>Categorias</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Categoria</th>
+              <th>Status</th>
+              <th>Quantidade de despesas</th>
+              <th>Total gasto</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="categoriesBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

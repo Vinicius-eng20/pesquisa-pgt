@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel do bibliotecário - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Painel do bibliotecário</h1>
+      <p class="muted">Gerencie o acervo, leitores e empréstimos.</p>
+      <div class="actions">
+        <a class="button" href="/admin/items/new">Cadastrar item</a>
+        <a class="button secondary" href="/admin/loans">Ver histórico</a>
+        <a class="button secondary" href="/admin/readers">Ver leitores</a>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><strong><%= stats.items %></strong> itens</div>
+      <div class="stat"><strong><%= stats.users %></strong> leitores</div>
+      <div class="stat"><strong><%= stats.activeLoans %></strong> empréstimos ativos</div>
+      <div class="stat"><strong><%= stats.overdueLoans %></strong> atrasados</div>
+    </section>
+
+    <section class="card table-wrap">
+      <h2>Acervo</h2>
+
+      <% if (items.length === 0) { %>
+        <p>Nenhum item cadastrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Tipo</th>
+              <th>Total</th>
+              <th>Disponíveis</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <tr>
+                <td>
+                  <strong><%= item.title %></strong><br>
+                  <span class="muted"><%= item.author || '' %></span>
+                </td>
+                <td><%= item.type %></td>
+                <td><%= item.quantity %></td>
+                <td><%= item.available %></td>
+                <td>
+                  <div class="actions">
+                    <a class="button secondary" href="/admin/items/<%= item.id %>/edit">Editar</a>
+                    <form action="/admin/items/<%= item.id %>?_method=DELETE" method="post" onsubmit="return confirm('Remover este item?')">
+                      <button class="danger" type="submit">Remover</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>

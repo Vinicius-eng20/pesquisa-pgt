@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="linha" style="justify-content:space-between;align-items:flex-end">
+  <div>
+    <h1>Histórico de empréstimos</h1>
+    <p class="sub">Todos os empréstimos de todos os leitores.</p>
+  </div>
+  <a href="/admin" class="btn mini">← Administração</a>
+</div>
+
+<form method="get" action="/admin/historico" class="linha" style="margin-bottom:16px">
+  <input name="q" placeholder="Buscar por item ou leitor…" value="{{ q }}" style="flex:1;min-width:200px">
+  <select name="estado" style="width:auto">
+    <option value="">Tudo</option>
+    <option value="emprestado" {% if estado == "emprestado" %}selected{% endif %}>Emprestados</option>
+    <option value="devolvido" {% if estado == "devolvido" %}selected{% endif %}>Devolvidos</option>
+  </select>
+  <button class="btn primary" type="submit">Filtrar</button>
+</form>
+
+{% if ems %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr>
+    <th>Item</th><th>Leitor</th><th>Estado</th>
+    <th>Emprestado</th><th>Previsto</th><th>Devolvido</th><th></th>
+  </tr></thead>
+  <tbody>
+    {% for e in ems %}
+    {% set atrasado = _atrasado(e) %}
+    <tr>
+      <td>{{ e.titulo }}</td>
+      <td><a href="/admin/leitor/{{ e.leitor }}">{{ e.leitor_nome }}</a></td>
+      <td>
+        {% if e.estado == "devolvido" %}<span class="selo ok">devolvido</span>
+        {% elif atrasado %}<span class="selo erro">atrasado</span>
+        {% else %}<span class="selo aviso">emprestado</span>{% endif %}
+      </td>
+      <td>{{ e.emprestado_em[:10] }}</td>
+      <td>{{ e.previsto_devolucao[:10] }}</td>
+      <td>{{ e.devolvido_em[:10] if e.devolvido_em else "—" }}</td>
+      <td>
+        {% if e.estado == "emprestado" %}
+        <form method="post" action="/devolver/{{ e.id }}">
+          <button class="btn mini" type="submit"
+                  onclick="return confirm('Registrar devolução de {{ e.titulo }} em nome de {{ e.leitor_nome }}?')">Devolver</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="vazio">Nenhum empréstimo encontrado.</div>
+{% endif %}
+{% endblock %}

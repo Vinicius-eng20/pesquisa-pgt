@@ -1,0 +1,63 @@
+<%- include('partials/header') %>
+
+<div class="page-title">
+  <div>
+    <h1>Minhas matrículas</h1>
+    <p>Acompanhe os cursos em que você se matriculou.</p>
+  </div>
+  <a class="button secondary" href="/courses">Ver cursos</a>
+</div>
+
+<% if (enrollments.length === 0) { %>
+  <div class="empty">Você ainda não possui matrículas.</div>
+<% } else { %>
+  <section class="grid">
+    <% enrollments.forEach(enrollment => { %>
+      <article class="card course-card">
+        <div class="card-head">
+          <h2><%= enrollment.title %></h2>
+          <% if (enrollment.status === 'active') { %>
+            <span class="badge success">Ativa</span>
+          <% } else { %>
+            <span class="badge danger">Cancelada</span>
+          <% } %>
+        </div>
+
+        <p><%= enrollment.description %></p>
+
+        <dl class="details">
+          <div>
+            <dt>Carga horária</dt>
+            <dd><%= enrollment.workload %></dd>
+          </div>
+          <div>
+            <dt>Professor</dt>
+            <dd><%= enrollment.teacher %></dd>
+          </div>
+          <div>
+            <dt>Data da matrícula</dt>
+            <dd><%= enrollment.created_at %></dd>
+          </div>
+          <% if (enrollment.cancelled_at) { %>
+            <div>
+              <dt>Cancelada em</dt>
+              <dd><%= enrollment.cancelled_at %></dd>
+            </div>
+          <% } %>
+        </dl>
+
+        <% if (enrollment.status === 'active') { %>
+          <form action="/my-enrollments/<%= enrollment.id %>/cancel" method="post" data-confirm="Cancelar esta matrícula?">
+            <button class="button danger full" type="submit">Cancelar matrícula</button>
+          </form>
+        <% } else { %>
+          <form action="/courses/<%= enrollment.course_id %>/enroll" method="post">
+            <button class="button full" type="submit">Matricular novamente</button>
+          </form>
+        <% } %>
+      </article>
+    <% }) %>
+  </section>
+<% } %>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,2232 @@
+=== requirements.txt ===
+Flask==3.0.3
+Werkzeug==3.0.3
+
+=== README.md ===
+# Sistema de Pedidos para Restaurante
+
+Sistema completo de pedidos para restaurante, pronto para uso em computadores e celulares. Não necessita de serviços externos e armazena todos os dados de forma permanente no próprio servidor.
+
+---
+
+## 🚀 Como instalar e rodar (Passo a Passo)
+
+Você só precisa ter o **Python** instalado no seu computador (se não tiver, baixe a versão mais recente em [python.org](https://www.python.org)).
+
+### 1. Abra o Terminal ou Prompt de Comando
+Navegue até a pasta onde descompactou os arquivos do projeto:
+```bash
+cd caminho/para/a/pasta
+```
+
+### 2. Instale os componentes necessários
+Execute o comando:
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Inicie o sistema
+Execute o comando:
+```bash
+python app.py
+```
+
+### 4. Acesse no navegador
+Abra seu navegador de internet e entre no endereço:
+```
+http://localhost:5000
+```
+
+Para acessar pelo **celular ou outro computador na mesma rede Wi-Fi**, basta abrir o navegador do celular e digitar o IP do computador onde o sistema está rodando (exemplo: `http://192.168.1.100:5000`). O próprio terminal mostra o endereço de rede ao iniciar.
+
+---
+
+## 👥 Contas de Acesso
+
+O sistema já vem inicializado com um cardápio de exemplo e a conta do gerente:
+
+- **Gerente (Administrador):**
+  - **E-mail:** `gerente@restaurante.com`
+  - **Senha:** `admin123`
+  - *Funções:* Ver todos os pedidos em tempo real, mudar o status dos pedidos (Recebido, Em Preparo, Saiu para Entrega, Entregue, Cancelado), adicionar, editar, pausar e remover pratos do cardápio.
+
+- **Clientes:**
+  - Qualquer pessoa pode clicar em **"Criar Conta"** na tela inicial, cadastrar seu nome, telefone e endereço.
+  - *Funções:* Navegar pelo cardápio, adicionar itens ao carrinho com observações, fechar pedidos e acompanhar o andamento em tempo real.
+
+---
+
+## 💾 Onde ficam salvos os dados?
+
+Todos os dados (usuários, cardápio, fotos e histórico de pedidos) são gravados no arquivo de banco de dados `restaurante.db`, criado automaticamente na mesma pasta. Mesmo se o computador for desligado, nada é perdido.
+
+=== app.py ===
+import os
+import sqlite3
+from datetime import datetime
+from flask import Flask, request, jsonify, render_template, session
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'restaurante-chave-secreta-segura-2025')
+DB_PATH = os.path.join(os.path.dirname(__file__), 'restaurante.db')
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+def init_db():
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'cliente',
+            phone TEXT,
+            address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS dishes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            price REAL NOT NULL,
+            image_url TEXT,
+            is_available INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            customer_name TEXT NOT NULL,
+            customer_phone TEXT NOT NULL,
+            delivery_address TEXT NOT NULL,
+            payment_method TEXT NOT NULL,
+            notes TEXT,
+            total_price REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'recebido',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS order_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id INTEGER NOT NULL,
+            dish_id INTEGER,
+            dish_name TEXT NOT NULL,
+            unit_price REAL NOT NULL,
+            quantity INTEGER NOT NULL,
+            subtotal REAL NOT NULL,
+            notes TEXT,
+            FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Criação do usuário Gerente padrão se não existir
+    cursor.execute("SELECT id FROM users WHERE email = ?", ('gerente@restaurante.com',))
+    if not cursor.fetchone():
+        cursor.execute('''
+            INSERT INTO users (name, email, password_hash, role, phone, address)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            'Gerente do Restaurante',
+            'gerente@restaurante.com',
+            generate_password_hash('admin123'),
+            'gerente',
+            '(11) 98888-7777',
+            'Restaurante Central'
+        ))
+
+    # Categorias padrão
+    categories_default = ['Hambúrgueres', 'Pizzas', 'Bebidas', 'Sobremesas']
+    for cat in categories_default:
+        cursor.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (cat,))
+
+    # Pratos padrão se o cardápio estiver vazio
+    cursor.execute("SELECT COUNT(*) as count FROM dishes")
+    if cursor.fetchone()['count'] == 0:
+        cursor.execute("SELECT id, name FROM categories")
+        cat_map = {row['name']: row['id'] for row in cursor.fetchall()}
+
+        sample_dishes = [
+            (cat_map.get('Hambúrgueres'), 'Burger Clássico Artesanal', 'Pão brioche, blend 180g bovino, queijo cheddar derretido, alface, tomate e maionese da casa.', 34.90, 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&auto=format&fit=crop'),
+            (cat_map.get('Hambúrgueres'), 'Bacon Smash Burger', 'Dois blends smash 90g crocantes, dobro de queijo, fatias crocantes de bacon e molho especial.', 38.50, 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=600&auto=format&fit=crop'),
+            (cat_map.get('Pizzas'), 'Pizza Margherita Especial', 'Molho de tomate pelado italiano, muçarela de búfala, manjericão fresco e azeite extravirgem (8 fatias).', 59.90, 'https://images.unsplash.com/photo-1604382355076-af4b0eb60143?w=600&auto=format&fit=crop'),
+            (cat_map.get('Pizzas'), 'Pizza Calabresa Gourmet', 'Calabresa artesanal defumada fatiada fininha, cebola roxa, azeitonas pretas e muçarela.', 54.90, 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop'),
+            (cat_map.get('Bebidas'), 'Suco Natural de Laranja 500ml', 'Laranja fresca espremida na hora, 100% puro e sem adição de conservantes.', 12.00, 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=600&auto=format&fit=crop'),
+            (cat_map.get('Bebidas'), 'Refrigerante Lata 350ml', 'Coca-cola, Guaraná Antarctica ou Água Tônica bem gelada.', 7.50, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=600&auto=format&fit=crop'),
+            (cat_map.get('Sobremesas'), 'Pudim de Leite Condensado', 'Pudim aveludado sem furinhos com calda generosa de caramelo dourado.', 16.00, 'https://images.unsplash.com/photo-1541784091332-9b27a3c30ea5?w=600&auto=format&fit=crop'),
+            (cat_map.get('Sobremesas'), 'Brownie com Sorvete', 'Brownie de chocolate meio amargo servido com bola de sorvete de baunilha e calda morna.', 22.90, 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=600&auto=format&fit=crop')
+        ]
+
+        for d in sample_dishes:
+            if d[0]:
+                cursor.execute('''
+                    INSERT INTO dishes (category_id, name, description, price, image_url, is_available)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                ''', d)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def current_user():
+    user_id = session.get('user_id')
+    if not user_id:
+        return None
+    conn = get_db()
+    user = conn.execute("SELECT id, name, email, role, phone, address FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+# ==================== ROTAS DE AUTENTICAÇÃO ====================
+
+@app.route('/api/me')
+def api_me():
+    user = current_user()
+    return jsonify({'user': user})
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    phone = data.get('phone', '').strip()
+    address = data.get('address', '').strip()
+
+    if not name or not email or not password:
+        return jsonify({'error': 'Nome, e-mail e senha são obrigatórios.'}), 400
+
+    conn = get_db()
+    existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'error': 'Este e-mail já está cadastrado.'}), 400
+
+    hashed = generate_password_hash(password)
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO users (name, email, password_hash, role, phone, address)
+        VALUES (?, ?, ?, 'cliente', ?, ?)
+    ''', (name, email, hashed, phone, address))
+    user_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    session['user_id'] = user_id
+    return jsonify({
+        'success': True,
+        'user': {
+            'id': user_id,
+            'name': name,
+            'email': email,
+            'role': 'cliente',
+            'phone': phone,
+            'address': address
+        }
+    })
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.get_json() or {}
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Preencha e-mail e senha.'}), 400
+
+    conn = get_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+
+    if not user or not check_password_hash(user['password_hash'], password):
+        return jsonify({'error': 'E-mail ou senha incorretos.'}), 401
+
+    session['user_id'] = user['id']
+    return jsonify({
+        'success': True,
+        'user': {
+            'id': user['id'],
+            'name': user['name'],
+            'email': user['email'],
+            'role': user['role'],
+            'phone': user['phone'],
+            'address': user['address']
+        }
+    })
+
+@app.route('/api/logout', methods=['POST'])
+def api_logout():
+    session.clear()
+    return jsonify({'success': True})
+
+# ==================== ROTAS DO CARDÁPIO ====================
+
+@app.route('/api/menu')
+def api_menu():
+    conn = get_db()
+    categories = [dict(c) for c in conn.execute("SELECT * FROM categories ORDER BY id ASC").fetchall()]
+    
+    # Gerente vê todos os itens (inclusive desativados), clientes veem apenas os disponíveis
+    user = current_user()
+    if user and user['role'] == 'gerente':
+        dishes_raw = conn.execute('''
+            SELECT d.*, c.name as category_name
+            FROM dishes d
+            JOIN categories c ON d.category_id = c.id
+            ORDER BY d.category_id ASC, d.id ASC
+        ''').fetchall()
+    else:
+        dishes_raw = conn.execute('''
+            SELECT d.*, c.name as category_name
+            FROM dishes d
+            JOIN categories c ON d.category_id = c.id
+            WHERE d.is_available = 1
+            ORDER BY d.category_id ASC, d.id ASC
+        ''').fetchall()
+
+    dishes = [dict(d) for d in dishes_raw]
+    conn.close()
+
+    return jsonify({'categories': categories, 'dishes': dishes})
+
+# ==================== ROTAS DE GERÊNCIA DO CARDÁPIO ====================
+
+@app.route('/api/admin/dish', methods=['POST'])
+def api_admin_add_dish():
+    user = current_user()
+    if not user or user['role'] != 'gerente':
+        return jsonify({'error': 'Acesso negado.'}), 403
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    category_id = data.get('category_id')
+    price = data.get('price')
+    description = data.get('description', '').strip()
+    image_url = data.get('image_url', '').strip()
+    is_available = 1 if data.get('is_available', True) else 0
+
+    if not name or not category_id or price is None:
+        return jsonify({'error': 'Nome, categoria e preço são obrigatórios.'}), 400
+
+    try:
+        price = float(price)
+    except ValueError:
+        return jsonify({'error': 'Preço inválido.'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO dishes (category_id, name, description, price, image_url, is_available)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (category_id, name, description, price, image_url, is_available))
+    conn.commit()
+    dish_id = cursor.lastrowid
+    conn.close()
+
+    return jsonify({'success': True, 'id': dish_id})
+
+@app.route('/api/admin/dish/<int:dish_id>', methods=['PUT'])
+def api_admin_edit_dish(dish_id):
+    user = current_user()
+    if not user or user['role'] != 'gerente':
+        return jsonify({'error': 'Acesso negado.'}), 403
+
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    category_id = data.get('category_id')
+    price = data.get('price')
+    description = data.get('description', '').strip()
+    image_url = data.get('image_url', '').strip()
+    is_available = 1 if data.get('is_available') else 0
+
+    if not name or not category_id or price is None:
+        return jsonify({'error': 'Nome, categoria e preço são obrigatórios.'}), 400
+
+    try:
+        price = float(price)
+    except ValueError:
+        return jsonify({'error': 'Preço inválido.'}), 400
+
+    conn = get_db()
+    conn.execute('''
+        UPDATE dishes
+        SET category_id = ?, name = ?, description = ?, price = ?, image_url = ?, is_available = ?
+        WHERE id = ?
+    ''', (category_id, name, description, price, image_url, is_available, dish_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+@app.route('/api/admin/dish/<int:dish_id>', methods=['DELETE'])
+def api_admin_delete_dish(dish_id):
+    user = current_user()
+    if not user or user['role'] != 'gerente':
+        return jsonify({'error': 'Acesso negado.'}), 403
+
+    conn = get_db()
+    conn.execute("DELETE FROM dishes WHERE id = ?", (dish_id,))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True})
+
+# ==================== ROTAS DE PEDIDOS (CLIENTE) ====================
+
+@app.route('/api/orders', methods=['POST'])
+def api_create_order():
+    user = current_user()
+    if not user:
+        return jsonify({'error': 'Faça login para realizar um pedido.'}), 401
+
+    data = request.get_json() or {}
+    items = data.get('items', [])
+    delivery_address = data.get('delivery_address', '').strip()
+    customer_phone = data.get('customer_phone', '').strip()
+    payment_method = data.get('payment_method', 'PIX').strip()
+    notes = data.get('notes', '').strip()
+
+    if not items:
+        return jsonify({'error': 'O carrinho está vazio.'}), 400
+    if not delivery_address:
+        return jsonify({'error': 'Endereço de entrega é obrigatório.'}), 400
+    if not customer_phone:
+        return jsonify({'error': 'Telefone para contato é obrigatório.'}), 400
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Calcular total e validar itens
+    total_price = 0.0
+    validated_items = []
+
+    for item in items:
+        dish_id = item.get('dish_id')
+        qty = int(item.get('quantity', 1))
+        if qty <= 0:
+            continue
+        
+        dish = conn.execute("SELECT * FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+        if not dish:
+            continue
+        
+        subtotal = round(dish['price'] * qty, 2)
+        total_price += subtotal
+        validated_items.append({
+            'dish_id': dish['id'],
+            'dish_name': dish['name'],
+            'unit_price': dish['price'],
+            'quantity': qty,
+            'subtotal': subtotal,
+            'notes': item.get('notes', '')
+        })
+
+    if not validated_items:
+        conn.close()
+        return jsonify({'error': 'Nenhum prato válido no carrinho.'}), 400
+
+    total_price = round(total_price, 2)
+
+    # Inserir pedido
+    cursor.execute('''
+        INSERT INTO orders (user_id, customer_name, customer_phone, delivery_address, payment_method, notes, total_price, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'recebido')
+    ''', (user['id'], user['name'], customer_phone, delivery_address, payment_method, notes, total_price))
+    order_id = cursor.lastrowid
+
+    # Inserir itens
+    for it in validated_items:
+        cursor.execute('''
+            INSERT INTO order_items (order_id, dish_id, dish_name, unit_price, quantity, subtotal, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (order_id, it['dish_id'], it['dish_name'], it['unit_price'], it['quantity'], it['subtotal'], it['notes']))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'order_id': order_id})
+
+@app.route('/api/my-orders')
+def api_my_orders():
+    user = current_user()
+    if not user:
+        return jsonify({'error': 'Não autenticado.'}), 401
+
+    conn = get_db()
+    orders_raw = conn.execute('''
+        SELECT * FROM orders
+        WHERE user_id = ?
+        ORDER BY id DESC
+    ''', (user['id'],)).fetchall()
+
+    orders = []
+    for o in orders_raw:
+        o_dict = dict(o)
+        items_raw = conn.execute('''
+            SELECT * FROM order_items WHERE order_id = ?
+        ''', (o['id'],)).fetchall()
+        o_dict['items'] = [dict(it) for it in items_raw]
+        orders.append(o_dict)
+
+    conn.close()
+    return jsonify({'orders': orders})
+
+# ==================== ROTAS DE PEDIDOS (GERENTE) ====================
+
+@app.route('/api/admin/orders')
+def api_admin_orders():
+    user = current_user()
+    if not user or user['role'] != 'gerente':
+        return jsonify({'error': 'Acesso negado.'}), 403
+
+    conn = get_db()
+    orders_raw = conn.execute('''
+        SELECT * FROM orders
+        ORDER BY id DESC
+    ''').fetchall()
+
+    orders = []
+    for o in orders_raw:
+        o_dict = dict(o)
+        items_raw = conn.execute('''
+            SELECT * FROM order_items WHERE order_id = ?
+        ''', (o['id'],)).fetchall()
+        o_dict['items'] = [dict(it) for it in items_raw]
+        orders.append(o_dict)
+
+    conn.close()
+    return jsonify({'orders': orders})
+
+@app.route('/api/admin/orders/<int:order_id>/status', methods=['PATCH'])
+def api_admin_update_order_status(order_id):
+    user = current_user()
+    if not user or user['role'] != 'gerente':
+        return jsonify({'error': 'Acesso negado.'}), 403
+
+    data = request.get_json() or {}
+    new_status = data.get('status', '').strip().lower()
+
+    valid_statuses = ['recebido', 'preparando', 'saiu_entrega', 'entregue', 'cancelado']
+    if new_status not in valid_statuses:
+        return jsonify({'error': 'Status inválido.'}), 400
+
+    conn = get_db()
+    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (new_status, order_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'new_status': new_status})
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("🍽️  SISTEMA DE PEDIDOS PARA RESTAURANTE INICIADO!")
+    print("👉 Acesse no computador: http://localhost:5000")
+    print("👉 Conta Gerente: gerente@restaurante.com | Senha: admin123")
+    print("=" * 60)
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
+=== templates/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Restaurante Sabor & Arte - Pedidos Online</title>
+  <style>
+    :root {
+      --primary: #e65100;
+      --primary-hover: #bf360c;
+      --primary-light: #fff3e0;
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text: #212529;
+      --text-muted: #6c757d;
+      --border: #e9ecef;
+      --success: #2e7d32;
+      --warning: #f57f17;
+      --info: #0288d1;
+      --danger: #d32f2f;
+      --shadow: 0 4px 12px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 25px rgba(0,0,0,0.12);
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+
+    .nav-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--primary);
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      cursor: pointer;
+    }
+
+    .brand-icon {
+      background: var(--primary-light);
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* BOTÕES */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 0.92rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--text); }
+    .btn-outline:hover { background: var(--bg); border-color: #ced4da; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+
+    /* NAVEGAÇÃO DE ABAS */
+    .tabs-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .tabs-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      padding: 0 20px;
+      gap: 8px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 14px 18px;
+      border: none;
+      background: transparent;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    /* CONTEÚDO PRINCIPAL */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 20px 80px;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* FILTROS & BUSCA */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .category-pills {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .pill {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .search-input {
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.9rem;
+      width: 100%;
+      max-width: 280px;
+      background: var(--surface);
+      outline: none;
+    }
+    .search-input:focus { border-color: var(--primary); }
+
+    /* GRID DO CARDÁPIO */
+    .dishes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .dish-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .dish-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+    }
+    .dish-img-wrapper {
+      position: relative;
+      width: 100%;
+      height: 180px;
+      background: #eee;
+    }
+    .dish-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .dish-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 6px;
+      backdrop-filter: blur(4px);
+    }
+    .dish-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+    .dish-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .dish-desc {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      line-height: 1.4;
+      flex: 1;
+      margin-bottom: 16px;
+    }
+    .dish-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+    .dish-price {
+      font-size: 1.2rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    /* CARRINHO FLUTUANTE */
+    .cart-float-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--primary);
+      color: white;
+      padding: 14px 22px;
+      border-radius: 50px;
+      box-shadow: 0 8px 24px rgba(230, 81, 0, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 700;
+      z-index: 99;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .cart-float-btn:hover {
+      transform: scale(1.05);
+      background: var(--primary-hover);
+    }
+    .cart-count {
+      background: white;
+      color: var(--primary);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 800;
+    }
+
+    /* MODAL / OVERLAY */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-box {
+      background: var(--surface);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 520px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg);
+      transform: translateY(20px);
+      transition: transform 0.2s ease;
+    }
+    .modal-overlay.open .modal-box {
+      transform: translateY(0);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-title { font-size: 1.15rem; font-weight: 700; }
+    .modal-close {
+      background: transparent;
+      border: none;
+      font-size: 1.4rem;
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* FORMULÁRIOS */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.92rem;
+      outline: none;
+      background: var(--surface);
+    }
+    .form-control:focus {
+      border-color: var(--primary);
+    }
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    /* ITENS DO CARRINHO */
+    .cart-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .cart-item-info { flex: 1; }
+    .cart-item-name { font-weight: 700; font-size: 0.95rem; }
+    .cart-item-price { color: var(--text-muted); font-size: 0.85rem; }
+    .cart-item-notes { font-size: 0.8rem; color: var(--primary); font-style: italic; }
+    .qty-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg);
+      border-radius: 20px;
+      padding: 2px 6px;
+    }
+    .qty-btn {
+      width: 26px;
+      height: 26px;
+      border: none;
+      background: transparent;
+      font-weight: 700;
+      cursor: pointer;
+      border-radius: 50%;
+    }
+    .qty-btn:hover { background: #e0e0e0; }
+
+    /* STATUS DOS PEDIDOS & BADGES */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-recebido { background: #fff8e1; color: #b78103; }
+    .status-preparando { background: #e1f5fe; color: #0277bd; }
+    .status-saiu_entrega { background: #f3e5f5; color: #7b1fa2; }
+    .status-entregue { background: #e8f5e9; color: #2e7d32; }
+    .status-cancelado { background: #ffebee; color: #c62828; }
+
+    /* CARDS DE PEDIDOS */
+    .orders-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .order-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+    .order-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .order-id { font-weight: 800; font-size: 1.05rem; }
+    .order-date { font-size: 0.82rem; color: var(--text-muted); }
+    .order-customer-box {
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 0.88rem;
+    }
+    .order-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+    }
+    .order-items-table th { text-align: left; color: var(--text-muted); padding: 4px 0; font-size: 0.8rem; }
+    .order-items-table td { padding: 6px 0; border-top: 1px solid var(--border); }
+    .order-total-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 800;
+      font-size: 1.1rem;
+      padding-top: 10px;
+      border-top: 2px dashed var(--border);
+    }
+    .order-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* STEPPER DO CLIENTE */
+    .tracker-steps {
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      margin: 16px 0 20px;
+    }
+    .tracker-steps::before {
+      content: "";
+      position: absolute;
+      top: 14px;
+      left: 10%;
+      right: 10%;
+      height: 3px;
+      background: var(--border);
+      z-index: 1;
+    }
+    .tracker-step {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+    }
+    .step-circle {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #e0e0e0;
+      color: #777;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .step-text { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-align: center; }
+    .tracker-step.completed .step-circle { background: var(--success); color: #fff; }
+    .tracker-step.active .step-circle { background: var(--primary); color: #fff; box-shadow: 0 0 0 4px var(--primary-light); }
+    .tracker-step.active .step-text { color: var(--primary); font-weight: 700; }
+
+    /* TABELA GERENTE CARDÁPIO */
+    .admin-menu-table {
+      width: 100%;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border-collapse: collapse;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .admin-menu-table th {
+      background: #f1f3f5;
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .admin-menu-table td {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+      vertical-align: middle;
+    }
+    .dish-thumb {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+
+    /* MENSAGEM VAZIA */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state-icon { font-size: 3rem; margin-bottom: 12px; }
+
+    /* TOAST NOTIFICAÇÃO */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #263238;
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 30px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      box-shadow: var(--shadow-lg);
+      z-index: 2000;
+      transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* RESPONSIVIDADE */
+    @media (max-width: 600px) {
+      .nav-container { padding: 10px 14px; }
+      .brand span { display: none; }
+      main { padding: 16px 12px 90px; }
+      .admin-menu-table { display: block; overflow-x: auto; }
+      .form-row { flex-direction: column; gap: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- CABEÇALHO -->
+  <header>
+    <div class="nav-container">
+      <div class="brand" onclick="switchView('cardapio')">
+        <div class="brand-icon">🍕</div>
+        <span>Sabor & Arte</span>
+      </div>
+
+      <div class="nav-actions" id="user-nav-actions">
+        <!-- Renderizado dinamicamente pelo JavaScript -->
+      </div>
+    </div>
+  </header>
+
+  <!-- BARRA DE ABAS -->
+  <div class="tabs-bar">
+    <div class="tabs-container" id="tabs-container">
+      <button class="tab-btn active" onclick="switchView('cardapio')" id="tab-btn-cardapio">🍽️ Cardápio</button>
+      <button class="tab-btn" onclick="switchView('meus-pedidos')" id="tab-btn-meus-pedidos" style="display: none;">📦 Meus Pedidos</button>
+      <button class="tab-btn" onclick="switchView('gerente-pedidos')" id="tab-btn-gerente-pedidos" style="display: none;">📋 Pedidos (Gerente)</button>
+      <button class="tab-btn" onclick="switchView('gerente-cardapio')" id="tab-btn-gerente-cardapio" style="display: none;">⚙️ Gerenciar Cardápio</button>
+    </div>
+  </div>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main>
+
+    <!-- TELA 1: CARDÁPIO (CLIENTES) -->
+    <section id="view-cardapio">
+      <div class="filter-bar">
+        <div class="category-pills" id="category-pills">
+          <button class="pill active" onclick="filterCategory(null)">Todos</button>
+        </div>
+        <input type="text" class="search-input" id="search-input" placeholder="🔍 Buscar prato ou bebida..." oninput="filterDishes()">
+      </div>
+
+      <div class="dishes-grid" id="dishes-grid">
+        <!-- Renderizado via JS -->
+      </div>
+    </section>
+
+    <!-- TELA 2: MEUS PEDIDOS (CLIENTE) -->
+    <section id="view-meus-pedidos" style="display: none;">
+      <h2 style="margin-bottom: 20px;">Acompanhar Meus Pedidos</h2>
+      <div class="orders-list" id="client-orders-list">
+        <!-- Renderizado via JS -->
+      </div>
+    </section>
+
+    <!-- TELA 3: PEDIDOS RECEBIDOS (GERENTE) -->
+    <section id="view-gerente-pedidos" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <h2>Gestão de Pedidos em Tempo Real</h2>
+        <div class="category-pills">
+          <button class="pill active" onclick="filterAdminOrders('todos')">Todos</button>
+          <button class="pill" onclick="filterAdminOrders('recebido')">Recebidos</button>
+          <button class="pill" onclick="filterAdminOrders('preparando')">Em Preparo</button>
+          <button class="pill" onclick="filterAdminOrders('saiu_entrega')">Em Entrega</button>
+          <button class="pill" onclick="filterAdminOrders('entregue')">Entregues</button>
+        </div>
+      </div>
+      <div class="orders-list" id="admin-orders-list">
+        <!-- Renderizado via JS -->
+      </div>
+    </section>
+
+    <!-- TELA 4: GERENCIAR CARDÁPIO (GERENTE) -->
+    <section id="view-gerente-cardapio" style="display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Gerenciamento do Cardápio</h2>
+        <button class="btn btn-primary" onclick="openDishModal()">+ Adicionar Prato</button>
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="admin-menu-table">
+          <thead>
+            <tr>
+              <th>Foto</th>
+              <th>Nome & Descrição</th>
+              <th>Categoria</th>
+              <th>Preço</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="admin-menu-tbody">
+            <!-- Renderizado via JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTÃO FLUTUANTE DE CARRINHO (CLIENTE) -->
+  <button class="cart-float-btn" id="cart-float-btn" onclick="openCartModal()">
+    🛒 Carrinho
+    <div class="cart-count" id="cart-badge">0</div>
+  </button>
+
+  <!-- MODAL: CARRINHO / FECHAR PEDIDO -->
+  <div class="modal-overlay" id="modal-cart">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title">Seu Carrinho</h3>
+        <button class="modal-close" onclick="closeCartModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="cart-items-container"></div>
+
+        <div id="cart-checkout-section" style="margin-top: 20px;">
+          <h4 style="margin-bottom: 12px; font-size: 0.95rem; border-top: 1px solid var(--border); padding-top: 16px;">Dados para Entrega</h4>
+          
+          <div class="form-group">
+            <label>Telefone / WhatsApp para contato:</label>
+            <input type="text" class="form-control" id="order-phone" placeholder="(DDD) 99999-9999">
+          </div>
+
+          <div class="form-group">
+            <label>Endereço completo (Rua, Número, Bairro, Complemento):</label>
+            <textarea class="form-control" id="order-address" rows="2" placeholder="Ex: Rua das Flores, 123, Apto 402 - Centro"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Forma de Pagamento:</label>
+            <select class="form-control" id="order-payment">
+              <option value="PIX">PIX (Pague na entrega ou via chave)</option>
+              <option value="Cartão de Crédito">Cartão de Crédito (Maquininha)</option>
+              <option value="Cartão de Débito">Cartão de Débito (Maquininha)</option>
+              <option value="Dinheiro">Dinheiro</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Observações gerais do pedido (opcional):</label>
+            <input type="text" class="form-control" id="order-notes" placeholder="Ex: Tocar o interfone 2 vezes, troco para R$ 50...">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; width: 100%; font-size: 1.15rem; font-weight: 800; margin-bottom: 10px;">
+          <span>Total:</span>
+          <span style="color: var(--primary);" id="cart-total-price">R$ 0,00</span>
+        </div>
+        <button class="btn btn-primary" style="width: 100%; padding: 14px;" onclick="submitOrder()">Confirmar e Fazer Pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LOGIN / CADASTRO -->
+  <div class="modal-overlay" id="modal-auth">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="auth-modal-title">Entrar na sua Conta</h3>
+        <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        
+        <!-- Formulário de Login -->
+        <form id="form-login" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label>E-mail:</label>
+            <input type="email" class="form-control" id="login-email" required placeholder="seu@email.com">
+          </div>
+          <div class="form-group">
+            <label>Senha:</label>
+            <input type="password" class="form-control" id="login-password" required placeholder="••••••••">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Entrar</button>
+          
+          <div style="text-align: center; margin-top: 16px; font-size: 0.88rem;">
+            Ainda não tem conta? <a href="#" style="color: var(--primary); font-weight: 700;" onclick="toggleAuthForm('register')">Cadastre-se grátis</a>
+          </div>
+          
+          <div style="background: var(--bg); padding: 10px; border-radius: 8px; margin-top: 16px; font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+            💼 <strong>Conta Gerente:</strong> gerente@restaurante.com | Senha: <strong>admin123</strong>
+          </div>
+        </form>
+
+        <!-- Formulário de Cadastro -->
+        <form id="form-register" style="display: none;" onsubmit="handleRegister(event)">
+          <div class="form-group">
+            <label>Nome Completo:</label>
+            <input type="text" class="form-control" id="reg-name" required placeholder="Ex: Maria Silva">
+          </div>
+          <div class="form-group">
+            <label>E-mail:</label>
+            <input type="email" class="form-control" id="reg-email" required placeholder="seu@email.com">
+          </div>
+          <div class="form-group">
+            <label>Senha:</label>
+            <input type="password" class="form-control" id="reg-password" required placeholder="Crie uma senha segura">
+          </div>
+          <div class="form-group">
+            <label>Telefone / WhatsApp:</label>
+            <input type="text" class="form-control" id="reg-phone" placeholder="(11) 99999-9999">
+          </div>
+          <div class="form-group">
+            <label>Endereço de Entrega Principal:</label>
+            <input type="text" class="form-control" id="reg-address" placeholder="Rua, número e bairro">
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%;">Criar Conta</button>
+          
+          <div style="text-align: center; margin-top: 16px; font-size: 0.88rem;">
+            Já tem conta? <a href="#" style="color: var(--primary); font-weight: 700;" onclick="toggleAuthForm('login')">Fazer Login</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CADASTRAR/EDITAR PRATO (GERENTE) -->
+  <div class="modal-overlay" id="modal-dish">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="dish-modal-title">Novo Prato</h3>
+        <button class="modal-close" onclick="closeDishModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="dish-id">
+        <div class="form-group">
+          <label>Nome do Prato/Bebida:</label>
+          <input type="text" class="form-control" id="dish-name" required placeholder="Ex: X-Salada Especial">
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 1;">
+            <label>Categoria:</label>
+            <select class="form-control" id="dish-category">
+              <!-- Preenchido via JS -->
+            </select>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Preço (R$):</label>
+            <input type="number" step="0.01" min="0" class="form-control" id="dish-price" required placeholder="29.90">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descrição dos Ingredientes:</label>
+          <textarea class="form-control" id="dish-desc" rows="3" placeholder="Pão, hambúrguer, queijo, salada..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Link da Foto (URL):</label>
+          <input type="text" class="form-control" id="dish-image" placeholder="https://exemplo.com/foto.jpg">
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="dish-available" checked style="width: 18px; height: 18px;">
+          <label for="dish-available" style="margin-bottom: 0; cursor: pointer;">Disponível no cardápio para pedidos</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeDishModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveDish()">Salvar Prato</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast" id="toast">Aviso do sistema</div>
+
+  <!-- ÁUDIO DE NOTIFICAÇÃO DE NOVO PEDIDO (Sintetizador Web Audio) -->
+
+  <script>
+    // ================= ESTADO GLOBAL =================
+    let currentUser = null;
+    let menuData = { categories: [], dishes: [] };
+    let cart = [];
+    let currentCategoryFilter = null;
+    let currentAdminOrdersFilter = 'todos';
+    let pollingInterval = null;
+    let knownOrdersCount = 0;
+
+    // ================= INICIALIZAÇÃO =================
+    document.addEventListener('DOMContentLoaded', async () => {
+      loadCartFromStorage();
+      await checkAuth();
+      await loadMenu();
+      startPolling();
+    });
+
+    // ================= AUTENTICAÇÃO =================
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/me');
+        const data = await res.json();
+        currentUser = data.user;
+        updateUserUI();
+      } catch (e) {
+        console.error("Erro ao verificar autenticação", e);
+      }
+    }
+
+    function updateUserUI() {
+      const navActions = document.getElementById('user-nav-actions');
+      const tabMeusPedidos = document.getElementById('tab-btn-meus-pedidos');
+      const tabGerentePedidos = document.getElementById('tab-btn-gerente-pedidos');
+      const tabGerenteCardapio = document.getElementById('tab-btn-gerente-cardapio');
+      const cartBtn = document.getElementById('cart-float-btn');
+
+      if (currentUser) {
+        if (currentUser.role === 'gerente') {
+          tabMeusPedidos.style.display = 'none';
+          tabGerentePedidos.style.display = 'flex';
+          tabGerenteCardapio.style.display = 'flex';
+          cartBtn.style.display = 'none';
+
+          navActions.innerHTML = `
+            <span style="font-size: 0.88rem; font-weight: 700; background: var(--primary-light); color: var(--primary); padding: 6px 12px; border-radius: 20px;">
+              ⭐ Gerente (${escapeHtml(currentUser.name)})
+            </span>
+            <button class="btn btn-outline btn-sm" onclick="handleLogout()">Sair</button>
+          `;
+        } else {
+          tabMeusPedidos.style.display = 'flex';
+          tabGerentePedidos.style.display = 'none';
+          tabGerenteCardapio.style.display = 'none';
+          cartBtn.style.display = 'flex';
+
+          navActions.innerHTML = `
+            <span style="font-size: 0.88rem; font-weight: 600;">Olá, ${escapeHtml(currentUser.name.split(' ')[0])}</span>
+            <button class="btn btn-outline btn-sm" onclick="handleLogout()">Sair</button>
+          `;
+        }
+      } else {
+        tabMeusPedidos.style.display = 'none';
+        tabGerentePedidos.style.display = 'none';
+        tabGerenteCardapio.style.display = 'none';
+        cartBtn.style.display = 'flex';
+
+        navActions.innerHTML = `
+          <button class="btn btn-outline" onclick="openAuthModal('login')">Entrar</button>
+          <button class="btn btn-primary" onclick="openAuthModal('register')">Criar Conta</button>
+        `;
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentUser = data.user;
+          updateUserUI();
+          closeAuthModal();
+          showToast(`Bem-vindo de volta, ${currentUser.name}!`);
+          if (currentUser.role === 'gerente') {
+            switchView('gerente-pedidos');
+          } else {
+            loadMenu();
+          }
+        } else {
+          showToast(data.error || 'Erro ao entrar.');
+        }
+      } catch (err) {
+        showToast('Erro de conexão ao fazer login.');
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const name = document.getElementById('reg-name').value;
+      const email = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-password').value;
+      const phone = document.getElementById('reg-phone').value;
+      const address = document.getElementById('reg-address').value;
+
+      try {
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password, phone, address })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentUser = data.user;
+          updateUserUI();
+          closeAuthModal();
+          showToast(`Conta criada com sucesso! Olá, ${currentUser.name}.`);
+          loadMenu();
+        } else {
+          showToast(data.error || 'Erro ao criar conta.');
+        }
+      } catch (err) {
+        showToast('Erro de conexão ao criar conta.');
+      }
+    }
+
+    async function handleLogout() {
+      await fetch('/api/logout', { method: 'POST' });
+      currentUser = null;
+      updateUserUI();
+      switchView('cardapio');
+      showToast('Você saiu da sua conta.');
+      loadMenu();
+    }
+
+    // ================= CARDÁPIO =================
+    async function loadMenu() {
+      try {
+        const res = await fetch('/api/menu');
+        menuData = await res.json();
+        renderCategories();
+        renderDishes();
+        renderAdminCategorySelect();
+        if (currentUser && currentUser.role === 'gerente') {
+          renderAdminMenuTable();
+        }
+      } catch (e) {
+        console.error("Erro ao carregar cardápio", e);
+      }
+    }
+
+    function renderCategories() {
+      const container = document.getElementById('category-pills');
+      container.innerHTML = `<button class="pill ${currentCategoryFilter === null ? 'active' : ''}" onclick="filterCategory(null)">Todos</button>`;
+      menuData.categories.forEach(cat => {
+        const active = currentCategoryFilter === cat.id ? 'active' : '';
+        container.innerHTML += `<button class="pill ${active}" onclick="filterCategory(${cat.id})">${escapeHtml(cat.name)}</button>`;
+      });
+    }
+
+    function filterCategory(catId) {
+      currentCategoryFilter = catId;
+      renderCategories();
+      renderDishes();
+    }
+
+    function filterDishes() {
+      renderDishes();
+    }
+
+    function renderDishes() {
+      const grid = document.getElementById('dishes-grid');
+      const search = document.getElementById('search-input').value.toLowerCase().trim();
+
+      let filtered = menuData.dishes;
+
+      if (currentCategoryFilter !== null) {
+        filtered = filtered.filter(d => d.category_id === currentCategoryFilter);
+      }
+
+      if (search) {
+        filtered = filtered.filter(d => 
+          d.name.toLowerCase().includes(search) || 
+          (d.description && d.description.toLowerCase().includes(search))
+        );
+      }
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `
+          <div class="empty-state" style="grid-column: 1 / -1;">
+            <div class="empty-state-icon">🍽️</div>
+            <h3>Nenhum prato encontrado</h3>
+            <p>Tente buscar por outro termo ou categoria.</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(dish => {
+        const fallbackImg = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop';
+        const img = dish.image_url ? dish.image_url : fallbackImg;
+        return `
+          <div class="dish-card">
+            <div class="dish-img-wrapper">
+              <img src="${escapeHtml(img)}" alt="${escapeHtml(dish.name)}" class="dish-img" onerror="this.src='${fallbackImg}'">
+              <div class="dish-badge">${escapeHtml(dish.category_name)}</div>
+            </div>
+            <div class="dish-body">
+              <h3 class="dish-title">${escapeHtml(dish.name)}</h3>
+              <p class="dish-desc">${escapeHtml(dish.description || 'Deliciosa opção preparada com ingredientes selecionados.')}</p>
+              <div class="dish-footer">
+                <span class="dish-price">R$ ${dish.price.toFixed(2).replace('.', ',')}</span>
+                <button class="btn btn-primary btn-sm" onclick="addToCart(${dish.id})">
+                  + Adicionar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // ================= CARRINHO =================
+    function loadCartFromStorage() {
+      try {
+        const stored = localStorage.getItem('restaurante_carrinho');
+        if (stored) cart = JSON.parse(stored);
+      } catch (e) { cart = []; }
+      updateCartBadge();
+    }
+
+    function saveCartToStorage() {
+      localStorage.setItem('restaurante_carrinho', JSON.stringify(cart));
+      updateCartBadge();
+    }
+
+    function addToCart(dishId) {
+      const dish = menuData.dishes.find(d => d.id === dishId);
+      if (!dish) return;
+
+      const existing = cart.find(item => item.dish_id === dishId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({
+          dish_id: dish.id,
+          name: dish.name,
+          price: dish.price,
+          quantity: 1,
+          notes: ''
+        });
+      }
+
+      saveCartToStorage();
+      showToast(`"${dish.name}" adicionado ao carrinho!`);
+    }
+
+    function updateCartBadge() {
+      const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
+      document.getElementById('cart-badge').innerText = totalQty;
+    }
+
+    function openCartModal() {
+      renderCartItems();
+      if (currentUser) {
+        if (currentUser.phone) document.getElementById('order-phone').value = currentUser.phone;
+        if (currentUser.address) document.getElementById('order-address').value = currentUser.address;
+      }
+      document.getElementById('modal-cart').classList.add('open');
+    }
+
+    function closeCartModal() {
+      document.getElementById('modal-cart').classList.remove('open');
+    }
+
+    function renderCartItems() {
+      const container = document.getElementById('cart-items-container');
+      const checkoutSection = document.getElementById('cart-checkout-section');
+      const totalSpan = document.getElementById('cart-total-price');
+
+      if (cart.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">🛒</div>
+            <h4>Seu carrinho está vazio</h4>
+            <p>Escolha seus pratos favoritos no cardápio.</p>
+          </div>
+        `;
+        checkoutSection.style.display = 'none';
+        totalSpan.innerText = 'R$ 0,00';
+        return;
+      }
+
+      checkoutSection.style.display = 'block';
+      let total = 0;
+
+      container.innerHTML = cart.map((item, index) => {
+        const subtotal = item.price * item.quantity;
+        total += subtotal;
+        return `
+          <div class="cart-item">
+            <div class="cart-item-info">
+              <div class="cart-item-name">${escapeHtml(item.name)}</div>
+              <div class="cart-item-price">R$ ${item.price.toFixed(2).replace('.', ',')} cada</div>
+              <input type="text" class="form-control" style="padding: 4px 8px; font-size: 0.8rem; margin-top: 4px;" 
+                placeholder="Observação (ex: sem cebola)" 
+                value="${escapeHtml(item.notes || '')}" 
+                onchange="updateCartNotes(${index}, this.value)">
+            </div>
+            <div class="qty-controls">
+              <button class="qty-btn" onclick="changeCartQty(${index}, -1)">-</button>
+              <span style="font-weight: 700; font-size: 0.9rem; min-width: 20px; text-align: center;">${item.quantity}</span>
+              <button class="qty-btn" onclick="changeCartQty(${index}, 1)">+</button>
+            </div>
+            <div style="font-weight: 700; font-size: 0.95rem; min-width: 70px; text-align: right;">
+              R$ ${subtotal.toFixed(2).replace('.', ',')}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      totalSpan.innerText = `R$ ${total.toFixed(2).replace('.', ',')}`;
+    }
+
+    function changeCartQty(index, delta) {
+      if (!cart[index]) return;
+      cart[index].quantity += delta;
+      if (cart[index].quantity <= 0) {
+        cart.splice(index, 1);
+      }
+      saveCartToStorage();
+      renderCartItems();
+    }
+
+    function updateCartNotes(index, val) {
+      if (cart[index]) {
+        cart[index].notes = val.trim();
+        saveCartToStorage();
+      }
+    }
+
+    async function submitOrder() {
+      if (!currentUser) {
+        closeCartModal();
+        openAuthModal('login');
+        showToast('Faça login ou cadastre-se para fechar o pedido.');
+        return;
+      }
+
+      const phone = document.getElementById('order-phone').value.trim();
+      const address = document.getElementById('order-address').value.trim();
+      const payment = document.getElementById('order-payment').value;
+      const notes = document.getElementById('order-notes').value.trim();
+
+      if (!phone) {
+        alert('Por favor, informe um telefone para contato.');
+        return;
+      }
+      if (!address) {
+        alert('Por favor, informe o endereço de entrega.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: cart,
+            customer_phone: phone,
+            delivery_address: address,
+            payment_method: payment,
+            notes: notes
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          cart = [];
+          saveCartToStorage();
+          closeCartModal();
+          showToast('🎉 Pedido realizado com sucesso!');
+          switchView('meus-pedidos');
+          loadClientOrders();
+        } else {
+          alert(data.error || 'Erro ao processar pedido.');
+        }
+      } catch (err) {
+        alert('Erro de conexão ao enviar o pedido.');
+      }
+    }
+
+    // ================= ACOMPANHAMENTO DE PEDIDOS (CLIENTE) =================
+    async function loadClientOrders() {
+      if (!currentUser) return;
+      try {
+        const res = await fetch('/api/my-orders');
+        const data = await res.json();
+        const list = document.getElementById('client-orders-list');
+
+        if (!data.orders || data.orders.length === 0) {
+          list.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📦</div>
+              <h3>Você ainda não fez nenhum pedido</h3>
+              <p>Volte ao cardápio e faça seu primeiro pedido agora!</p>
+              <button class="btn btn-primary" style="margin-top: 14px;" onclick="switchView('cardapio')">Ver Cardápio</button>
+            </div>
+          `;
+          return;
+        }
+
+        list.innerHTML = data.orders.map(order => renderOrderCard(order, false)).join('');
+      } catch (e) {
+        console.error("Erro ao buscar meus pedidos", e);
+      }
+    }
+
+    function renderOrderCard(order, isAdmin = false) {
+      const statusMap = {
+        'recebido': { label: 'Recebido', class: 'status-recebido', step: 1 },
+        'preparando': { label: 'Em Preparo', class: 'status-preparando', step: 2 },
+        'saiu_entrega': { label: 'Saiu para Entrega', class: 'status-saiu_entrega', step: 3 },
+        'entregue': { label: 'Entregue', class: 'status-entregue', step: 4 },
+        'cancelado': { label: 'Cancelado', class: 'status-cancelado', step: 0 }
+      };
+
+      const curr = statusMap[order.status] || { label: order.status, class: '', step: 1 };
+
+      // Se for cliente e pedido não estiver cancelado, mostra a linha do tempo (stepper)
+      let trackerHtml = '';
+      if (!isAdmin && order.status !== 'cancelado') {
+        const steps = [
+          { num: 1, name: 'Recebido' },
+          { num: 2, name: 'Na Cozinha' },
+          { num: 3, name: 'A Caminho' },
+          { num: 4, name: 'Entregue' }
+        ];
+        trackerHtml = `
+          <div class="tracker-steps">
+            ${steps.map(s => {
+              const stateClass = s.num < curr.step ? 'completed' : (s.num === curr.step ? 'active' : '');
+              return `
+                <div class="tracker-step ${stateClass}">
+                  <div class="step-circle">${s.num < curr.step ? '✓' : s.num}</div>
+                  <div class="step-text">${s.name}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      const itemsRows = order.items.map(it => `
+        <tr>
+          <td><strong>${it.quantity}x</strong> ${escapeHtml(it.dish_name)} ${it.notes ? `<span class="cart-item-notes">(${escapeHtml(it.notes)})</span>` : ''}</td>
+          <td style="text-align: right;">R$ ${it.subtotal.toFixed(2).replace('.', ',')}</td>
+        </tr>
+      `).join('');
+
+      let adminActionsHtml = '';
+      if (isAdmin) {
+        adminActionsHtml = `
+          <div class="order-actions">
+            <span style="font-size: 0.82rem; font-weight: 700; color: var(--text-muted); align-self: center; margin-right: 6px;">Mudar Status:</span>
+            <button class="btn btn-outline btn-sm" onclick="updateOrderStatus(${order.id}, 'recebido')">Recebido</button>
+            <button class="btn btn-outline btn-sm" style="color: var(--info); border-color: var(--info);" onclick="updateOrderStatus(${order.id}, 'preparando')">👨‍🍳 Em Preparo</button>
+            <button class="btn btn-outline btn-sm" style="color: #7b1fa2; border-color: #7b1fa2;" onclick="updateOrderStatus(${order.id}, 'saiu_entrega')">🛵 Saiu p/ Entrega</button>
+            <button class="btn btn-outline btn-sm" style="color: var(--success); border-color: var(--success);" onclick="updateOrderStatus(${order.id}, 'entregue')">✅ Entregue</button>
+            <button class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger);" onclick="updateOrderStatus(${order.id}, 'cancelado')">❌ Cancelar</button>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="order-card">
+          <div class="order-card-header">
+            <div>
+              <span class="order-id">Pedido #${order.id}</span>
+              <div class="order-date">📅 ${new Date(order.created_at).toLocaleString('pt-BR')}</div>
+            </div>
+            <span class="status-badge ${curr.class}">${curr.label}</span>
+          </div>
+
+          ${trackerHtml}
+
+          <div class="order-customer-box">
+            <strong>Cliente:</strong> ${escapeHtml(order.customer_name)} | <strong>Tel:</strong> ${escapeHtml(order.customer_phone)}<br>
+            <strong>Endereço de Entrega:</strong> ${escapeHtml(order.delivery_address)}<br>
+            <strong>Pagamento:</strong> ${escapeHtml(order.payment_method)}
+            ${order.notes ? `<br><strong>Obs do Cliente:</strong> <em>${escapeHtml(order.notes)}</em>` : ''}
+          </div>
+
+          <table class="order-items-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th style="text-align: right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+
+          <div class="order-total-bar">
+            <span>Total Pago</span>
+            <span style="color: var(--primary);">R$ ${order.total_price.toFixed(2).replace('.', ',')}</span>
+          </div>
+
+          ${adminActionsHtml}
+        </div>
+      `;
+    }
+
+    // ================= PAINEL DO GERENTE =================
+    async function loadAdminOrders() {
+      if (!currentUser || currentUser.role !== 'gerente') return;
+      try {
+        const res = await fetch('/api/admin/orders');
+        const data = await res.json();
+        const list = document.getElementById('admin-orders-list');
+
+        let orders = data.orders || [];
+
+        // Tocar alerta sonoro se novo pedido chegou
+        if (orders.length > knownOrdersCount && knownOrdersCount !== 0) {
+          playNotificationBeep();
+          showToast('🔔 Novo pedido recebido!');
+        }
+        knownOrdersCount = orders.length;
+
+        if (currentAdminOrdersFilter !== 'todos') {
+          orders = orders.filter(o => o.status === currentAdminOrdersFilter);
+        }
+
+        if (orders.length === 0) {
+          list.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📋</div>
+              <h3>Nenhum pedido nesta situação</h3>
+              <p>Os pedidos dos clientes aparecerão aqui automaticamente.</p>
+            </div>
+          `;
+          return;
+        }
+
+        list.innerHTML = orders.map(order => renderOrderCard(order, true)).join('');
+      } catch (e) {
+        console.error("Erro ao carregar pedidos administrativos", e);
+      }
+    }
+
+    function filterAdminOrders(status) {
+      currentAdminOrdersFilter = status;
+      const pills = document.querySelectorAll('#view-gerente-pedidos .category-pills .pill');
+      pills.forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      loadAdminOrders();
+    }
+
+    async function updateOrderStatus(orderId, newStatus) {
+      try {
+        const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) {
+          showToast(`Pedido #${orderId} alterado para ${newStatus}.`);
+          loadAdminOrders();
+        } else {
+          showToast('Erro ao atualizar status.');
+        }
+      } catch (err) {
+        showToast('Erro de conexão ao atualizar status.');
+      }
+    }
+
+    // ================= GERENCIAMENTO DO CARDÁPIO (GERENTE) =================
+    function renderAdminMenuTable() {
+      const tbody = document.getElementById('admin-menu-tbody');
+      tbody.innerHTML = menuData.dishes.map(dish => {
+        const fallbackImg = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&auto=format&fit=crop';
+        return `
+          <tr>
+            <td>
+              <img src="${escapeHtml(dish.image_url || fallbackImg)}" class="dish-thumb" onerror="this.src='${fallbackImg}'">
+            </td>
+            <td>
+              <strong>${escapeHtml(dish.name)}</strong><br>
+              <small style="color: var(--text-muted);">${escapeHtml(dish.description || 'Sem descrição')}</small>
+            </td>
+            <td>${escapeHtml(dish.category_name)}</td>
+            <td><strong>R$ ${dish.price.toFixed(2).replace('.', ',')}</strong></td>
+            <td>
+              ${dish.is_available 
+                ? '<span style="color: var(--success); font-weight:700;">● Disponível</span>' 
+                : '<span style="color: var(--danger); font-weight:700;">○ Indisponível</span>'}
+            </td>
+            <td>
+              <button class="btn btn-outline btn-sm" onclick="editDishModal(${dish.id})">✏️ Editar</button>
+              <button class="btn btn-outline btn-sm" style="color: var(--danger);" onclick="deleteDish(${dish.id})">🗑️</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderAdminCategorySelect() {
+      const sel = document.getElementById('dish-category');
+      sel.innerHTML = menuData.categories.map(c => `
+        <option value="${c.id}">${escapeHtml(c.name)}</option>
+      `).join('');
+    }
+
+    function openDishModal() {
+      document.getElementById('dish-modal-title').innerText = 'Novo Prato';
+      document.getElementById('dish-id').value = '';
+      document.getElementById('dish-name').value = '';
+      document.getElementById('dish-price').value = '';
+      document.getElementById('dish-desc').value = '';
+      document.getElementById('dish-image').value = '';
+      document.getElementById('dish-available').checked = true;
+      document.getElementById('modal-dish').classList.add('open');
+    }
+
+    function editDishModal(dishId) {
+      const dish = menuData.dishes.find(d => d.id === dishId);
+      if (!dish) return;
+
+      document.getElementById('dish-modal-title').innerText = 'Editar Prato';
+      document.getElementById('dish-id').value = dish.id;
+      document.getElementById('dish-name').value = dish.name;
+      document.getElementById('dish-category').value = dish.category_id;
+      document.getElementById('dish-price').value = dish.price;
+      document.getElementById('dish-desc').value = dish.description || '';
+      document.getElementById('dish-image').value = dish.image_url || '';
+      document.getElementById('dish-available').checked = !!dish.is_available;
+      document.getElementById('modal-dish').classList.add('open');
+    }
+
+    function closeDishModal() {
+      document.getElementById('modal-dish').classList.remove('open');
+    }
+
+    async function saveDish() {
+      const id = document.getElementById('dish-id').value;
+      const name = document.getElementById('dish-name').value.trim();
+      const category_id = parseInt(document.getElementById('dish-category').value);
+      const price = parseFloat(document.getElementById('dish-price').value);
+      const description = document.getElementById('dish-desc').value.trim();
+      const image_url = document.getElementById('dish-image').value.trim();
+      const is_available = document.getElementById('dish-available').checked;
+
+      if (!name || isNaN(price)) {
+        alert('Preencha pelo menos o Nome e o Preço do prato.');
+        return;
+      }
+
+      const payload = { name, category_id, price, description, image_url, is_available };
+
+      try {
+        let res;
+        if (id) {
+          res = await fetch(`/api/admin/dish/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          res = await fetch('/api/admin/dish', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+
+        if (res.ok) {
+          closeDishModal();
+          showToast(id ? 'Prato atualizado!' : 'Prato cadastrado com sucesso!');
+          await loadMenu();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Erro ao salvar prato.');
+        }
+      } catch (err) {
+        alert('Erro ao conectar ao servidor.');
+      }
+    }
+
+    async function deleteDish(dishId) {
+      if (!confirm('Deseja realmente excluir este prato do cardápio?')) return;
+      try {
+        const res = await fetch(`/api/admin/dish/${dishId}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Prato removido.');
+          await loadMenu();
+        }
+      } catch (err) {
+        showToast('Erro ao excluir prato.');
+      }
+    }
+
+    // ================= CONTROLE DE TELAS (ABAS) =================
+    function switchView(viewName) {
+      const views = ['cardapio', 'meus-pedidos', 'gerente-pedidos', 'gerente-cardapio'];
+      views.forEach(v => {
+        const el = document.getElementById(`view-${v}`);
+        const tabBtn = document.getElementById(`tab-btn-${v}`);
+        if (el) el.style.display = (v === viewName) ? 'block' : 'none';
+        if (tabBtn) tabBtn.classList.toggle('active', v === viewName);
+      });
+
+      if (viewName === 'meus-pedidos') loadClientOrders();
+      if (viewName === 'gerente-pedidos') loadAdminOrders();
+      if (viewName === 'gerente-cardapio') renderAdminMenuTable();
+    }
+
+    // ================= MODAIS DE LOGIN / CADASTRO =================
+    function openAuthModal(mode = 'login') {
+      toggleAuthForm(mode);
+      document.getElementById('modal-auth').classList.add('open');
+    }
+
+    function closeAuthModal() {
+      document.getElementById('modal-auth').classList.remove('open');
+    }
+
+    function toggleAuthForm(mode) {
+      const formLogin = document.getElementById('form-login');
+      const formRegister = document.getElementById('form-register');
+      const title = document.getElementById('auth-modal-title');
+
+      if (mode === 'register') {
+        formLogin.style.display = 'none';
+        formRegister.style.display = 'block';
+        title.innerText = 'Criar Nova Conta';
+      } else {
+        formLogin.style.display = 'block';
+        formRegister.style.display = 'none';
+        title.innerText = 'Entrar na sua Conta';
+      }
+    }
+
+    // ================= ATUALIZAÇÃO AUTOMÁTICA (POLLING) =================
+    function startPolling() {
+      // Atualiza pedidos e cardápio a cada 6 segundos sem recarregar a tela
+      pollingInterval = setInterval(() => {
+        if (currentUser) {
+          if (currentUser.role === 'gerente') {
+            const isVisible = document.getElementById('view-gerente-pedidos').style.display !== 'none';
+            if (isVisible) loadAdminOrders();
+          } else {
+            const isVisible = document.getElementById('view-meus-pedidos').style.display !== 'none';
+            if (isVisible) loadClientOrders();
+          }
+        }
+      }, 6000);
+    }
+
+    // ================= UTILITÁRIOS =================
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3500);
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function playNotificationBeep() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.4);
+      } catch (e) {}
+    }
+  </script>
+</body>
+</html>

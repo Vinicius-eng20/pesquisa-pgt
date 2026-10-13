@@ -1,0 +1,1430 @@
+=== package.json ===
+{
+  "name": "controle-de-despesas",
+  "version": "1.0.0",
+  "description": "Site de controle de despesas pessoais com contas de usuário e admin.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0"
+  }
+}
+
+=== .gitignore ===
+node_modules/
+data/
+*.log
+.env
+
+=== .env ===
+# Porta em que o site roda (o navegador mostra o endereço com esta porta).
+PORTA=3000
+
+# Usuário e senha para a conta do ADMINISTRADOR (a primeira conta criada).
+ADMIN_USUARIO=admin
+ADMIN_SENHA=admin123
+
+# NOME do banco de dados usado para guardar os dados no Mongo (no servidor).
+BANCO_DB=despesas
+
+=== README.md ===
+# Controle de Despesas Pessoais
+
+Este é um site completo para controlar despesas pessoais. As pessoas cadastram sua
+conta, registram gastos, organizam por categoria e veem quanto gastaram no mês.
+O administrador cadastra as categorias, desativa contas e vê o total de gastos de
+todos.
+
+Os dados ficam salvos no próprio site (num banco de dados), então:
+- Se a pessoa entrar pelo celular, encontra as mesmas informações de quando usava o computador.
+- Se fechar e abrir de novo, nada some.
+- Tudo funciona na internet, com contas de usuário de verdade (login e senha).
+- Não precisa de nenhuma conta em outros sites.
+
+O administrador já vem criado. A senha padrão é `admin123` (usuário `admin`).
+**Troque a senha logo** pelo próprio site (botão "Trocar senha").
+
+---
+
+## Requisitos
+
+Para rodar este projeto você precisa ter instalados:
+
+1. **Node.js** (versão 18 ou mais nova) — https://nodejs.org
+2. **MongoDB** rodando na sua máquina — https://www.mongodb.com
+
+Depois de instalar o Node.js, verifique no terminal:
+```
+node -v
+```
+
+Para instalar o MongoDB, siga o guia oficial para o seu sistema. Para usar local,
+deixe o serviço do MongoDB rodando (normalmente na porta 27017).
+
+---
+
+## Como instalar e executar
+
+Abra o terminal na pasta do projeto e rode, nesta ordem:
+
+```
+# 1) Instalar as dependências
+npm install
+
+# 2) (Opcional) editar o arquivo .env se quiser mudar porta, senha do admin ou nome do banco
+
+# 3) Rodar o site
+npm start
+```
+
+Depois que iniciar, o terminal mostra um endereço, por exemplo:
+```
+http://localhost:3000
+```
+
+Abra esse endereço no navegador. Pronto.
+
+Para testar, entre com a conta do administrador:
+- Usuário: `admin`
+- Senha: `admin123`
+
+Ou crie uma conta nova de usuário pelo botão "Criar conta".
+
+---
+
+## Para colocar na internet (hospedar)
+
+Este projeto é auto-contido (backend + frontend num só programa). Para colocar
+online você precisa de uma máquina (VPS, ou um serviço como Render, Railway,
+Oracle Cloud, etc.) com:
+
+- Node.js instalado
+- Um MongoDB acessível (local na mesma máquina, ou um serviço gerenciado)
+
+Passos:
+1. Copie a pasta do projeto para a máquina.
+2. Rode `npm install`.
+3. No arquivo `.env`, defina `PORTA` (geralmente 8080) e a string de conexão do
+   banco (ver "String de conexão do banco" abaixo).
+4. Rode `npm start` (ou use um gerenciador como `pm2` para manter ativo).
+5. Aponte o domínio para a máquina.
+
+### String de conexão do banco
+
+Por padrão o programa tenta se conectar a `mongodb://localhost:27017`.
+Para apontar para outro banco, crie o arquivo `.env` e adicione:
+```
+STRING_CONEXAO=mongodb://usuario:senha@host:27017
+```
+Opcional também:
+```
+BANCO_DB=despesas
+```
+
+---
+
+## Comandos úteis
+
+- Iniciar o site: `npm start`
+- Criar categorias padrão (opcional, já acontece no primeiro uso): o sistema já cria
+  categorias iniciais automaticamente.
+
+---
+
+## Estrutura
+
+- `server.js` — servidor (rota da página + API + regras do sistema)
+- `views/` — páginas (login, cadastro, painel do usuário, painel do admin)
+- `public/` — JavaScript das telas
+- `data/` — criado automaticamente caso o MongoDB não esteja disponível (modo de teste)
+
+=== server.js ===
+const path = require("path");
+const fs = require("fs");
+const express = require("express");
+const crypto = require("crypto");
+const { MongoClient } = require("mongodb");
+
+// ---------------- Configuração ----------------
+function carregarEnv() {
+  const arquivo = path.join(__dirname, ".env");
+  const valores = {};
+  if (fs.existsSync(arquivo)) {
+    fs.readFileSync(arquivo, "utf8").split(/\r?\n/).forEach((linha) => {
+      const m = linha.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)\s*$/);
+      if (m) valores[m[1]] = m[2];
+    });
+  }
+  return valores;
+}
+const env = carregarEnv();
+
+const PORTA = env.PORTA ? parseInt(env.PORTA, 10) : 3000;
+const ADMIN_USUARIO = env.ADMIN_USUARIO || "admin";
+const ADMIN_SENHA = env.ADMIN_SENHA || "admin123";
+const BANCO_DB = env.BANCO_DB || "despesas";
+const STRING_CONEXAO = env.STRING_CONEXAO || "mongodb://localhost:27017";
+
+const app = express();
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+// ---------------- Hash de senhas ----------------
+function hashSenha(senha, salt) {
+  const s = salt || crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(String(senha), s, 64).toString("hex");
+  return s + ":" + hash;
+}
+function confereSenha(senha, armazenado) {
+  const [salt, hash] = String(armazenado).split(":");
+  const teste = crypto.scryptSync(String(senha), salt, 64).toString("hex");
+  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(teste, "hex"));
+}
+
+// ---------------- Sessão ----------------
+let sessoes = {};
+function criarSessao(dados) {
+  const id = crypto.randomBytes(24).toString("hex");
+  sessoes[id] = dados;
+  return id;
+}
+function getReq(req) {
+  const c = req.headers.cookie || "";
+  const m = c.match(/sid=([a-f0-9]+)/);
+  const id = m ? m[1] : null;
+  const dados = id ? sessoes[id] : null;
+  req.sid = id;
+  req.sessao = dados;
+  return dados;
+}
+function sessaoAtiva(dados) {
+  if (!dados) return false;
+  if (dados.tipo === "admin") return true;
+  return dados.ativo === true;
+}
+function sessaoDe(req) {
+  const d = req.sessao;
+  if (!sessaoAtiva(d)) return null;
+  if (d.tipo === "admin") return { tipo: "admin" };
+  return { tipo: "user", id: d.id, nome: d.nome };
+}
+app.use(function (req, res, next) {
+  if (req.method === "POST" && /^\/api\/(despesas|usuarios|categorias)/.test(req.path)) {
+    const d = getReq(req);
+    if (!d) return res.status(401).json({ erro: "Faça login para continuar." });
+    if (d.tipo === "user" && d.ativo === false) return res.status(401).json({ erro: "Conta desativada. Fale com o administrador." });
+  }
+  next();
+});
+app.use(function (req, res, next) {
+  const dados = getReq(req);
+  if (dados && sessaoAtiva(dados) && dados.tipo === "user") {
+    db.collection("usuarios").findOne({ _id: dados.id }).then((u) => {
+      req._ativoAtual = u ? !!u.ativo : false;
+      next();
+    }).catch(next);
+  } else {
+    next();
+  }
+});
+
+// ---------------- Banco de dados ----------------
+let db = null;
+let dbDisco = null;
+const modo = { disco: false };
+const colecoes = {
+  usuarios: [],
+  despesas: [],
+  categorias: []
+};
+
+function genId() {
+  return crypto.randomBytes(12).toString("hex");
+}
+
+function carregarArquivo(nome, padrao) {
+  const p = path.join(__dirname, "data", nome + ".json");
+  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return padrao; }
+}
+function salvarArquivo(nome, dados) {
+  const dir = path.join(__dirname, "data");
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, nome + ".json"), JSON.stringify(dados, null, 2));
+}
+
+async function conectarBanco() {
+  try {
+    const client = new MongoClient(STRING_CONEXAO);
+    await client.connect({ serverSelectionTimeoutMS: 5000 });
+    const database = client.db(BANCO_DB);
+    db = database;
+    modo.disco = true;
+    console.log("Conectado ao MongoDB (dados salvos no banco).");
+    return true;
+  } catch (e) {
+    console.warn("Aviso: MongoDB não disponível (" + e.message + "). Usando armazenamento local em data/*.json (modo de teste).");
+    modo.disco = false;
+    const dados = carregarArquivo("dados", null);
+    if (dados) {
+      colecoes.usuarios = dados.usuarios || [];
+      colecoes.despesas = dados.despesas || [];
+      colecoes.categorias = dados.categorias || [];
+    }
+    dbDisco = {
+      usuarios: colecoes.usuarios,
+      despesas: colecoes.despesas,
+      categorias: colecoes.categorias
+    };
+    return false;
+  }
+}
+
+function collection(nome) {
+  return modo.disco ? db.collection(nome) : dbDisco[nome];
+}
+function salvarDisco() {
+  if (modo.disco) return;
+  salvarArquivo("dados", {
+    usuarios: colecoes.usuarios,
+    despesas: colecoes.despesas,
+    categorias: colecoes.categorias
+  });
+}
+async function upsert(doc) {
+  if (modo.disco) return collection(doc._col).updateOne({ _id: doc._id }, { $set: doc }, { upsert: true });
+  let i = colecoes[doc._col].findIndex(x => x._id === doc._id);
+  if (i === -1) colecoes[doc._col].push(doc); else colecoes[doc._col][i] = doc;
+  salvarDisco();
+}
+async function remove(_col, id) {
+  if (modo.disco) return collection(_col).deleteOne({ _id: id });
+  const arr = colecoes[_col];
+  const i = arr.findIndex(x => x._id === id);
+  if (i !== -1) arr.splice(i, 1);
+  salvarDisco();
+}
+async function bulkDelete(_col, ids) {
+  if (modo.disco) return collection(_col).deleteMany({ _id: { $in: ids } });
+  const arr = colecoes[_col];
+  for (let i = arr.length - 1; i >= 0; i--) if (ids.includes(arr[i]._id)) arr.splice(i, 1);
+  salvarDisco();
+}
+
+// ---------------- Categorias padrão ----------------
+const CATEGORIAS_PADRAO = [
+  { nome: "Alimentação", cor: "#22c55e" },
+  { nome: "Moradia", cor: "#f97316" },
+  { nome: "Transporte", cor: "#3b82f6" },
+  { nome: "Saúde", cor: "#ef4444" },
+  { nome: "Lazer", cor: "#a855f7" },
+  { nome: "Educação", cor: "#eab308" },
+  { nome: "Outros", cor: "#64748b" }
+];
+
+// ---------------- Helpers de data ----------------
+function fmtDataBR(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear();
+}
+function chaveMes(iso) {
+  const d = new Date(iso);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+
+// ================= ROTA DA PÁGINA =================
+app.get("/", (req, res) => {
+  const dados = getReq(req);
+  if (!dados) return res.sendFile(path.join(__dirname, "views", "login.html"));
+  if (!sessaoAtiva(dados)) {
+    res.sendFile(path.join(__dirname, "views", "login.html"));
+    return;
+  }
+  if (dados.tipo === "admin") return res.sendFile(path.join(__dirname, "views", "admin.html"));
+  res.sendFile(path.join(__dirname, "views", "usuario.html"));
+});
+
+// ================= AUTENTICAÇÃO =================
+app.post("/api/registro", async (req, res) => {
+  const { usuario, senha, nome } = req.body || {};
+  if (!usuario || !senha) return res.status(400).json({ erro: "Informe usuário e senha." });
+  const u = String(usuario).trim();
+  if (u.length < 3) return res.status(400).json({ erro: "O usuário precisa ter pelo menos 3 caracteres." });
+  if (String(senha).length < 4) return res.status(400).json({ erro: "A senha precisa ter pelo menos 4 caracteres." });
+  const existe = await collection("usuarios").findOne({ usuario: u });
+  if (existe) return res.status(409).json({ erro: "Este usuário já existe. Escolha outro." });
+  const id = genId();
+  const doc = { _id: id, _col: "usuarios", usuario: u, senha: hashSenha(senha), nome: (nome || u).trim(), ativo: true, criadoEm: new Date().toISOString() };
+  await upsert(doc);
+  const sid = criarSessao({ tipo: "user", id: id, nome: doc.nome, ativo: true });
+  res.setHeader("Set-Cookie", "sid=" + sid + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
+  res.json({ ok: true });
+});
+
+app.post("/api/login", async (req, res) => {
+  const { usuario, senha } = req.body || {};
+  const u = String(usuario || "").trim();
+  if (u === ADMIN_USUARIO && senha === ADMIN_SENHA) {
+    const sid = criarSessao({ tipo: "admin", nome: "Administrador" });
+    res.setHeader("Set-Cookie", "sid=" + sid + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
+    return res.json({ ok: true });
+  }
+  const doc = await collection("usuarios").findOne({ usuario: u });
+  if (!doc) return res.status(401).json({ erro: "Usuário ou senha incorretos." });
+  if (!confereSenha(senha, doc.senha)) return res.status(401).json({ erro: "Usuário ou senha incorretos." });
+  if (!doc.ativo) return res.status(403).json({ erro: "Sua conta está desativada. Fale com o administrador." });
+  const sid = criarSessao({ tipo: "user", id: doc._id, nome: doc.nome, ativo: true });
+  res.setHeader("Set-Cookie", "sid=" + sid + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
+  res.json({ ok: true });
+});
+
+app.post("/api/logout", (req, res) => {
+  if (req.sid) delete sessoes[req.sid];
+  res.setHeader("Set-Cookie", "sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+  res.json({ ok: true });
+});
+
+app.get("/api/status", (req, res) => {
+  const dados = getReq(req);
+  if (!dados) return res.json({ logado: false, modo: modo.disco ? "banco" : "local" });
+  if (!sessaoAtiva(dados)) return res.json({ logado: false, modo: modo.disco ? "banco" : "local" });
+  res.json({ logado: true, tipo: dados.tipo, nome: dados.nome, modo: modo.disco ? "banco" : "local" });
+});
+
+// ================= PAINEL DO USUÁRIO =================
+app.post("/api/senha", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s) return res.status(401).json({ erro: "Faça login." });
+  if (s.tipo === "admin") return res.status(400).json({ erro: "Administrador não muda senha por aqui." });
+  const { senhaAtual, senhaNova } = req.body || {};
+  const doc = await collection("usuarios").findOne({ _id: s.id });
+  if (!confereSenha(senhaAtual, doc.senha)) return res.status(400).json({ erro: "A senha atual está incorreta." });
+  if (String(senhaNova).length < 4) return res.status(400).json({ erro: "A nova senha precisa ter pelo menos 4 caracteres." });
+  doc.senha = hashSenha(senhaNova);
+  await upsert(doc);
+  res.json({ ok: true });
+});
+
+app.get("/api/meu-resumo", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s || s.tipo !== "user") return res.status(403).json({ erro: "Não autorizado." });
+  const col = collection("despesas");
+  const todas = modo.disco
+    ? await col.find({ usuarioId: s.id }).toArray()
+    : colecoes.despesas.filter(d => d.usuarioId === s.id);
+  const porMes = {};
+  let totalGeral = 0;
+  for (const d of todas) {
+    const v = Number(d.valor) || 0;
+    totalGeral += v;
+    const km = chaveMes(d.data);
+    porMes[km] = (porMes[km] || 0) + v;
+  }
+  res.json({
+    totalGeral,
+    porMes,
+    totalMesAtual: porMes[chaveMes(new Date().toISOString())] || 0,
+    qtd: todas.length
+  });
+});
+
+app.get("/api/minhas-despesas", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s || s.tipo !== "user") return res.status(403).json({ erro: "Não autorizado." });
+  const col = collection("despesas");
+  const todas = modo.disco
+    ? await col.find({ usuarioId: s.id }).toArray()
+    : colecoes.despesas.filter(d => d.usuarioId === s.id);
+  const catCol = collection("categorias");
+  const cats = modo.disco
+    ? await catCol.find().toArray()
+    : colecoes.categorias.slice();
+  const mapaCat = {};
+  cats.forEach(c => mapaCat[c._id] = { nome: c.nome, cor: c.cor });
+  const lista = todas
+    .sort((a, b) => new Date(b.data) - new Date(a.data))
+    .map(d => ({
+      id: d._id,
+      descricao: d.descricao,
+      valor: Number(d.valor) || 0,
+      data: d.data,
+      dataBR: fmtDataBR(d.data),
+      categoriaId: d.categoriaId,
+      categoria: mapaCat[d.categoriaId] || { nome: "Sem categoria", cor: "#94a3b8" }
+    }));
+  res.json({ despesas: lista });
+});
+
+app.post("/api/despesas", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s || s.tipo !== "user") return res.status(403).json({ erro: "Não autorizado." });
+  const { descricao, valor, data, categoriaId } = req.body || {};
+  const v = Number(valor);
+  if (!descricao || !String(descricao).trim()) return res.status(400).json({ erro: "Descreva o gasto." });
+  if (!v || v <= 0) return res.status(400).json({ erro: "Informe um valor maior que zero." });
+  const dataIso = data ? new Date(data + "T00:00:00").toISOString() : new Date().toISOString();
+  const id = genId();
+  const doc = { _id: id, _col: "despesas", usuarioId: s.id, descricao: String(descricao).trim(), valor: v, data: dataIso, categoriaId: categoriaId || null };
+  await upsert(doc);
+  res.json({ ok: true, id });
+});
+
+app.delete("/api/despesas/:id", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s || s.tipo !== "user") return res.status(403).json({ erro: "Não autorizado." });
+  const doc = await collection("despesas").findOne({ _id: req.params.id });
+  if (!doc) return res.status(404).json({ erro: "Gasto não encontrado." });
+  if (doc.usuarioId !== s.id) return res.status(403).json({ erro: "Você só pode apagar seus próprios gastos." });
+  await remove("despesas", req.params.id);
+  res.json({ ok: true });
+});
+
+// ================= PAINEL DO ADMINISTRADOR =================
+function exigeAdmin(req, res) {
+  const s = sessaoDe(req);
+  if (!s || s.tipo !== "admin") { res.status(403).json({ erro: "Acesso do administrador." }); return null; }
+  return s;
+}
+
+app.get("/api/admin/resumo", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const col = collection("despesas");
+  const todas = modo.disco ? await col.find().toArray() : colecoes.despesas.slice();
+  const totalGeral = todas.reduce((s, d) => s + (Number(d.valor) || 0), 0);
+  const usuarios = modo.disco
+    ? await collection("usuarios").find().toArray()
+    : colecoes.usuarios.slice();
+  const totalPorUsuario = {};
+  const mesAtual = chaveMes(new Date().toISOString());
+  usuarios.forEach(u => totalPorUsuario[u._id] = 0);
+  for (const d of todas) {
+    const v = Number(d.valor) || 0;
+    totalPorUsuario[d.usuarioId] = (totalPorUsuario[d.usuarioId] || 0) + v;
+    if (chaveMes(d.data) === mesAtual) {
+      totalPorUsuario.__mesAtual = (totalPorUsuario.__mesAtual || 0) + v;
+    }
+  }
+  const totalMesAtual = totalPorUsuario.__mesAtual || 0;
+  res.json({
+    totalGeral,
+    totalMesAtual,
+    qtdUsuarios: usuarios.length,
+    qtdDespesas: todas.length,
+    usuarios: usuarios.map(u => ({
+      id: u._id,
+      nome: u.nome,
+      usuario: u.usuario,
+      ativo: !!u.ativo,
+      criadoEm: u.criadoEm,
+      total: totalPorUsuario[u._id] || 0
+    }))
+  });
+});
+
+app.post("/api/admin/usuarios", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const { usuario, senha, nome } = req.body || {};
+  if (!usuario || !senha) return res.status(400).json({ erro: "Informe usuário e senha." });
+  const u = String(usuario).trim();
+  if (u.length < 3) return res.status(400).json({ erro: "O usuário precisa ter pelo menos 3 caracteres." });
+  if (String(senha).length < 4) return res.status(400).json({ erro: "A senha precisa ter pelo menos 4 caracteres." });
+  if (u === ADMIN_USUARIO) return res.status(400).json({ erro: "Este nome é reservado." });
+  const existe = await collection("usuarios").findOne({ usuario: u });
+  if (existe) return res.status(409).json({ erro: "Usuário já existe." });
+  const id = genId();
+  await upsert({ _id: id, _col: "usuarios", usuario: u, senha: hashSenha(senha), nome: (nome || u).trim(), ativo: true, criadoEm: new Date().toISOString() });
+  res.json({ ok: true, id });
+});
+
+app.post("/api/admin/usuarios/:id/toggle", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const doc = await collection("usuarios").findOne({ _id: req.params.id });
+  if (!doc) return res.status(404).json({ erro: "Usuário não encontrado." });
+  doc.ativo = !doc.ativo;
+  await upsert(doc);
+  if (sessoes[doc._id]) sessoes[doc._id].ativo = doc.ativo;
+  res.json({ ok: true, ativo: doc.ativo });
+});
+
+app.delete("/api/admin/usuarios/:id", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const doc = await collection("usuarios").findOne({ _id: req.params.id });
+  if (!doc) return res.status(404).json({ erro: "Usuário não encontrado." });
+  const despesasDoUsuario = modo.disco
+    ? await collection("despesas").find({ usuarioId: doc._id }).toArray()
+    : colecoes.despesas.filter(d => d.usuarioId === doc._id);
+  await bulkDelete("despesas", despesasDoUsuario.map(d => d._id));
+  await remove("usuarios", doc._id);
+  delete sessoes[doc._id];
+  res.json({ ok: true });
+});
+
+app.get("/api/admin/despesas-todas", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const todas = modo.disco ? await collection("despesas").find().toArray() : colecoes.despesas.slice();
+  const usuarios = modo.disco ? await collection("usuarios").find().toArray() : colecoes.usuarios.slice();
+  const cats = modo.disco ? await collection("categorias").find().toArray() : colecoes.categorias.slice();
+  const mapaU = {}, mapaC = {};
+  usuarios.forEach(u => mapaU[u._id] = u.nome);
+  cats.forEach(c => mapaC[c._id] = c.nome);
+  const lista = todas
+    .sort((a, b) => new Date(b.data) - new Date(a.data))
+    .map(d => ({
+      id: d._id,
+      descricao: d.descricao,
+      valor: Number(d.valor) || 0,
+      data: d.data,
+      dataBR: fmtDataBR(d.data),
+      usuario: mapaU[d.usuarioId] || "removido",
+      categoria: mapaC[d.categoriaId] || "Sem categoria"
+    }));
+  res.json({ despesas: lista });
+});
+
+app.post("/api/admin/despesas/:id/remover-categoria", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const doc = await collection("despesas").findOne({ _id: req.params.id });
+  if (!doc) return res.status(404).json({ erro: "Gasto não encontrado." });
+  doc.categoriaId = null;
+  await upsert(doc);
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/despesas/:id", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  await remove("despesas", req.params.id);
+  res.json({ ok: true });
+});
+
+app.get("/api/categorias", async (req, res) => {
+  const s = sessaoDe(req);
+  if (!s) return res.status(401).json({ erro: "Faça login." });
+  const cats = modo.disco ? await collection("categorias").find().toArray() : colecoes.categorias.slice();
+  res.json({
+    categorias: cats.map(c => ({ id: c._id, nome: c.nome, cor: c.cor, ativa: c.ativa !== false }))
+  });
+});
+
+app.post("/api/admin/categorias", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const { nome, cor } = req.body || {};
+  const n = String(nome || "").trim();
+  if (!n) return res.status(400).json({ erro: "Dê um nome à categoria." });
+  const existe = colecoes.categorias.some(c => c.nome.toLowerCase() === n.toLowerCase());
+  const id = genId();
+  await upsert({ _id: id, _col: "categorias", nome: n, cor: cor || "#64748b", ativa: true });
+  res.json({ ok: true, id });
+});
+
+app.post("/api/admin/categorias/:id/toggle", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  const doc = await collection("categorias").findOne({ _id: req.params.id });
+  if (!doc) return res.status(404).json({ erro: "Categoria não encontrada." });
+  doc.ativa = !doc.ativa;
+  await upsert(doc);
+  res.json({ ok: true, ativa: doc.ativa });
+});
+
+app.delete("/api/admin/categorias/:id", async (req, res) => {
+  if (!exigeAdmin(req, res)) return;
+  await remove("categorias", req.params.id);
+  res.json({ ok: true });
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ erro: "Erro interno. Tente de novo." });
+});
+
+// ---------------- Inicialização ----------------
+async function inicializar() {
+  await conectarBanco();
+  const cats = modo.disco ? await collection("categorias").find().toArray() : colecoes.categorias.slice();
+  if (cats.length === 0) {
+    for (const c of CATEGORIAS_PADRAO) {
+      await upsert({ _id: genId(), _col: "categorias", nome: c.nome, cor: c.cor, ativa: true });
+    }
+    console.log("Categorias padrão criadas.");
+  }
+  app.listen(PORTA, () => {
+    console.log("");
+    console.log("========================================");
+    console.log("  CONTROLE DE DESPESAS - NO AR");
+    console.log("  Abra no navegador: http://localhost:" + PORTA);
+    console.log("  Admin: usuario='" + ADMIN_USUARIO + "'  senha='" + ADMIN_SENHA + "'");
+    console.log("  Dados salvos no: " + (modo.disco ? "MongoDB" : "arquivo local (data/)"));
+    console.log("========================================");
+    console.log("");
+  });
+}
+
+inicializar();
+
+=== views/login.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Controle de Despesas</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; color: #e2e8f0; }
+    .card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 40px; width: 100%; max-width: 420px; backdrop-filter: blur(10px); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .logo { text-align: center; margin-bottom: 30px; }
+    .logo h1 { font-size: 28px; font-weight: 700; }
+    .logo span { color: #4ade80; }
+    .logo p { margin-top: 8px; color: #94a3b8; font-size: 14px; }
+    label { display: block; margin-bottom: 6px; font-size: 13px; color: #cbd5e1; font-weight: 500; }
+    input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 15px; margin-bottom: 18px; outline: none; }
+    input:focus { border-color: #4ade80; }
+    input::placeholder { color: #64748b; }
+    .btn { width: 100%; padding: 13px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .btn-primary { background: #4ade80; color: #052e16; }
+    .btn-primary:hover { background: #22c55e; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+    .tab { flex: 1; padding: 10px; text-align: center; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+    .tab.ativo { background: rgba(74,222,128,0.15); border-color: #4ade80; color: #4ade80; }
+    .msg { padding: 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .msg.erro { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); display: block; }
+    .msg.ok { background: rgba(74,222,128,0.15); color: #4ade80; border: 1px solid rgba(74,222,128,0.3); display: block; }
+    .divisor { text-align: center; margin: 20px 0; position: relative; }
+    .divisor::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(255,255,255,0.1); }
+    .divisor span { background: #1e293b; padding: 0 12px; position: relative; color: #64748b; font-size: 12px; }
+    .admin-link { text-align: center; margin-top: 16px; }
+    .admin-link a { color: #64748b; font-size: 12px; text-decoration: none; cursor: pointer; }
+    .admin-link a:hover { color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <h1>💰 Controle de <span>Despesas</span></h1>
+      <p>Organize seus gastos e acompanhe seu mês</p>
+    </div>
+
+    <div class="tabs">
+      <div class="tab ativo" id="tab-login">Entrar</div>
+      <div class="tab" id="tab-cadastro">Criar conta</div>
+    </div>
+
+    <div class="msg" id="msg"></div>
+
+    <!-- Login -->
+    <form id="form-login">
+      <label>Usuário</label>
+      <input type="text" id="login-usuario" placeholder="seu-usuario" autocomplete="username" />
+      <label>Senha</label>
+      <input type="password" id="login-senha" placeholder="••••••" autocomplete="current-password" />
+      <button type="submit" class="btn btn-primary" id="btn-login">Entrar</button>
+    </form>
+
+    <!-- Cadastro -->
+    <form id="form-cadastro" style="display:none">
+      <label>Seu nome (opcional)</label>
+      <input type="text" id="cad-nome" placeholder="Como quer ser chamado" />
+      <label>Usuário</label>
+      <input type="text" id="cad-usuario" placeholder="escolha um usuário" autocomplete="username" />
+      <label>Senha</label>
+      <input type="password" id="cad-senha" placeholder="mínimo 4 caracteres" autocomplete="new-password" />
+      <button type="submit" class="btn btn-primary" id="btn-cadastro">Criar minha conta</button>
+    </form>
+
+    <div class="divisor"><span>acesso administrativo</span></div>
+    <div class="admin-link">
+      <a id="toggle-admin">Sou administrador</a>
+    </div>
+  </div>
+
+  <script>
+    let modoAdmin = false;
+    const msgEl = document.getElementById("msg");
+    function mostrarMsg(texto, tipo) {
+      msgEl.textContent = texto;
+      msgEl.className = "msg " + tipo;
+      setTimeout(() => { msgEl.className = "msg"; }, 4000);
+    }
+    document.getElementById("tab-login").onclick = () => {
+      document.getElementById("tab-login").classList.add("ativo");
+      document.getElementById("tab-cadastro").classList.remove("ativo");
+      document.getElementById("form-login").style.display = "";
+      document.getElementById("form-cadastro").style.display = "none";
+    };
+    document.getElementById("tab-cadastro").onclick = () => {
+      document.getElementById("tab-cadastro").classList.add("ativo");
+      document.getElementById("tab-login").classList.remove("ativo");
+      document.getElementById("form-cadastro").style.display = "";
+      document.getElementById("form-login").style.display = "none";
+    };
+    document.getElementById("toggle-admin").onclick = () => {
+      if (modoAdmin) {
+        document.getElementById("login-usuario").value = "";
+        document.getElementById("login-senha").value = "";
+        document.getElementById("login-usuario").placeholder = "seu-usuario";
+        document.getElementById("toggle-admin").textContent = "Sou administrador";
+        modoAdmin = false;
+      } else {
+        document.getElementById("login-usuario").placeholder = "admin";
+        document.getElementById("login-senha").focus();
+        document.getElementById("toggle-admin").textContent = "Sou usuário comum";
+        modoAdmin = true;
+      }
+      document.getElementById("tab-login").click();
+    };
+    document.getElementById("form-login").onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn-login");
+      btn.disabled = true; btn.textContent = "Entrando...";
+      try {
+        const r = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            usuario: document.getElementById("login-usuario").value,
+            senha: document.getElementById("login-senha").value
+          })
+        });
+        const d = await r.json();
+        if (d.erro) { mostrarMsg(d.erro, "erro"); return; }
+        window.location.href = "/";
+      } catch { mostrarMsg("Erro de conexão.", "erro"); }
+      btn.disabled = false; btn.textContent = "Entrar";
+    };
+    document.getElementById("form-cadastro").onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn-cadastro");
+      btn.disabled = true; btn.textContent = "Criando...";
+      try {
+        const r = await fetch("/api/registro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nome: document.getElementById("cad-nome").value,
+            usuario: document.getElementById("cad-usuario").value,
+            senha: document.getElementById("cad-senha").value
+          })
+        });
+        const d = await r.json();
+        if (d.erro) { mostrarMsg(d.erro, "erro"); return; }
+        window.location.href = "/";
+      } catch { mostrarMsg("Erro de conexão.", "erro"); }
+      btn.disabled = false; btn.textContent = "Criar minha conta";
+    };
+  </script>
+</body>
+</html>
+
+=== views/usuario.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Minhas Despesas</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    header { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px); }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header h1 span { color: #4ade80; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .user-name { color: #94a3b8; font-size: 14px; }
+    .btn-sm { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #e2e8f0; border-radius: 8px; cursor: pointer; font-size: 13px; transition: 0.2s; }
+    .btn-sm:hover { background: rgba(255,255,255,0.1); }
+    .btn-sm.logout { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+    .resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 20px; }
+    .card .label { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .card .valor { font-size: 28px; font-weight: 700; }
+    .card .valor.gasto { color: #f87171; }
+    .card .valor.mes { color: #4ade80; }
+    .card .valor.qtd { color: #60a5fa; }
+    .secao { margin-bottom: 24px; }
+    .secao-titulo { font-size: 16px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .form-linha { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+    @media (max-width: 700px) { .form-linha { grid-template-columns: 1fr 1fr; } .form-linha .desc { grid-column: span 2; } }
+    .form-campo label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    .form-campo input, .form-campo select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 14px; outline: none; }
+    .form-campo input:focus, .form-campo select:focus { border-color: #4ade80; }
+    .btn-add { padding: 10px 20px; border: none; border-radius: 8px; background: #4ade80; color: #052e16; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; height: 42px; }
+    .btn-add:hover { background: #22c55e; }
+    .tabela-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: rgba(255,255,255,0.03); padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:last-child td { border-bottom: none; }
+    .badge-cat { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .btn-del { background: none; border: none; color: #64748b; cursor: pointer; font-size: 16px; padding: 4px 8px; border-radius: 6px; transition: 0.2s; }
+    .btn-del:hover { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .vazio { text-align: center; padding: 40px; color: #64748b; }
+    .filtro-bar { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .filtro-bar select { padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 13px; outline: none; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal-overlay.aberto { display: flex; }
+    .modal { background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 28px; width: 90%; max-width: 380px; }
+    .modal h3 { margin-bottom: 16px; font-size: 18px; }
+    .modal label { display: block; margin-bottom: 4px; font-size: 13px; color: #94a3b8; }
+    .modal input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 14px; margin-bottom: 14px; outline: none; }
+    .modal input:focus { border-color: #4ade80; }
+    .modal .btns { display: flex; gap: 10px; }
+    .modal .btns button { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .modal .btn-cancelar { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+    .modal .btn-salvar { background: #4ade80; color: #052e16; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 200; display: none; }
+    .toast.ok { background: #065f46; color: #a7f3d0; border: 1px solid rgba(74,222,128,0.3); display: block; }
+    .toast.erro { background: #7f1d1d; color: #fecaca; border: 1px solid rgba(239,68,68,0.3); display: block; }
+    .mes-label { color: #94a3b8; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>💰 Minhas <span>Despesas</span></h1>
+    <div class="header-right">
+      <span class="user-name" id="user-name"></span>
+      <button class="btn-sm" id="btn-senha">Trocar senha</button>
+      <button class="btn-sm logout" id="btn-sair">Sair</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="resumo-grid">
+      <div class="card">
+        <div class="label">Gasto total</div>
+        <div class="valor gasto" id="res-total">R$ 0,00</div>
+      </div>
+      <div class="card">
+        <div class="label">Gasto no mês <span class="mes-label" id="mes-nome"></span></div>
+        <div class="valor mes" id="res-mes">R$ 0,00</div>
+      </div>
+      <div class="card">
+        <div class="label">Lançamentos</div>
+        <div class="valor qtd" id="res-qtd">0</div>
+      </div>
+    </div>
+
+    <div class="secao">
+      <div class="secao-titulo">➕ Adicionar gasto</div>
+      <div class="form-linha">
+        <div class="form-campo desc">
+          <label>Descrição</label>
+          <input type="text" id="novo-desc" placeholder="Ex: Supermercado" />
+        </div>
+        <div class="form-campo">
+          <label>Valor (R$)</label>
+          <input type="number" id="novo-valor" min="0.01" step="0.01" placeholder="0,00" />
+        </div>
+        <div class="form-campo">
+          <label>Data</label>
+          <input type="date" id="novo-data" />
+        </div>
+        <div class="form-campo">
+          <label>Categoria</label>
+          <select id="novo-cat"></select>
+        </div>
+        <button class="btn-add" id="btn-add">Adicionar</button>
+      </div>
+    </div>
+
+    <div class="secao">
+      <div class="secao-titulo">📋 Meus lançamentos</div>
+      <div class="filtro-bar">
+        <select id="filtro-cat">
+          <option value="">Todas as categorias</option>
+        </select>
+        <select id="filtro-mes">
+          <option value="">Todos os meses</option>
+        </select>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead>
+            <tr><th>Data</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th></th></tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="vazio" id="vazio" style="display:none">Nenhum gasto registrado ainda. Adicione seu primeiro acima! 🎉</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal-overlay" id="modal-senha">
+    <div class="modal">
+      <h3>Trocar senha</h3>
+      <label>Senha atual</label>
+      <input type="password" id="senha-atual" placeholder="senha atual" />
+      <label>Nova senha</label>
+      <input type="password" id="senha-nova" placeholder="nova senha (mín 4 caracteres)" />
+      <div class="btns">
+        <button class="btn-cancelar" id="btn-cancelar-senha">Cancelar</button>
+        <button class="btn-salvar" id="btn-salvar-senha">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let todasDespesas = [];
+    let todasCategorias = [];
+    const BRL = (v) => "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function toast(msg, tipo) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.className = "toast " + tipo;
+      setTimeout(() => { el.className = "toast"; }, 2500);
+    }
+
+    function mesNome(km) {
+      const [ano, mes] = km.split("-").map(Number);
+      const nomes = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+      return nomes[mes - 1] + " de " + ano;
+    }
+
+    async function carregar() {
+      const [rResumo, rDesp, rCats] = await Promise.all([
+        fetch("/api/meu-resumo").then(r => r.json()),
+        fetch("/api/minhas-despesas").then(r => r.json()),
+        fetch("/api/categorias").then(r => r.json())
+      ]);
+      document.getElementById("res-total").textContent = BRL(rResumo.totalGeral);
+      document.getElementById("res-mes").textContent = BRL(rResumo.totalMesAtual);
+      document.getElementById("res-qtd").textContent = rResumo.qtd;
+      const agora = new Date();
+      document.getElementById("mes-nome").textContent = mesNome(agora.getFullYear() + "-" + String(agora.getMonth() + 1).padStart(2, "0"));
+      todasDespesas = rDesp.despesas;
+      todasCategorias = rCats.categorias.filter(c => c.ativa);
+      preencherCategorias();
+      preencherFiltroMes();
+      render();
+    }
+
+    function preencherCategorias() {
+      const sel = document.getElementById("novo-cat");
+      sel.innerHTML = '<option value="">Sem categoria</option>';
+      todasCategorias.forEach(c => {
+        sel.innerHTML += `<option value="${c.id}">${c.nome}</option>`;
+      });
+      const filt = document.getElementById("filtro-cat");
+      const atual = filt.value;
+      filt.innerHTML = '<option value="">Todas as categorias</option>';
+      todasCategorias.forEach(c => {
+        filt.innerHTML += `<option value="${c.id}">${c.nome}</option>`;
+      });
+      filt.value = atual;
+    }
+
+    function preencherFiltroMes() {
+      const meses = {};
+      todasDespesas.forEach(d => {
+        const [ano, mes] = d.data.slice(0, 7).split("-").map(Number);
+        const km = d.data.slice(0, 7);
+        if (!meses[km]) meses[km] = mesNome(km);
+      });
+      const sel = document.getElementById("filtro-mes");
+      const atual = sel.value;
+      sel.innerHTML = '<option value="">Todos os meses</option>';
+      Object.keys(meses).sort().reverse().forEach(km => {
+        sel.innerHTML += `<option value="${km}">${meses[km]}</option>`;
+      });
+      sel.value = atual;
+    }
+
+    function render() {
+      const fc = document.getElementById("filtro-cat").value;
+      const fm = document.getElementById("filtro-mes").value;
+      const lista = todasDespesas.filter(d => {
+        if (fc && d.categoriaId !== fc) return false;
+        if (fm && d.data.slice(0, 7) !== fm) return false;
+        return true;
+      });
+      const tbody = document.getElementById("tbody");
+      const vazio = document.getElementById("vazio");
+      if (lista.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = lista.map(d => {
+        const cor = d.categoria ? (d.categoria.cor || "#64748b") : "#64748b";
+        const nomeCat = d.categoria ? d.categoria.nome : "Sem categoria";
+        return `<tr>
+          <td>${d.dataBR}</td>
+          <td>${d.descricao.replace(/</g, "&lt;")}</td>
+          <td><span class="badge-cat" style="background:${cor}33;color:${cor};border:1px solid ${cor}55">${nomeCat}</span></td>
+          <td style="text-align:right;font-weight:600">${BRL(d.valor)}</td>
+          <td style="text-align:right"><button class="btn-del" data-id="${d.id}" title="Apagar">🗑️</button></td>
+        </tr>`;
+      }).join("");
+      tbody.querySelectorAll(".btn-del").forEach(b => {
+        b.onclick = async () => {
+          if (!confirm("Apagar este gasto?")) return;
+          const r = await fetch("/api/despesas/" + b.dataset.id, { method: "DELETE" });
+          const d = await r.json();
+          if (d.erro) return toast(d.erro, "erro");
+          toast("Gasto apagado.", "ok");
+          carregar();
+        };
+      });
+    }
+
+    document.getElementById("filtro-cat").onchange = render;
+    document.getElementById("filtro-mes").onchange = render;
+
+    document.getElementById("btn-add").onclick = async () => {
+      const desc = document.getElementById("novo-desc").value.trim();
+      const valor = document.getElementById("novo-valor").value;
+      const data = document.getElementById("novo-data").value;
+      const cat = document.getElementById("novo-cat").value;
+      if (!desc) return toast("Descreva o gasto.", "erro");
+      if (!valor || parseFloat(valor) <= 0) return toast("Informe um valor válido.", "erro");
+      const r = await fetch("/api/despesas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descricao: desc, valor: parseFloat(valor), data: data || null, categoriaId: cat || null })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Gasto adicionado! ✅", "ok");
+      document.getElementById("novo-desc").value = "";
+      document.getElementById("novo-valor").value = "";
+      carregar();
+    };
+
+    document.getElementById("btn-sair").onclick = async () => {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/";
+    };
+
+    document.getElementById("btn-senha").onclick = () => document.getElementById("modal-senha").classList.add("aberto");
+    document.getElementById("btn-cancelar-senha").onclick = () => document.getElementById("modal-senha").classList.remove("aberto");
+    document.getElementById("btn-salvar-senha").onclick = async () => {
+      const r = await fetch("/api/senha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senhaAtual: document.getElementById("senha-atual").value, senhaNova: document.getElementById("senha-nova").value })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Senha alterada! ✅", "ok");
+      document.getElementById("modal-senha").classList.remove("aberto");
+      document.getElementById("senha-atual").value = "";
+      document.getElementById("senha-nova").value = "";
+    };
+
+    document.getElementById("novo-data").value = new Date().toISOString().slice(0, 10);
+    fetch("/api/status").then(r => r.json()).then(d => {
+      if (d.nome) document.getElementById("user-name").textContent = d.nome;
+    });
+    carregar();
+  </script>
+</body>
+</html>
+
+=== views/admin.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Administrador</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    header { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px); }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header h1 span { color: #f59e0b; }
+    .btn-sm { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #e2e8f0; border-radius: 8px; cursor: pointer; font-size: 13px; transition: 0.2s; }
+    .btn-sm:hover { background: rgba(255,255,255,0.1); }
+    .btn-sm.logout { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    main { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+    .resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px; }
+    .card .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .card .valor { font-size: 24px; font-weight: 700; }
+    .card .valor.azul { color: #60a5fa; }
+    .card .valor.amarelo { color: #fbbf24; }
+    .card .valor.verde { color: #4ade80; }
+    .card .valor.vermelho { color: #f87171; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .tab { padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent; color: #94a3b8; transition: 0.2s; }
+    .tab.ativo { color: #f59e0b; border-bottom-color: #f59e0b; }
+    .tab-conteudo { display: none; }
+    .tab-conteudo.ativo { display: block; }
+    .tabela-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: rgba(255,255,255,0.03); padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .badge.ativo { background: rgba(74,222,128,0.15); color: #4ade80; }
+    .badge.inativo { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .badge-cor { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+    .btn-acao { padding: 5px 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; transition: 0.2s; }
+    .btn-acao:hover { background: rgba(255,255,255,0.1); }
+    .btn-acao.pesado { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    .btn-acao.pesado:hover { background: rgba(239,68,68,0.15); }
+    .form-inline { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: end; }
+    .form-inline .campo { flex: 1; min-width: 140px; }
+    .form-inline label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    .form-inline input, .form-inline select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 14px; outline: none; }
+    .form-inline input:focus, .form-inline select:focus { border-color: #f59e0b; }
+    .btn-add { padding: 10px 20px; border: none; border-radius: 8px; background: #f59e0b; color: #1c1006; font-weight: 600; font-size: 14px; cursor: pointer; height: 42px; }
+    .btn-add:hover { background: #d97706; }
+    .vazio { text-align: center; padding: 30px; color: #64748b; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 200; display: none; }
+    .toast.ok { background: #065f46; color: #a7f3d0; border: 1px solid rgba(74,222,128,0.3); display: block; }
+    .toast.erro { background: #7f1d1d; color: #fecaca; border: 1px solid rgba(239,68,68,0.3); display: block; }
+    .secao-titulo { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+    .input-cor { width: 50px !important; height: 42px; padding: 4px !important; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙️ Painel <span>Administrador</span></h1>
+    <button class="btn-sm logout" id="btn-sair">Sair</button>
+  </header>
+
+  <main>
+    <div class="resumo-grid" id="resumo-admin"></div>
+
+    <div class="tabs">
+      <div class="tab ativo" data-tab="usuarios">Usuários</div>
+      <div class="tab" data-tab="categorias">Categorias</div>
+      <div class="tab" data-tab="despesas">Gastos (todos)</div>
+    </div>
+
+    <!-- USUÁRIOS -->
+    <div class="tab-conteudo ativo" id="tab-usuarios">
+      <div class="secao-titulo">➕ Cadastrar novo usuário</div>
+      <div class="form-inline">
+        <div class="campo"><label>Nome</label><input type="text" id="nu-nome" placeholder="Nome do usuário" /></div>
+        <div class="campo"><label>Usuário (login)</label><input type="text" id="nu-usuario" placeholder="usuario" /></div>
+        <div class="campo"><label>Senha inicial</label><input type="password" id="nu-senha" placeholder="senha" /></div>
+        <button class="btn-add" id="btn-add-usuario">Cadastrar</button>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Nome</th><th>Usuário</th><th>Status</th><th style="text-align:right">Total gasto</th><th>Ações</th></tr></thead>
+          <tbody id="tbody-usuarios"></tbody>
+        </table>
+        <div class="vazio" id="vazio-usuarios" style="display:none">Nenhum usuário cadastrado.</div>
+      </div>
+    </div>
+
+    <!-- CATEGORIAS -->
+    <div class="tab-conteudo" id="tab-categorias">
+      <div class="secao-titulo">➕ Nova categoria</div>
+      <div class="form-inline">
+        <div class="campo"><label>Nome</label><input type="text" id="nc-nome" placeholder="Ex: Pets" /></div>
+        <div class="campo" style="max-width:100px"><label>Cor</label><input type="color" id="nc-cor" class="input-cor" value="#64748b" /></div>
+        <button class="btn-add" id="btn-add-cat">Adicionar</button>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Categoria</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody id="tbody-cats"></tbody>
+        </table>
+        <div class="vazio" id="vazio-cats" style="display:none">Nenhuma categoria.</div>
+      </div>
+    </div>
+
+    <!-- DESPESAS TODOS -->
+    <div class="tab-conteudo" id="tab-despesas">
+      <div class="secao-titulo">📋 Todos os gastos de todos os usuários</div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Usuário</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th></th></tr></thead>
+          <tbody id="tbody-despesas"></tbody>
+        </table>
+        <div class="vazio" id="vazio-despesas" style="display:none">Nenhum gasto registrado.</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let categorias = [];
+    let usuarios = [];
+    let despesas = [];
+    const BRL = (v) => "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function toast(msg, tipo) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.className = "toast " + tipo;
+      setTimeout(() => { el.className = "toast"; }, 2500);
+    }
+
+    function carregarTudo() {
+      Promise.all([
+        fetch("/api/admin/resumo").then(r => r.json()),
+        fetch("/api/categorias").then(r => r.json()),
+        fetch("/api/admin/despesas-todas").then(r => r.json())
+      ]).then(([resumo, cats, desp]) => {
+        usuarios = resumo.usuarios;
+        categorias = cats.categorias;
+        despesas = desp.despesas;
+        renderResumo(resumo);
+        renderUsuarios();
+        renderCats();
+        renderDespesas();
+      });
+    }
+
+    function renderResumo(r) {
+      document.getElementById("resumo-admin").innerHTML = `
+        <div class="card"><div class="label">Total geral (todos)</div><div class="valor vermelho">${BRL(r.totalGeral)}</div></div>
+        <div class="card"><div class="label">Gasto no mês</div><div class="valor amarelo">${BRL(r.totalMesAtual)}</div></div>
+        <div class="card"><div class="label">Usuários</div><div class="valor azul">${r.qtdUsuarios}</div></div>
+        <div class="card"><div class="label">Gastos registrados</div><div class="valor verde">${r.qtdDespesas}</div></div>
+      `;
+    }
+
+    function renderUsuarios() {
+      const tbody = document.getElementById("tbody-usuarios");
+      const vazio = document.getElementById("vazio-usuarios");
+      if (usuarios.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = usuarios.map(u => `
+        <tr>
+          <td><strong>${u.nome}</strong></td>
+          <td>${u.usuario}</td>
+          <td><span class="badge ${u.ativo ? 'ativo' : 'inativo'}">${u.ativo ? 'Ativo' : 'Desativado'}</span></td>
+          <td style="text-align:right;font-weight:600">${BRL(u.total)}</td>
+          <td>
+            <button class="btn-acao" data-toggle="${u.id}">${u.ativo ? 'Desativar' : 'Reativar'}</button>
+            <button class="btn-acao pesado" data-del="${u.id}">Excluir</button>
+          </td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-toggle]").forEach(b => b.onclick = async () => {
+        const r = await fetch("/api/admin/usuarios/" + b.dataset.toggle + "/toggle", { method: "POST" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast(d.ativo ? "Usuário reativado." : "Usuário desativado.", "ok");
+        carregarTudo();
+      });
+      tbody.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+        if (!confirm("Excluir este usuário e todos os seus gastos?")) return;
+        const r = await fetch("/api/admin/usuarios/" + b.dataset.del, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Usuário excluído.", "ok");
+        carregarTudo();
+      });
+    }
+
+    function renderCats() {
+      const tbody = document.getElementById("tbody-cats");
+      const vazio = document.getElementById("vazio-cats");
+      if (categorias.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = categorias.map(c => `
+        <tr>
+          <td><span class="badge-cor" style="background:${c.cor}"></span>${c.nome}</td>
+          <td><span class="badge ${c.ativa ? 'ativo' : 'inativo'}">${c.ativa ? 'Ativa' : 'Desativada'}</span></td>
+          <td>
+            <button class="btn-acao" data-toggle-cat="${c.id}">${c.ativa ? 'Desativar' : 'Reativar'}</button>
+            <button class="btn-acao pesado" data-del-cat="${c.id}">Excluir</button>
+          </td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-toggle-cat]").forEach(b => b.onclick = async () => {
+        const r = await fetch("/api/admin/categorias/" + b.dataset.toggleCat + "/toggle", { method: "POST" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast(d.ativa ? "Categoria reativada." : "Categoria desativada.", "ok");
+        carregarTudo();
+      });
+      tbody.querySelectorAll("[data-del-cat]").forEach(b => b.onclick = async () => {
+        if (!confirm("Excluir esta categoria? Os gastos já lançados nela ficarão 'Sem categoria'.")) return;
+        const r = await fetch("/api/admin/categorias/" + b.dataset.delCat, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Categoria excluída.", "ok");
+        carregarTudo();
+      });
+    }
+
+    function renderDespesas() {
+      const tbody = document.getElementById("tbody-despesas");
+      const vazio = document.getElementById("vazio-despesas");
+      if (despesas.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = despesas.map(d => `
+        <tr>
+          <td>${d.dataBR}</td>
+          <td>${d.usuario}</td>
+          <td>${d.descricao.replace(/</g, "&lt;")}</td>
+          <td>${d.categoria}</td>
+          <td style="text-align:right;font-weight:600">${BRL(d.valor)}</td>
+          <td><button class="btn-acao pesado" data-del-desp="${d.id}">🗑️</button></td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-del-desp]").forEach(b => b.onclick = async () => {
+        if (!confirm("Apagar este gasto?")) return;
+        const r = await fetch("/api/admin/despesas/" + b.dataset.delDesp, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Gasto apagado.", "ok");
+        carregarTudo();
+      });
+    }
+
+    document.getElementById("btn-add-usuario").onclick = async () => {
+      const nome = document.getElementById("nu-nome").value.trim();
+      const usuario = document.getElementById("nu-usuario").value.trim();
+      const senha = document.getElementById("nu-senha").value;
+      if (!usuario || !senha) return toast("Preencha usuário e senha.", "erro");
+      const r = await fetch("/api/admin/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, usuario, senha })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Usuário cadastrado! ✅", "ok");
+      document.getElementById("nu-nome").value = "";
+      document.getElementById("nu-usuario").value = "";
+      document.getElementById("nu-senha").value = "";
+      carregarTudo();
+    };
+
+    document.getElementById("btn-add-cat").onclick = async () => {
+      const nome = document.getElementById("nc-nome").value.trim();
+      const cor = document.getElementById("nc-cor").value;
+      if (!nome) return toast("Dê um nome.", "erro");
+      const r = await fetch("/api/admin/categorias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, cor })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Categoria adicionada! ✅", "ok");
+      document.getElementById("nc-nome").value = "";
+      carregarTudo();
+    };
+
+    document.getElementById("btn-sair").onclick = async () => {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/";
+    };
+
+    document.querySelectorAll(".tab").forEach(t => {
+      t.onclick = () => {
+        document.querySelectorAll(".tab").forEach(x => x.classList.remove("ativo"));
+        document.querySelectorAll(".tab-conteudo").forEach(x => x.classList.remove("ativo"));
+        t.classList.add("ativo");
+        document.getElementById("tab-" + t.dataset.tab).classList.add("ativo");
+      };
+    });
+
+    carregarTudo();
+  </script>
+</body>
+</html>

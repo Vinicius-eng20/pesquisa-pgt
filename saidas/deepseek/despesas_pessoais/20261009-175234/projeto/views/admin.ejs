@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel Admin - Controle de Despesas</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1>💰 Controle de Despesas — Admin</h1>
+    <nav>
+      <span>Olá, <%= user.nome %></span>
+      <a href="/dashboard">Meu Painel</a>
+      <a href="/logout">Sair</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Total geral de gastos (todos os usuários)</h2>
+    <div class="total-box destaque">
+      <strong>R$ <%= totalGeral.toFixed(2).replace('.', ',') %></strong>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Gerenciar categorias</h2>
+    <form method="POST" action="/admin/categorias" class="form-cat">
+      <input type="text" name="nome" placeholder="Nome da nova categoria" required>
+      <button type="submit">Adicionar categoria</button>
+    </form>
+    <table>
+      <thead>
+        <tr><th>Categoria</th><th>Despesas</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% categorias.forEach(c => { %>
+          <tr>
+            <td><%= c.nome %></td>
+            <td><%= c.qtd %></td>
+            <td><%= c.ativa ? 'Ativa' : 'Inativa' %></td>
+            <td>
+              <form method="POST" action="/admin/categorias/<%= c.id %>/toggle">
+                <button class="<%= c.ativa ? 'btn-desativar' : 'btn-ativar' %>">
+                  <%= c.ativa ? 'Desativar' : 'Ativar' %>
+                </button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Usuários</h2>
+    <table>
+      <thead>
+        <tr><th>Nome</th><th>Email</th><th>Total gasto</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% usuarios.forEach(u => { %>
+          <tr>
+            <td><%= u.nome %><%= u.is_admin ? ' (admin)' : '' %></td>
+            <td><%= u.email %></td>
+            <td>R$ <%= u.total_gasto.toFixed(2).replace('.', ',') %></td>
+            <td><%= u.ativo ? 'Ativo' : 'Desativado' %></td>
+            <td>
+              <% if (!u.is_admin) { %>
+                <form method="POST" action="/admin/usuarios/<%= u.id %>/toggle">
+                  <button class="<%= u.ativo ? 'btn-desativar' : 'btn-ativar' %>">
+                    <%= u.ativo ? 'Desativar' : 'Ativar' %>
+                  </button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

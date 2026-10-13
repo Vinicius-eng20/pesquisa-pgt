@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="linha" style="justify-content:space-between;align-items:flex-end">
+  <div>
+    <h1>Histórico de {{ x.nome }}</h1>
+    <p class="sub">{{ x.usuario }} · {{ x.papel }}
+      {% if not x.ativo %}<span class="selo erro">inativa</span>
+      {% elif x.bloqueado %}<span class="selo erro">bloqueada</span>
+      {% else %}<span class="selo ok">ok</span>{% endif %}
+    </p>
+  </div>
+  <a href="/admin" class="btn mini">← Administração</a>
+</div>
+
+{% if ems %}
+<div class="tabela-wrap">
+<table>
+  <thead><tr><th>Item</th><th>Estado</th><th>Emprestado</th><th>Previsto</th><th>Devolvido</th></tr></thead>
+  <tbody>
+    {% for e in ems %}
+    <tr>
+      <td>{{ e.titulo }}</td>
+      <td>
+        {% if e.estado == "devolvido" %}<span class="selo ok">devolvido</span>
+        {% elif _atrasado(e) %}<span class="selo erro">atrasado</span>
+        {% else %}<span class="selo aviso">emprestado</span>{% endif %}
+      </td>
+      <td>{{ e.emprestado_em[:10] }}</td>
+      <td>{{ e.previsto_devolucao[:10] }}</td>
+      <td>{{ e.devolvido_em[:10] if e.devolvido_em else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="vazio">Este leitor ainda não teve empréstimos.</div>
+{% endif %}
+{% endblock %}

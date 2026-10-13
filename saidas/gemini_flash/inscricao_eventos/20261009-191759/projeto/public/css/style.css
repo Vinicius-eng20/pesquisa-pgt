@@ -1,0 +1,42 @@
+/* Efeitos suaves de transição */
+.modal-overlay {
+  transition: opacity 0.2s ease-in-out;
+}
+
+.toast {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  animation: slideIn 0.3s forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Badge estilizado */
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Cartão do evento */
+.card-evento {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card-evento:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+}

@@ -1,0 +1,17 @@
+{
+  "name": "portal-eventos",
+  "version": "1.0.0",
+  "description": "Portal de inscrição para eventos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["eventos", "inscricoes"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcrypt": "^5.1.1"
+  }
+}

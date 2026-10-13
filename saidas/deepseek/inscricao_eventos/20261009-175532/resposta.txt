@@ -1,0 +1,1146 @@
+=== package.json ===
+{
+  "name": "portal-inscricao-eventos",
+  "version": "1.0.0",
+  "description": "Portal de inscrição para eventos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "sqlite3": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// ---------- Banco de dados ----------
+const db = new sqlite3.Database(path.join(__dirname, 'portal.db'));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    tipo TEXT NOT NULL CHECK(tipo IN ('participante','organizador'))
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS eventos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    local TEXT,
+    data TEXT,
+    vagas INTEGER DEFAULT 0,
+    organizador_id INTEGER NOT NULL,
+    cancelado INTEGER DEFAULT 0,
+    criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS inscricoes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evento_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    status TEXT DEFAULT 'pendente',
+    criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(evento_id, usuario_id)
+  )`);
+});
+
+// ---------- Middlewares ----------
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(cookieParser());
+app.use(session({
+  secret: 'portal-eventos-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 }
+}));
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ---------- Helpers ----------
+function requireAuth(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Não autenticado' });
+  next();
+}
+function requireOrganizador(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Não autenticado' });
+  if (req.session.usuario.tipo !== 'organizador') return res.status(403).json({ erro: 'Apenas organizador' });
+  next();
+}
+
+// ---------- Autenticação ----------
+app.post('/api/registrar', async (req, res) => {
+  const { nome, email, senha, tipo } = req.body;
+  if (!nome || !email || !senha || !tipo) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  if (!['participante', 'organizador'].includes(tipo)) return res.status(400).json({ erro: 'Tipo inválido' });
+
+  const hash = await bcrypt.hash(senha, 10);
+  db.run(
+    `INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)`,
+    [nome, email.toLowerCase(), hash, tipo],
+    function (err) {
+      if (err) {
+        if (String(err.message).includes('UNIQUE')) return res.status(400).json({ erro: 'Este e-mail já está cadastrado' });
+        return res.status(500).json({ erro: 'Erro ao cadastrar' });
+      }
+      req.session.usuario = { id: this.lastID, nome, email: email.toLowerCase(), tipo };
+      res.json({ ok: true, usuario: req.session.usuario });
+    }
+  );
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  if (!email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email.toLowerCase()], async (err, user) => {
+    if (err || !user) return res.status(400).json({ erro: 'E-mail ou senha inválidos' });
+    const ok = await bcrypt.compare(senha, user.senha);
+    if (!ok) return res.status(400).json({ erro: 'E-mail ou senha inválidos' });
+    req.session.usuario = { id: user.id, nome: user.nome, email: user.email, tipo: user.tipo };
+    res.json({ ok: true, usuario: req.session.usuario });
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  if (!req.session.usuario) return res.json({ usuario: null });
+  res.json({ usuario: req.session.usuario });
+});
+
+// ---------- Eventos ----------
+app.get('/api/eventos', (req, res) => {
+  const u = req.session.usuario;
+  const sql = `
+    SELECT e.*, u.nome AS organizador_nome,
+      (SELECT COUNT(*) FROM inscricoes i WHERE i.evento_id = e.id AND i.status != 'cancelada') AS total_inscritos
+    FROM eventos e
+    JOIN usuarios u ON u.id = e.organizador_id
+    WHERE e.cancelado = 0
+    ORDER BY e.data ASC, e.id DESC
+  `;
+  db.all(sql, [], (err, eventos) => {
+    if (err) return res.status(500).json({ erro: 'Erro ao buscar eventos' });
+    if (!u) return res.json({ eventos: eventos.map(e => ({ ...e, minha_inscricao: null })) });
+    db.all(`SELECT evento_id, status FROM inscricoes WHERE usuario_id = ?`, [u.id], (err2, insc) => {
+      const map = {};
+      (insc || []).forEach(i => { map[i.evento_id] = i.status; });
+      res.json({ eventos: eventos.map(e => ({ ...e, minha_inscricao: map[e.id] || null })) });
+    });
+  });
+});
+
+app.post('/api/eventos', requireOrganizador, (req, res) => {
+  const { titulo, descricao, local, data, vagas } = req.body;
+  if (!titulo) return res.status(400).json({ erro: 'Título é obrigatório' });
+  db.run(
+    `INSERT INTO eventos (titulo, descricao, local, data, vagas, organizador_id) VALUES (?, ?, ?, ?, ?, ?)`,
+    [titulo, descricao || '', local || '', data || '', Number(vagas) || 0, req.session.usuario.id],
+    function (err) {
+      if (err) return res.status(500).json({ erro: 'Erro ao criar evento' });
+      res.json({ ok: true, id: this.lastID });
+    }
+  );
+});
+
+app.put('/api/eventos/:id', requireOrganizador, (req, res) => {
+  const id = Number(req.params.id);
+  const { titulo, descricao, local, data, vagas } = req.body;
+  db.get(`SELECT * FROM eventos WHERE id = ? AND organizador_id = ?`, [id, req.session.usuario.id], (err, ev) => {
+    if (err || !ev) return res.status(404).json({ erro: 'Evento não encontrado' });
+    db.run(
+      `UPDATE eventos SET titulo = ?, descricao = ?, local = ?, data = ?, vagas = ? WHERE id = ?`,
+      [titulo || ev.titulo, descricao ?? ev.descricao, local ?? ev.local, data ?? ev.data, Number(vagas) || 0, id],
+      (err2) => {
+        if (err2) return res.status(500).json({ erro: 'Erro ao atualizar' });
+        res.json({ ok: true });
+      }
+    );
+  });
+});
+
+app.delete('/api/eventos/:id', requireOrganizador, (req, res) => {
+  const id = Number(req.params.id);
+  db.get(`SELECT * FROM eventos WHERE id = ? AND organizador_id = ?`, [id, req.session.usuario.id], (err, ev) => {
+    if (err || !ev) return res.status(404).json({ erro: 'Evento não encontrado' });
+    db.run(`UPDATE eventos SET cancelado = 1 WHERE id = ?`, [id], (err2) => {
+      if (err2) return res.status(500).json({ erro: 'Erro ao cancelar' });
+      res.json({ ok: true });
+    });
+  });
+});
+
+app.get('/api/eventos/:id/inscricoes', requireOrganizador, (req, res) => {
+  const id = Number(req.params.id);
+  db.get(`SELECT * FROM eventos WHERE id = ? AND organizador_id = ?`, [id, req.session.usuario.id], (err, ev) => {
+    if (err || !ev) return res.status(404).json({ erro: 'Evento não encontrado' });
+    db.all(
+      `SELECT i.id, i.status, i.criado_em, u.nome, u.email
+       FROM inscricoes i JOIN usuarios u ON u.id = i.usuario_id
+       WHERE i.evento_id = ? ORDER BY u.nome`,
+      [id],
+      (err2, rows) => {
+        if (err2) return res.status(500).json({ erro: 'Erro ao buscar inscrições' });
+        res.json({ inscricoes: rows });
+      }
+    );
+  });
+});
+
+app.post('/api/inscricoes/:id/confirmar', requireOrganizador, (req, res) => {
+  const id = Number(req.params.id);
+  db.get(
+    `SELECT i.id, e.organizador_id FROM inscricoes i JOIN eventos e ON e.id = i.evento_id WHERE i.id = ?`,
+    [id],
+    (err, row) => {
+      if (err || !row || row.organizador_id !== req.session.usuario.id) return res.status(404).json({ erro: 'Inscrição não encontrada' });
+      db.run(`UPDATE inscricoes SET status = 'confirmada' WHERE id = ?`, [id], (e2) => {
+        if (e2) return res.status(500).json({ erro: 'Erro ao confirmar' });
+        res.json({ ok: true });
+      });
+    }
+  );
+});
+
+// ---------- Inscrições do participante ----------
+app.get('/api/minhas-inscricoes', requireAuth, (req, res) => {
+  db.all(
+    `SELECT i.id, i.status, i.criado_em, e.id AS evento_id, e.titulo, e.descricao, e.local, e.data, e.cancelado, u.nome AS organizador_nome
+     FROM inscricoes i
+     JOIN eventos e ON e.id = i.evento_id
+     JOIN usuarios u ON u.id = e.organizador_id
+     WHERE i.usuario_id = ?
+     ORDER BY e.data ASC, i.criado_em DESC`,
+    [req.session.usuario.id],
+    (err, rows) => {
+      if (err) return res.status(500).json({ erro: 'Erro ao buscar inscrições' });
+      res.json({ inscricoes: rows });
+    }
+  );
+});
+
+app.post('/api/inscricoes', requireAuth, (req, res) => {
+  const { evento_id } = req.body;
+  if (!evento_id) return res.status(400).json({ erro: 'Evento inválido' });
+  if (req.session.usuario.tipo !== 'participante') return res.status(403).json({ erro: 'Apenas participantes se inscrevem' });
+
+  db.get(`SELECT * FROM eventos WHERE id = ? AND cancelado = 0`, [evento_id], (err, ev) => {
+    if (err || !ev) return res.status(404).json({ erro: 'Evento não encontrado' });
+
+    db.get(
+      `SELECT COUNT(*) AS total FROM inscricoes WHERE evento_id = ? AND status != 'cancelada'`,
+      [evento_id],
+      (e1, row) => {
+        if (e1) return res.status(500).json({ erro: 'Erro ao verificar vagas' });
+        if (ev.vagas > 0 && row.total >= ev.vagas) return res.status(400).json({ erro: 'Não há vagas disponíveis' });
+
+        db.run(
+          `INSERT INTO inscricoes (evento_id, usuario_id, status) VALUES (?, ?, 'pendente')`,
+          [evento_id, req.session.usuario.id],
+          function (e2) {
+            if (e2) {
+              if (String(e2.message).includes('UNIQUE')) return res.status(400).json({ erro: 'Você já está inscrito neste evento' });
+              return res.status(500).json({ erro: 'Erro ao se inscrever' });
+            }
+            res.json({ ok: true, id: this.lastID });
+          }
+        );
+      }
+    );
+  });
+});
+
+app.delete('/api/inscricoes/:id', requireAuth, (req, res) => {
+  const id = Number(req.params.id);
+  db.get(`SELECT * FROM inscricoes WHERE id = ? AND usuario_id = ?`, [id, req.session.usuario.id], (err, ins) => {
+    if (err || !ins) return res.status(404).json({ erro: 'Inscrição não encontrada' });
+    db.run(`UPDATE inscricoes SET status = 'cancelada' WHERE id = ?`, [id], (e2) => {
+      if (e2) return res.status(500).json({ erro: 'Erro ao cancelar' });
+      res.json({ ok: true });
+    });
+  });
+});
+
+// ---------- SPA ----------
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Portal de Inscrição para Eventos</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header class="topo">
+  <div class="logo" onclick="location.hash='#/'; render()">
+    <span class="logo-icon">✦</span> Portal de Eventos
+  </div>
+  <nav id="nav"></nav>
+</header>
+
+<main id="app"></main>
+
+<div id="toast" class="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --azul: #2563eb;
+  --azul-esc: #1d4ed8;
+  --verde: #16a34a;
+  --vermelho: #dc2626;
+  --amarelo: #f59e0b;
+  --cinza: #64748b;
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --texto: #0f172a;
+  --borda: #e2e8f0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+  background: var(--bg);
+  color: var(--texto);
+  min-height: 100vh;
+}
+
+.topo {
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  color: white;
+  padding: 14px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon { color: #fbbf24; }
+
+#nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+#nav button, #nav a {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: none;
+  transition: all .2s;
+}
+#nav button:hover, #nav a:hover { background: rgba(255,255,255,0.28); }
+
+#nav .usuario-info {
+  background: rgba(255,255,255,0.2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+#app {
+  max-width: 1000px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin-bottom: 18px;
+}
+
+h1 { font-size: 26px; margin-bottom: 6px; }
+h2 { font-size: 20px; margin-bottom: 14px; color: var(--texto); }
+.sub { color: var(--cinza); margin-bottom: 20px; font-size: 14px; }
+
+.form-group { margin-bottom: 14px; }
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #334155; }
+
+input, textarea, select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #f8fafc;
+  transition: border .2s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--azul);
+  background: white;
+}
+
+textarea { resize: vertical; min-height: 80px; }
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  text-decoration: none;
+  color: white;
+}
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primario { background: var(--azul); }
+.btn-primario:hover:not(:disabled) { background: var(--azul-esc); }
+.btn-verde { background: var(--verde); }
+.btn-verde:hover:not(:disabled) { background: #15803d; }
+.btn-vermelho { background: var(--vermelho); }
+.btn-vermelho:hover:not(:disabled) { background: #b91c1c; }
+.btn-cinza { background: var(--cinza); }
+.btn-cinza:hover:not(:disabled) { background: #475569; }
+.btn-bloco { width: 100%; padding: 12px; font-size: 15px; }
+
+.grid-eventos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.evento-card {
+  background: white;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--borda);
+}
+
+.evento-titulo { font-size: 17px; font-weight: 700; }
+.evento-meta { font-size: 13px; color: var(--cinza); display: flex; flex-direction: column; gap: 3px; }
+.evento-desc { font-size: 14px; color: #475569; line-height: 1.4; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-pendente { background: #fef3c7; color: #92400e; }
+.badge-confirmada { background: #dcfce7; color: #166534; }
+.badge-cancelada { background: #fee2e2; color: #991b1b; }
+.badge-info { background: #dbeafe; color: #1e40af; }
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--borda);
+  overflow-x: auto;
+}
+.tab {
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cinza);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--azul); }
+.tab.ativa { color: var(--azul); border-bottom-color: var(--azul); }
+
+.login-box {
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+.lista { display: flex; flex-direction: column; gap: 12px; }
+
+.item-lista {
+  background: #f8fafc;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.item-lista .info { flex: 1; min-width: 200px; }
+.item-lista .info strong { display: block; margin-bottom: 3px; }
+.item-lista .info small { color: var(--cinza); font-size: 13px; display: block; }
+
+.acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.erro-msg, .ok-msg {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.erro-msg { background: #fee2e2; color: #991b1b; }
+.ok-msg { background: #dcfce7; color: #166534; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(200%);
+  background: #0f172a;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: transform .3s;
+  z-index: 999;
+  max-width: 90%;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.erro { background: var(--vermelho); }
+
+.vazio {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--cinza);
+}
+
+.rodape { text-align: center; padding: 30px; color: var(--cinza); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .topo { padding: 12px 16px; }
+  .logo { font-size: 17px; }
+  #nav button, #nav a { padding: 7px 11px; font-size: 13px; }
+  #app { margin: 16px auto; }
+  .card { padding: 16px; }
+  h1 { font-size: 22px; }
+}
+
+=== public/app.js ===
+// ---------- Estado ----------
+let usuario = null;
+let view = 'eventos';           // view atual
+let eventos = [];
+let minhasInscricoes = [];
+let meusEventos = [];
+let eventoEditando = null;
+let eventoInscricoes = null;
+
+// ---------- Helpers ----------
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function toast(msg, tipo = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (tipo === 'erro' ? 'erro' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = 'toast'; }, 3000);
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function dataFmt(d) {
+  if (!d) return 'Data a definir';
+  const dt = new Date(d);
+  if (isNaN(dt)) return d;
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function badgeStatus(s) {
+  if (s === 'confirmada') return '<span class="badge badge-confirmada">Confirmada</span>';
+  if (s === 'cancelada') return '<span class="badge badge-cancelada">Cancelada</span>';
+  if (s === 'pendente') return '<span class="badge badge-pendente">Pendente</span>';
+  return '';
+}
+
+// ---------- Roteamento simples ----------
+window.addEventListener('hashchange', render);
+
+function renderNav() {
+  const nav = document.getElementById('nav');
+  if (!usuario) {
+    nav.innerHTML = '';
+    return;
+  }
+  let html = `<span class="usuario-info">👤 ${esc(usuario.nome)} <small>(${usuario.tipo})</small></span>`;
+  if (usuario.tipo === 'participante') {
+    html += `<button onclick="irPara('eventos')">Eventos</button>`;
+    html += `<button onclick="irPara('minhas')">Minhas Inscrições</button>`;
+  } else {
+    html += `<button onclick="irPara('painel')">Painel</button>`;
+    html += `<button onclick="irPara('criar')">Novo Evento</button>`;
+  }
+  html += `<button onclick="logout()">Sair</button>`;
+  nav.innerHTML = html;
+}
+
+function irPara(v) {
+  view = v;
+  eventoEditando = null;
+  eventoInscricoes = null;
+  render();
+}
+
+async function carregarEventos() {
+  const d = await api('/api/eventos');
+  eventos = d.eventos || [];
+}
+
+async function carregarMinhas() {
+  const d = await api('/api/minhas-inscricoes');
+  minhasInscricoes = d.inscricoes || [];
+}
+
+async function carregarMeusEventos() {
+  // organizador vê eventos próprios; reutilizamos a lista de eventos gerais e filtramos
+  // mas o backend só devolve eventos ativos de todos; então fazemos uma query específica:
+  const all = await api('/api/eventos');
+  eventos = all.eventos || [];
+  meusEventos = eventos.filter(e => usuario && e.organizador_id === usuario.id);
+}
+
+async function carregarTudo() {
+  if (!usuario) return;
+  if (usuario.tipo === 'participante') {
+    await Promise.all([carregarEventos(), carregarMinhas()]);
+  } else {
+    await carregarMeusEventos();
+  }
+}
+
+// ---------- Login / Registro ----------
+function telaLogin() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="card login-box">
+      <h1>Entrar</h1>
+      <p class="sub">Acesse sua conta para ver e gerenciar inscrições.</p>
+      <div id="msg"></div>
+      <form onsubmit="fazerLogin(event)">
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" name="email" required />
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" name="senha" required />
+        </div>
+        <button class="btn btn-primario btn-bloco" type="submit">Entrar</button>
+      </form>
+      <p class="sub" style="margin-top:16px;text-align:center">
+        Não tem conta? <a href="javascript:irPara('registro')" style="color:var(--azul);font-weight:600">Cadastre-se</a>
+      </p>
+    </div>
+  `;
+}
+
+function telaRegistro() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="card login-box">
+      <h1>Criar conta</h1>
+      <p class="sub">Escolha seu tipo de conta.</p>
+      <div id="msg"></div>
+      <form onsubmit="fazerRegistro(event)">
+        <div class="form-group">
+          <label>Nome completo</label>
+          <input type="text" name="nome" required />
+        </div>
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" name="email" required />
+        </div>
+        <div class="form-group">
+          <label>Senha (mínimo 6 caracteres)</label>
+          <input type="password" name="senha" minlength="6" required />
+        </div>
+        <div class="form-group">
+          <label>Eu sou</label>
+          <select name="tipo" required>
+            <option value="participante">Participante — quero me inscrever em eventos</option>
+            <option value="organizador">Organizador — quero criar eventos</option>
+          </select>
+        </div>
+        <button class="btn btn-primario btn-bloco" type="submit">Criar conta</button>
+      </form>
+      <p class="sub" style="margin-top:16px;text-align:center">
+        Já tem conta? <a href="javascript:irPara('login')" style="color:var(--azul);font-weight:600">Entrar</a>
+      </p>
+    </div>
+  `;
+}
+
+async function fazerLogin(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '';
+  try {
+    const d = await api('/api/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: f.email.value, senha: f.senha.value })
+    });
+    usuario = d.usuario;
+    toast('Bem-vindo, ' + usuario.nome + '!');
+    irPara(usuario.tipo === 'participante' ? 'eventos' : 'painel');
+  } catch (e) {
+    msg.innerHTML = `<div class="erro-msg">${esc(e.message)}</div>`;
+  }
+}
+
+async function fazerRegistro(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const msg = document.getElementById('msg');
+  msg.innerHTML = '';
+  try {
+    const d = await api('/api/registrar', {
+      method: 'POST',
+      body: JSON.stringify({
+        nome: f.nome.value,
+        email: f.email.value,
+        senha: f.senha.value,
+        tipo: f.tipo.value
+      })
+    });
+    usuario = d.usuario;
+    toast('Conta criada com sucesso!');
+    irPara(usuario.tipo === 'participante' ? 'eventos' : 'painel');
+  } catch (e) {
+    msg.innerHTML = `<div class="erro-msg">${esc(e.message)}</div>`;
+  }
+}
+
+async function logout() {
+  await api('/api/logout', { method: 'POST' });
+  usuario = null;
+  irPara('login');
+}
+
+// ---------- Participante: eventos ----------
+function telaEventos() {
+  const app = document.getElementById('app');
+  let html = `<h1>Eventos disponíveis</h1>
+    <p class="sub">Escolha um evento e faça sua inscrição. Você pode cancelar quando quiser.</p>`;
+
+  if (!eventos.length) {
+    html += `<div class="card"><div class="vazio">Nenhum evento disponível no momento.</div></div>`;
+  } else {
+    html += '<div class="grid-eventos">';
+    for (const e of eventos) {
+      const st = e.minha_inscricao;
+      let botao = '';
+      if (st === 'cancelada') {
+        botao = `<button class="btn btn-primario btn-bloco" onclick="inscrever(${e.id})">Inscrever-se novamente</button>`;
+      } else if (st) {
+        botao = `<span class="badge badge-info">Você está inscrito</span> ${badgeStatus(st)}`;
+      } else {
+        botao = `<button class="btn btn-primario btn-bloco" onclick="inscrever(${e.id})">Inscrever-se</button>`;
+      }
+      const vagas = e.vagas > 0 ? `${e.total_inscritos}/${e.vagas} inscritos` : `${e.total_inscritos} inscritos`;
+      html += `
+        <div class="evento-card">
+          <div class="evento-titulo">${esc(e.titulo)}</div>
+          <div class="evento-meta">
+            <span>📅 ${esc(dataFmt(e.data))}</span>
+            <span>📍 ${esc(e.local || 'Local a definir')}</span>
+            <span>👥 ${vagas}</span>
+            <span>Organizador: ${esc(e.organizador_nome)}</span>
+          </div>
+          <div class="evento-desc">${esc(e.descricao || '')}</div>
+          <div style="margin-top:auto">${botao}</div>
+        </div>
+      `;
+    }
+    html += '</div>';
+  }
+  app.innerHTML = html;
+}
+
+async function inscrever(eventoId) {
+  try {
+    await api('/api/inscricoes', { method: 'POST', body: JSON.stringify({ evento_id: eventoId }) });
+    toast('Inscrição realizada! Aguarde confirmação.');
+    await carregarTudo();
+    render();
+  } catch (e) {
+    toast(e.message, 'erro');
+  }
+}
+
+// ---------- Participante: minhas inscrições ----------
+function telaMinhas() {
+  const app = document.getElementById('app');
+  let html = `<h1>Minhas inscrições</h1>
+    <p class="sub">Acompanhe o status das suas inscrições e cancele se precisar.</p>`;
+
+  if (!minhasInscricoes.length) {
+    html += `<div class="card"><div class="vazio">Você ainda não se inscreveu em nenhum evento.</div></div>`;
+    app.innerHTML = html;
+    return;
+  }
+
+  html += '<div class="card"><div class="lista">';
+  for (const i of minhasInscricoes) {
+    const podeCancelar = i.status !== 'cancelada';
+    const canceladoEvento = i.cancelado ? '<span class="badge badge-cancelada">Evento cancelado</span>' : '';
+    html += `
+      <div class="item-lista">
+        <div class="info">
+          <strong>${esc(i.titulo)} ${canceladoEvento}</strong>
+          <small>📅 ${esc(dataFmt(i.data))} · 📍 ${esc(i.local || 'Local a definir')} · Organizador: ${esc(i.organizador_nome)}</small>
+          <small>Status: ${badgeStatus(i.status)}</small>
+        </div>
+        <div class="acoes">
+          ${podeCancelar ? `<button class="btn btn-vermelho" onclick="cancelarInscricao(${i.id})">Cancelar inscrição</button>` : ''}
+        </div>
+      </div>
+    `;
+  }
+  html += '</div></div>';
+  app.innerHTML = html;
+}
+
+async function cancelarInscricao(id) {
+  if (!confirm('Deseja realmente cancelar esta inscrição?')) return;
+  try {
+    await api('/api/inscricoes/' + id, { method: 'DELETE' });
+    toast('Inscrição cancelada.');
+    await carregarTudo();
+    render();
+  } catch (e) {
+    toast(e.message, 'erro');
+  }
+}
+
+// ---------- Organizador: painel ----------
+function telaPainel() {
+  const app = document.getElementById('app');
+  let html = `<h1>Painel do organizador</h1>
+    <p class="sub">Gerencie seus eventos e confirme inscrições.</p>
+    <div class="tabs">
+      <button class="tab ativa" onclick="irPara('painel')">Meus eventos</button>
+      <button class="tab" onclick="irPara('criar')">+ Novo evento</button>
+    </div>`;
+
+  if (!meusEventos.length) {
+    html += `<div class="card"><div class="vazio">Você ainda não criou eventos.<br><br>
+      <button class="btn btn-primario" onclick="irPara('criar')">Criar primeiro evento</button></div></div>`;
+  } else {
+    html += '<div class="card"><div class="lista">';
+    for (const e of meusEventos) {
+      html += `
+        <div class="item-lista">
+          <div class="info">
+            <strong>${esc(e.titulo)}</strong>
+            <small>📅 ${esc(dataFmt(e.data))} · 📍 ${esc(e.local || 'Local a definir')}</small>
+            <small>👥 ${e.total_inscritos}${e.vagas > 0 ? '/' + e.vagas : ''} inscritos</small>
+          </div>
+          <div class="acoes">
+            <button class="btn btn-cinza" onclick="verInscricoes(${e.id})">Ver inscritos</button>
+            <button class="btn btn-primario" onclick="editarEvento(${e.id})">Editar</button>
+            <button class="btn btn-vermelho" onclick="cancelarEvento(${e.id})">Cancelar</button>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div></div>';
+  }
+  app.innerHTML = html;
+}
+
+// ---------- Organizador: criar/editar ----------
+function telaCriarEditar() {
+  const app = document.getElementById('app');
+  const ev = eventoEditando;
+  app.innerHTML = `
+    <h1>${ev ? 'Editar evento' : 'Criar novo evento'}</h1>
+    <p class="sub">${ev ? 'Atualize as informações do evento.' : 'Preencha os dados para publicar um evento.'}</p>
+    <div class="card">
+      <div id="msg"></div>
+      <form onsubmit="salvarEvento(event)">
+        <div class="form-group">
+          <label>Título do evento *</label>
+          <input type="text" name="titulo" required value="${ev ? esc(ev.titulo) : ''}" />
+        </div>
+        <div class="form-group">
+          <label>Descrição</label>
+          <textarea name="descricao">${ev ? esc(ev.descricao || '') : ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Local</label>
+          <input type="text" name="local" value="${ev ? esc(ev.local || '') : ''}" />
+        </div>
+        <div class="form-group">
+          <label>Data</label>
+          <input type="date" name="data" value="${ev ? esc(ev.data || '') : ''}" />
+        </div>
+        <div class="form-group">
+          <label>Número de vagas (0 = ilimitado)</label>
+          <input type="number" name="vagas" min="0" value="${ev ? esc(ev.vagas || 0) : 0}" />
+        </div>
+        <div class="acoes">
+          <button type="submit" class="btn btn-primario">${ev ? 'Salvar alterações' : 'Publicar evento'}</button>
+          <button type="button" class="btn btn-cinza" onclick="irPara('painel')">Voltar</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+async function salvarEvento(ev) {
+  ev.preventDefault();
+  const f = ev.target;
+  const dados = {
+    titulo: f.titulo.value,
+    descricao: f.descricao.value,
+    local: f.local.value,
+    data: f.data.value,
+    vagas: Number(f.vagas.value) || 0
+  };
+  try {
+    if (eventoEditando) {
+      await api('/api/eventos/' + eventoEditando.id, { method: 'PUT', body: JSON.stringify(dados) });
+      toast('Evento atualizado!');
+    } else {
+      await api('/api/eventos', { method: 'POST', body: JSON.stringify(dados) });
+      toast('Evento publicado!');
+    }
+    eventoEditando = null;
+    irPara('painel');
+  } catch (e) {
+    document.getElementById('msg').innerHTML = `<div class="erro-msg">${esc(e.message)}</div>`;
+  }
+}
+
+function editarEvento(id) {
+  const e = meusEventos.find(x => x.id === id);
+  if (!e) return;
+  eventoEditando = e;
+  view = 'criar';
+  render();
+}
+
+async function cancelarEvento(id) {
+  if (!confirm('Cancelar este evento? Os participantes não poderão mais se inscrever.')) return;
+  try {
+    await api('/api/eventos/' + id, { method: 'DELETE' });
+    toast('Evento cancelado.');
+    await carregarTudo();
+    irPara('painel');
+  } catch (e) {
+    toast(e.message, 'erro');
+  }
+}
+
+async function verInscricoes(eventoId) {
+  try {
+    const d = await api('/api/eventos/' + eventoId + '/inscricoes');
+    eventoInscricoes = { eventoId, lista: d.inscricoes };
+    view = 'inscricoes';
+    render();
+  } catch (e) {
+    toast(e.message, 'erro');
+  }
+}
+
+function telaInscricoes() {
+  const app = document.getElementById('app');
+  const ev = meusEventos.find(x => x.id === eventoInscricoes.eventoId);
+  let html = `<h1>Inscritos: ${ev ? esc(ev.titulo) : ''}</h1>
+    <p class="sub">Confirme a presença dos participantes.</p>
+    <button class="btn btn-cinza" onclick="irPara('painel')" style="margin-bottom:16px">← Voltar</button>`;
+
+  if (!eventoInscricoes.lista.length) {
+    html += `<div class="card"><div class="vazio">Ninguém se inscreveu ainda.</div></div>`;
+  } else {
+    html += '<div class="card"><div class="lista">';
+    for (const i of eventoInscricoes.lista) {
+      html += `
+        <div class="item-lista">
+          <div class="info">
+            <strong>${esc(i.nome)}</strong>
+            <small>${esc(i.email)}</small>
+            <small>Status: ${badgeStatus(i.status)}</small>
+          </div>
+          <div class="acoes">
+            ${i.status !== 'confirmada' ? `<button class="btn btn-verde" onclick="confirmarInscricao(${i.id})">Confirmar presença</button>` : '<span class="badge badge-confirmada">Confirmado</span>'}
+          </div>
+        </div>
+      `;
+    }
+    html += '</div></div>';
+  }
+  app.innerHTML = html;
+}
+
+async function confirmarInscricao(id) {
+  try {
+    await api('/api/inscricoes/' + id + '/confirmar', { method: 'POST' });
+    toast('Presença confirmada!');
+    await verInscricoes(eventoInscricoes.eventoId);
+  } catch (e) {
+    toast(e.message, 'erro');
+  }
+}
+
+// ---------- Render ----------
+async function render() {
+  renderNav();
+  if (!usuario) {
+    if (view === 'registro') telaRegistro();
+    else telaLogin();
+    return;
+  }
+
+  // garante dados atualizados
+  try { await carregarTudo(); } catch (e) { /* ignora */ }
+
+  if (usuario.tipo === 'participante') {
+    if (view === 'minhas') telaMinhas();
+    else telaEventos();
+  } else {
+    if (view === 'criar') telaCriarEditar();
+    else if (view === 'inscricoes' && eventoInscricoes) telaInscricoes();
+    else telaPainel();
+  }
+}
+
+// ---------- Inicialização ----------
+(async function init() {
+  try {
+    const d = await api('/api/eu');
+    usuario = d.usuario;
+  } catch (e) { usuario = null; }
+  render();
+})();
+
+=== README.md ===
+# Portal de Inscrição para Eventos
+
+Portal web completo para inscrição em eventos, com contas de **participante** e **organizador**, tudo salvo no próprio servidor.
+
+## O que faz
+
+**Participante:**
+- Vê todos os eventos disponíveis
+- Se inscreve em um evento
+- Vê suas inscrições e cancela quando quiser
+
+**Organizador:**
+- Cria, edita e cancela eventos
+- Vê todas as inscrições dos eventos que criou
+- Confirma a presença dos inscritos
+
+Todas as informações ficam salvas no servidor (banco de dados SQLite), então funcionam de qualquer computador ou celular, e persistem mesmo fechando o site.
+
+## Como instalar e rodar
+
+Você precisa ter o **Node.js** instalado (versão 16 ou superior). Baixe em https://nodejs.org.
+
+No terminal, dentro da pasta do projeto, execute:
+
+```bash
+npm install
+npm start
+```
+
+Depois abra no navegador:
+
+```
+http://localhost:3000
+```
+
+O site já está funcionando. Crie uma conta escolhendo "Participante" ou "Organizador" na tela de cadastro.
+
+## Colocar na internet (opcional)
+
+Para que outras pessoas acessem de qualquer lugar, hospede em um serviço que rode Node.js, por exemplo:
+
+- **Render** (render.com) — plano gratuito disponível
+- **Railway** (railway.app)
+- **Fly.io**
+
+Passos gerais:
+1. Crie uma conta no serviço escolhido
+2. Suba esta pasta do projeto (via GitHub ou upload direto)
+3. Configure o comando de início como `npm start`
+4. O serviço dará um endereço público (ex: `https://seusite.onrender.com`)
+
+Não é necessário criar contas em outros sites nem conectar com serviços externos — o banco de dados fica dentro do próprio projeto (`portal.db`).
+
+## Estrutura
+
+- `server.js` — servidor e API (backend)
+- `public/index.html` — página principal
+- `public/style.css` — aparência
+- `public/app.js` — comportamento das telas
+- `portal.db` — banco de dados (criado automaticamente na primeira execução)

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1>Entrar</h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <form action="/login" method="post" class="form">
+        <label>
+          Email
+          <input type="email" name="email" value="<%= email %>" required>
+        </label>
+
+        <label>
+          Senha
+          <input type="password" name="password" required>
+        </label>
+
+        <button type="submit">Entrar</button>
+      </form>
+
+      <p>Não tem conta? <a href="/register">Criar conta</a></p>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

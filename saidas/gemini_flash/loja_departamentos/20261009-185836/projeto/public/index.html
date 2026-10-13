@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuperShop | Shopping Virtual de Departamentos</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Top Announcement Bar -->
+  <div class="top-bar">
+    <div class="container top-bar-content">
+      <span><i class="fa-solid fa-truck-fast"></i> Frete Grátis para todo o Brasil em compras acima de R$ 199</span>
+      <span class="top-bar-right"><i class="fa-solid fa-shield-halved"></i> Compra 100% Segura e Garantida</span>
+    </div>
+  </div>
+
+  <!-- Main Navigation Header -->
+  <header class="main-header">
+    <div class="container header-container">
+      <div class="logo" onclick="app.navigate('home')">
+        <i class="fa-solid fa-bag-shopping"></i>
+        <span>Super<strong>Shop</strong></span>
+        <small class="logo-sub">Shopping Virtual</small>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Buscar produtos, marcas, departamentos..." onkeyup="if(event.key === 'Enter') app.searchProducts()">
+        <button onclick="app.searchProducts()"><i class="fa-solid fa-magnifying-glass"></i></button>
+      </div>
+
+      <div class="header-actions" id="userNavActions">
+        <!-- Injetado dinamicamente -->
+      </div>
+    </div>
+  </header>
+
+  <!-- Categories Horizontal Bar -->
+  <nav class="categories-nav">
+    <div class="container">
+      <ul id="categoriesList" class="categories-list">
+        <li class="active" onclick="app.filterByCategory('todos')">
+          <i class="fa-solid fa-layer-group"></i> Todos os Departamentos
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main Dynamic App Container -->
+  <main class="container" id="mainContent">
+    <!-- View Home / Catálogo -->
+    <section id="viewHome">
+      <!-- Promo Banner -->
+      <div class="hero-banner">
+        <div class="hero-text">
+          <span class="badge-promo"><i class="fa-solid fa-fire"></i> Mega Queima de Estoque</span>
+          <h1>O Shopping Completo na Palma da sua Mão</h1>
+          <p>Eletrônicos, moda, utilidades para a casa e muito mais com até 40% OFF.</p>
+          <button class="btn btn-primary" onclick="app.scrollToProducts()"><i class="fa-solid fa-bag-shopping"></i> Ver Ofertas</button>
+        </div>
+      </div>
+
+      <!-- Quick Department Badges -->
+      <div class="quick-departments" id="quickDepartments"></div>
+
+      <!-- Filters & Sorting Bar -->
+      <div class="catalog-toolbar" id="productsAnchor">
+        <div class="catalog-title">
+          <h2 id="catalogHeading">Todos os Produtos</h2>
+          <span id="productCount" class="text-muted">Carregando produtos...</span>
+        </div>
+        <div class="catalog-filters">
+          <label for="sortSelect"><i class="fa-solid fa-arrow-down-short-wide"></i> Ordenar:</label>
+          <select id="sortSelect" onchange="app.sortProducts(this.value)">
+            <option value="recent">Mais Recentes</option>
+            <option value="price_asc">Menor Preço</option>
+            <option value="price_desc">Maior Preço</option>
+            <option value="name">Nome (A - Z)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Products Grid -->
+      <div class="products-grid" id="productsGrid">
+        <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando produtos...</div>
+      </div>
+    </section>
+
+    <!-- View Meus Pedidos (Cliente) -->
+    <section id="viewOrders" class="hidden">
+      <div class="page-header">
+        <h2><i class="fa-solid fa-receipt"></i> Meus Pedidos</h2>
+        <p class="text-muted">Acompanhe todos os seus pedidos realizados na SuperShop.</p>
+      </div>
+      <div id="customerOrdersList" class="orders-list"></div>
+    </section>
+
+    <!-- View Painel do Dono da Loja (Admin) -->
+    <section id="viewAdmin" class="hidden">
+      <div class="page-header admin-header">
+        <div>
+          <h2><i class="fa-solid fa-gauge-high"></i> Painel de Controle da Loja</h2>
+          <p class="text-muted">Gerencie produtos, estoque e a situação dos pedidos dos clientes.</p>
+        </div>
+        <button class="btn btn-success" onclick="app.openNewProductModal()"><i class="fa-solid fa-plus"></i> Novo Produto</button>
+      </div>
+
+      <!-- Metrics Cards -->
+      <div class="stats-grid" id="adminStats">
+        <div class="stat-card">
+          <div class="stat-icon bg-blue"><i class="fa-solid fa-coins"></i></div>
+          <div>
+            <h3 id="statRevenue">R$ 0,00</h3>
+            <span>Faturamento Total</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon bg-green"><i class="fa-solid fa-truck-ramp-box"></i></div>
+          <div>
+            <h3 id="statOrders">0</h3>
+            <span>Total de Pedidos</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon bg-purple"><i class="fa-solid fa-boxes-stacked"></i></div>
+          <div>
+            <h3 id="statProducts">0</h3>
+            <span>Produtos Cadastrados</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon bg-orange"><i class="fa-solid fa-users"></i></div>
+          <div>
+            <h3 id="statCustomers">0</h3>
+            <span>Clientes Cadastrados</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tabs -->
+      <div class="admin-tabs">
+        <button class="tab-btn active" onclick="app.switchAdminTab('orders')"><i class="fa-solid fa-clock-rotate-left"></i> Todos os Pedidos dos Clientes</button>
+        <button class="tab-btn" onclick="app.switchAdminTab('products')"><i class="fa-solid fa-cubes"></i> Gerenciar Produtos do Shopping</button>
+      </div>
+
+      <!-- Tab Pedidos -->
+      <div id="adminTabOrders" class="admin-tab-content">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Nº Pedido</th>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Itens</th>
+                <th>Total</th>
+                <th>Situação do Pedido</th>
+                <th>Endereço de Entrega</th>
+              </tr>
+            </thead>
+            <tbody id="adminOrdersTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab Produtos -->
+      <div id="adminTabProducts" class="admin-tab-content hidden">
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Nome do Produto</th>
+                <th>Departamento</th>
+                <th>Preço</th>
+                <th>Estoque</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="adminProductsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Carrinho Lateral (Drawer) -->
+  <div class="cart-overlay" id="cartOverlay" onclick="app.toggleCart(false)"></div>
+  <div class="cart-drawer" id="cartDrawer">
+    <div class="cart-header">
+      <h3><i class="fa-solid fa-cart-shopping"></i> Meu Carrinho</h3>
+      <button class="close-btn" onclick="app.toggleCart(false)"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="cart-body" id="cartBody">
+      <div class="loading-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i> Carregando carrinho...</div>
+    </div>
+    <div class="cart-footer" id="cartFooter">
+      <div class="cart-total-row">
+        <span>Total:</span>
+        <span class="total-price" id="cartTotalPrice">R$ 0,00</span>
+      </div>
+      <button class="btn btn-primary btn-block" onclick="app.openCheckoutModal()"><i class="fa-solid fa-credit-card"></i> Finalizar Pedido</button>
+    </div>
+  </div>
+
+  <!-- Modal Autenticação (Login / Cadastro) -->
+  <div class="modal" id="authModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="authModalTitle"><i class="fa-solid fa-user"></i> Entrar na Loja</h3>
+          <button class="close-btn" onclick="app.closeModal('authModal')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <div class="auth-toggle">
+            <button id="toggleLoginBtn" class="active" onclick="app.setAuthMode('login')">Já tenho conta</button>
+            <button id="toggleRegisterBtn" onclick="app.setAuthMode('register')">Criar nova conta</button>
+          </div>
+
+          <form id="authForm" onsubmit="app.handleAuthSubmit(event)">
+            <div class="form-group hidden" id="registerNameGroup">
+              <label><i class="fa-solid fa-user-tag"></i> Seu Nome Completo</label>
+              <input type="text" id="authName" placeholder="Ex: Maria Oliveira">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-envelope"></i> E-mail</label>
+              <input type="email" id="authEmail" required placeholder="seuemail@exemplo.com">
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-lock"></i> Senha</label>
+              <input type="password" id="authPassword" required placeholder="Digite sua senha secreta">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block" id="authSubmitBtn">Entrar na Loja</button>
+          </form>
+
+          <div class="demo-hints">
+            <small><strong>Dica de Acesso Rápido:</strong></small>
+            <small>Dono da Loja (Admin): <code>admin@shopping.com</code> / <code>admin123</code></small>
+            <small>Cliente Teste: <code>cliente@shopping.com</code> / <code>cliente123</code></small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Checkout / Finalizar Pedido -->
+  <div class="modal" id="checkoutModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-truck"></i> Finalizar Pedido de Compra</h3>
+          <button class="close-btn" onclick="app.closeModal('checkoutModal')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="checkoutForm" onsubmit="app.handleCheckout(event)">
+            <div class="form-group">
+              <label><i class="fa-solid fa-location-dot"></i> Endereço Completo de Entrega</label>
+              <textarea id="checkoutAddress" rows="3" required placeholder="Rua / Avenida, Número, Bairro, Cidade, Estado e CEP"></textarea>
+            </div>
+            <div class="form-group">
+              <label><i class="fa-solid fa-wallet"></i> Forma de Pagamento</label>
+              <select id="checkoutPayment" required>
+                <option value="Cartão de Crédito">Cartão de Crédito (em até 12x)</option>
+                <option value="PIX">PIX (Aprovação Imediata)</option>
+                <option value="Boleto Bancário">Boleto Bancário</option>
+              </select>
+            </div>
+            <div class="order-summary-box">
+              <div class="summary-line">
+                <span>Subtotal dos Produtos:</span>
+                <span id="summarySubtotal">R$ 0,00</span>
+              </div>
+              <div class="summary-line">
+                <span>Frete:</span>
+                <span class="text-success">GRÁTIS</span>
+              </div>
+              <hr>
+              <div class="summary-line total">
+                <span>Total a Pagar:</span>
+                <span id="summaryTotal" class="text-primary">R$ 0,00</span>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-success btn-block"><i class="fa-solid fa-check"></i> Confirmar e Pagar Pedido</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Adicionar / Editar Produto (Admin) -->
+  <div class="modal" id="productModal">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="productModalTitle"><i class="fa-solid fa-box-open"></i> Cadastrar Produto</h3>
+          <button class="close-btn" onclick="app.closeModal('productModal')"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="productForm" onsubmit="app.handleSaveProduct(event)">
+            <input type="hidden" id="prodEditId">
+            <div class="form-group">
+              <label>Nome do Produto *</label>
+              <input type="text" id="prodName" required placeholder="Ex: Smart TV 50 polegadas">
+            </div>
+            <div class="form-group">
+              <label>Departamento / Categoria *</label>
+              <select id="prodCategory" required></select>
+            </div>
+            <div class="form-row">
+              <div class="form-group col-6">
+                <label>Preço (R$) *</label>
+                <input type="number" id="prodPrice" step="0.01" min="0" required placeholder="99.90">
+              </div>
+              <div class="form-group col-6">
+                <label>Quantidade em Estoque *</label>
+                <input type="number" id="prodStock" min="0" required placeholder="10">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Link da Imagem (URL da Internet)</label>
+              <input type="url" id="prodImageUrl" placeholder="https://exemplo.com/foto.jpg">
+            </div>
+            <div class="form-group">
+              <label>Ou faça Upload de uma Foto do seu Aparelho</label>
+              <input type="file" id="prodImageFile" accept="image/*">
+            </div>
+            <div class="form-group">
+              <label>Descrição do Produto</label>
+              <textarea id="prodDescription" rows="3" placeholder="Detalhes, especificações técnicas, garantia..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block"><i class="fa-solid fa-floppy-disk"></i> Salvar Produto</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <!-- Footer -->
+  <footer class="main-footer">
+    <div class="container footer-content">
+      <div>
+        <h3>SuperShop Departamentos</h3>
+        <p>O shopping virtual feito para você comprar tudo o que precisa em um só lugar com conforto, segurança e rapidez.</p>
+      </div>
+      <div>
+        <h4>Departamentos</h4>
+        <p>Eletrônicos • Moda • Casa • Games • Esportes • Beleza</p>
+      </div>
+      <div>
+        <h4>Garantia</h4>
+        <p>Dados salvos no servidor de forma permanente, com acesso unificado de qualquer dispositivo.</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2025 SuperShop - Todos os direitos reservados.</p>
+    </div>
+  </footer>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

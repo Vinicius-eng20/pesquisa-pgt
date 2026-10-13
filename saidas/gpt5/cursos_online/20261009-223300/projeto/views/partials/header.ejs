@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Plataforma de Cursos</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="container topbar-inner">
+    <a href="/" class="brand">Cursos Online</a>
+
+    <button class="menu-toggle" type="button" data-menu-toggle aria-label="Abrir menu">☰</button>
+
+    <nav class="nav" data-menu>
+      <% if (currentUser) { %>
+        <% if (currentUser.role === 'admin') { %>
+          <a href="/admin">Painel</a>
+          <a href="/admin/courses">Cursos</a>
+          <a href="/admin/enrollments">Matrículas</a>
+        <% } else { %>
+          <a href="/courses">Cursos</a>
+          <a href="/my-enrollments">Minhas matrículas</a>
+        <% } %>
+
+        <span class="user-label"><%= currentUser.name %></span>
+
+        <form action="/logout" method="post" class="inline-form">
+          <button class="link-button" type="submit">Sair</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Entrar</a>
+        <a href="/register" class="button small">Criar conta</a>
+      <% } %>
+    </nav>
+  </div>
+</header>
+
+<main class="container main">
+  <% if (flash) { %>
+    <div class="alert <%= flash.type === 'success' ? 'alert-success' : 'alert-error' %>">
+      <%= flash.message %>
+    </div>
+  <% } %>

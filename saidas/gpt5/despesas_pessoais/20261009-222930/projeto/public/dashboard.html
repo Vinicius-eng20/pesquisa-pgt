@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minhas despesas</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="dashboard">
+  <header class="topbar">
+    <div>
+      <strong>Minhas despesas</strong>
+      <div class="subtitle">Olá, <span id="userName"></span></div>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="logoutBtn" class="secondary">Sair</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="grid grid-2">
+      <div class="stat">
+        <div class="stat-title">Total gasto no mês selecionado</div>
+        <div id="monthTotal" class="stat-value">R$ 0,00</div>
+      </div>
+
+      <div class="card">
+        <label for="month">Escolha o mês</label>
+        <input id="month" type="month">
+      </div>
+    </section>
+
+    <section class="grid grid-2" style="margin-top: 18px;">
+      <div class="card">
+        <h2>Registrar despesa</h2>
+
+        <form id="expenseForm">
+          <label for="description">Descrição</label>
+          <input id="description" type="text" placeholder="Ex: Mercado, ônibus, farmácia" required>
+
+          <div class="form-row">
+            <div>
+              <label for="amount">Valor</label>
+              <input id="amount" type="number" step="0.01" min="0.01" placeholder="0,00" required>
+            </div>
+
+            <div>
+              <label for="expense_date">Data</label>
+              <input id="expense_date" type="date" required>
+            </div>
+          </div>
+
+          <label for="category_id">Categoria</label>
+          <select id="category_id" required></select>
+
+          <button type="submit">Salvar despesa</button>
+        </form>
+
+        <div id="expenseMessage" class="message"></div>
+      </div>
+
+      <div class="card">
+        <h2>Resumo</h2>
+        <p class="subtitle">
+          Suas despesas ficam salvas no site. Ao entrar em outro computador ou celular usando a mesma conta,
+          você verá as mesmas informações.
+        </p>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top: 18px;">
+      <h2>Despesas do mês</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Descrição</th>
+              <th>Categoria</th>
+              <th>Valor</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="expensesBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

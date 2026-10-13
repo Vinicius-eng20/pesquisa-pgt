@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Agendamento</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  body { background: #f0f4f8; color: #1e293b; min-height: 100vh; }
+  .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+  header { background: #1e40af; color: white; padding: 16px 0; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+  header .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  header h1 { font-size: 20px; }
+  header .user-info { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 10px 16px; font-size: 14px; font-weight: 500; transition: opacity .2s; }
+  button:hover { opacity: .88; }
+  .btn-primary { background: #1e40af; color: white; }
+  .btn-danger { background: #dc2626; color: white; }
+  .btn-success { background: #16a34a; color: white; }
+  .btn-warning { background: #ea580c; color: white; }
+  .btn-ghost { background: rgba(255,255,255,.2); color: white; }
+  .btn-small { padding: 6px 10px; font-size: 12px; }
+  .card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 16px; }
+  .card h2 { font-size: 18px; margin-bottom: 14px; color: #1e40af; }
+  .form-group { margin-bottom: 12px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #475569; }
+  input, select, textarea { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid #1e40af; border-color: transparent; }
+  .grid { display: grid; gap: 12px; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  th { background: #f8fafc; font-weight: 600; color: #475569; font-size: 12px; text-transform: uppercase; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge-pendente { background: #fef3c7; color: #92400e; }
+  .badge-confirmado { background: #dcfce7; color: #166534; }
+  .badge-recusado { background: #fee2e2; color: #991b1b; }
+  .msg { padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+  .msg-erro { background: #fee2e2; color: #991b1b; }
+  .msg-ok { background: #dcfce7; color: #166534; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 10px 18px; background: white; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; border: 2px solid transparent; }
+  .tab.active { border-color: #1e40af; color: #1e40af; }
+  .hidden { display: none !important; }
+  .empty { text-align: center; padding: 30px; color: #94a3b8; font-size: 14px; }
+  .auth-box { max-width: 400px; margin: 60px auto; }
+  .auth-box h1 { text-align: center; margin-bottom: 8px; color: #1e40af; }
+  .auth-box p.sub { text-align: center; color: #64748b; margin-bottom: 24px; font-size: 14px; }
+  .auth-switch { text-align: center; margin-top: 14px; font-size: 14px; }
+  .auth-switch a { color: #1e40af; cursor: pointer; font-weight: 600; }
+  @media (max-width: 600px) {
+    table { font-size: 12px; }
+    th, td { padding: 6px; }
+    header h1 { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header id="topbar" class="hidden">
+  <div class="container">
+    <h1 id="tituloHeader">Sistema de Agendamento</h1>
+    <div class="user-info">
+      <span id="nomeUsuario"></span>
+      <button class="btn-ghost btn-small" onclick="logout()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LOGIN / CADASTRO -->
+  <div id="authArea">
+    <div class="auth-box card">
+      <h1>Agendamento de Serviços</h1>
+      <p class="sub">Entre ou crie sua conta para começar</p>
+      <div id="authMsg"></div>
+      <div id="formLogin">
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="loginEmail" placeholder="seu@email.com">
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="loginSenha" placeholder="••••••">
+        </div>
+        <button class="btn-primary" style="width:100%" onclick="fazerLogin()">Entrar</button>
+        <div class="auth-switch">Não tem conta? <a onclick="mostrarCadastro()">Cadastre-se</a></div>
+      </div>
+      <div id="formCadastro" class="hidden">
+        <div class="form-group">
+          <label>Nome completo</label>
+          <input type="text" id="cadNome" placeholder="Seu nome">
+        </div>
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" id="cadEmail" placeholder="seu@email.com">
+        </div>
+        <div class="form-group">
+          <label>Senha</label>
+          <input type="password" id="cadSenha" placeholder="Mínimo 4 caracteres">
+        </div>
+        <button class="btn-primary" style="width:100%" onclick="fazerCadastro()">Criar conta</button>
+        <div class="auth-switch">Já tem conta? <a onclick="mostrarLogin()">Entrar</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÁREA DO CLIENTE -->
+  <div id="clienteArea" class="hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="mostrarTab('tab-horarios', this)">Marcar horário</div>
+      <div class="tab" onclick="mostrarTab('tab-meus', this)">Meus agendamentos</div>
+    </div>
+
+    <div id="tab-horarios">
+      <div class="card">
+        <h2>Fazer um agendamento</h2>
+        <div id="msgCliente"></div>
+        <div class="form-group">
+          <label>Serviço</label>
+          <select id="selServico"><option value="">Selecione um serviço</option></select>
+        </div>
+        <div class="form-group">
+          <label>Horário disponível</label>
+          <select id="selHorario"><option value="">Selecione um horário</option></select>
+        </div>
+        <button class="btn-primary" onclick="criarAgendamento()">Agendar</button>
+      </div>
+      <div class="card">
+        <h2>Serviços oferecidos</h2>
+        <div id="listaServicosCliente"></div>
+      </div>
+    </div>
+
+    <div id="tab-meus" class="hidden">
+      <div class="card">
+        <h2>Meus agendamentos</h2>
+        <div id="msgMeus"></div>
+        <div id="listaMeusAgendamentos"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÁREA DO ADMIN -->
+  <div id="adminArea" class="hidden">
+    <div class="tabs">
+      <div class="tab active" onclick="mostrarTab('tab-agendamentos-admin', this)">Agendamentos</div>
+      <div class="tab" onclick="mostrarTab('tab-servicos-admin', this)">Serviços</div>
+      <div class="tab" onclick="mostrarTab('tab-horarios-admin', this)">Horários</div>
+    </div>
+
+    <div id="tab-agendamentos-admin">
+      <div class="card">
+        <h2>Todos os agendamentos</h2>
+        <div id="msgAdminAg"></div>
+        <div id="listaTodosAgendamentos"></div>
+      </div>
+    </div>
+
+    <div id="tab-servicos-admin" class="hidden">
+      <div class="card">
+        <h2 id="tituloFormServico">Novo serviço</h2>
+        <div id="msgAdminServ"></div>
+        <input type="hidden" id="servicoEditId">
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" id="servNome" placeholder="Ex: Corte de cabelo">
+          </div>
+          <div class="form-group">
+            <label>Preço (R$)</label>
+            <input type="number" id="servPreco" placeholder="0.00" step="0.01">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Descrição</label>
+          <textarea id="servDesc" rows="2" placeholder="Descrição do serviço"></textarea>
+        </div>
+        <button class="btn-primary" onclick="salvarServico()">Salvar</button>
+        <button class="btn-ghost" style="display:none;background:#e2e8f0;color:#1e293b" id="btnCancelarServ" onclick="cancelarEdicaoServico()">Cancelar edição</button>
+      </div>
+      <div class="card">
+        <h2>Serviços cadastrados</h2>
+        <div id="listaServicosAdmin"></div>
+      </div>
+    </div>
+
+    <div id="tab-horarios-admin" class="hidden">
+      <div class="card">
+        <h2>Novo horário disponível</h2>
+        <div id="msgAdminHor"></div>
+        <div class="grid grid-2">
+          <div class="form-group">
+            <label>Data</label>
+            <input type="date" id="horData">
+          </div>
+          <div class="form-group">
+            <label>Hora</label>
+            <input type="time" id="horHora">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="criarHorario()">Adicionar horário</button>
+      </div>
+      <div class="card">
+        <h2>Horários cadastrados</h2>
+        <div id="listaHorariosAdmin"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let usuarioAtual = null;
+
+async function api(url, metodo = 'GET', corpo = null) {
+  const opcoes = { method: metodo, headers: { 'Content-Type': 'application/json' } };
+  if (corpo) opcoes.body = JSON.stringify(corpo);
+  const resp = await fetch(url, opcoes);
+  const dados = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(dados.erro || 'Erro ao processar');
+  return dados;
+}
+
+function mostrarMsg(elementId, texto, tipo = 'erro') {
+  const el = document.getElementById(elementId);
+  el.innerHTML = '<div class="msg msg-' + tipo + '">' + texto + '</div>';
+  setTimeout(() => { el.innerHTML = ''; }, 5000);
+}
+
+function mostrarCadastro() {
+  document.getElementById('formLogin').classList.add('hidden');
+  document.getElementById('formCadastro').classList.remove('hidden');
+}
+function mostrarLogin() {
+  document.getElementById('formCadastro').classList.add('hidden');
+  document.getElementById('formLogin').classList.remove('hidden');
+}
+
+function mostrarTab(id, el) {
+  const tabs = el.parentElement.querySelectorAll('.tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const area = el.closest('#clienteArea, #adminArea');
+  area.querySelectorAll('[id^="tab-"]').forEach(d => {
+    if (d.classList.contains('tabs')) return;
+    d.classList.add('hidden');
+  });
+  document.getElementById(id).classList.remove('hidden');
+  if (id === 'tab-meus') carregarMeusAgendamentos();
+  if (id === 'tab-agendamentos-admin') carregarTodosAgendamentos();
+  if (id === 'tab-servicos-admin') carregarServicosAdmin();
+  if (id === 'tab-horarios-admin') carregarHorariosAdmin();
+  if (id === 'tab-horarios') { carregarServicosCliente(); carregarHorariosLivres(); }
+}
+
+async function fazerLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  if (!email || !senha) return mostrarMsg('authMsg', 'Preencha e-mail e senha');
+  try {
+    const r = await api('/api/login', 'POST', { email, senha });
+    usuarioAtual = r.usuario;
+    iniciar();
+  } catch (e) { mostrarMsg('authMsg', e.message); }
+}
+
+async function fazerCadastro() {
+  const nome = document.getElementById('cadNome').value.trim();
+  const email = document.getElementById('cadEmail').value.trim();
+  const senha = document.getElementById('cadSenha').value;
+  if (!nome || !email || !senha) return mostrarMsg('authMsg', 'Preencha todos os campos');
+  if (senha.length < 4) return mostrarMsg('authMsg', 'Senha muito curta (mínimo 4)');
+  try {
+    const r = await api('/api/registrar', 'POST', { nome, email, senha });
+    usuarioAtual = r.usuario;
+    iniciar();
+  } catch (e) { mostrarMsg('authMsg', e.message); }
+}
+
+async function logout() {
+  await api('/api/logout', 'POST');
+  usuarioAtual = null;
+  location.reload();
+}
+
+function iniciar() {
+  document.getElementById('authArea').classList.add('hidden');
+  document.getElementById('topbar').classList.remove('hidden');
+  document.getElementById('nomeUsuario').textContent = usuarioAtual.nome;
+
+  if (usuarioAtual.tipo === 'admin') {
+    document.getElementById('tituloHeader').textContent = 'Painel do Administrador';
+    document.getElementById('adminArea').classList.remove('hidden');
+    carregarTodosAgendamentos();
+    carregarServicosAdmin();
+    carregarHorariosAdmin();
+  } else {
+    document.getElementById('tituloHeader').textContent = 'Área do Cliente';
+    document.getElementById('clienteArea').classList.remove('hidden');
+    carregarServicosCliente();
+    carregarHorariosLivres();
+  }
+}
+
+// ===== CLIENTE =====
+async function carregarServicosCliente() {
+  const servicos = await api('/api/servicos');
+  const sel = document.getElementById('selServico');
+  sel.innerHTML = '<option value="">Selecione um serviço</option>';
+  const lista = document.getElementById('listaServicosCliente');
+  if (servicos.length === 0) {
+    lista.innerHTML = '<div class="empty">Nenhum serviço disponível ainda</div>';
+    sel.innerHTML = '<option value="">Nenhum serviço cadastrado</option>';
+    return;
+  }
+  servicos.forEach(s => {
+    sel.innerHTML += '<option value="' + s.id + '">' + escapar(s.nome) + (s.preco ? ' - R$ ' + Number(s.preco).toFixed(2) : '') + '</option>';
+  });
+  lista.innerHTML = '<table><thead><tr><th>Serviço</th><th>Descrição</th><th>Preço</th></tr></thead><tbody>' +
+    servicos.map(s => '<tr><td><strong>' + escapar(s.nome) + '</strong></td><td>' + escapar(s.descricao || '-') + '</td><td>' + (s.preco ? 'R$ ' + Number(s.preco).toFixed(2) : '-') + '</td></tr>').join('') +
+    '</tbody></table>';
+}
+
+async function carregarHorariosLivres() {
+  const horarios = await api('/api/horarios-livres');
+  const sel = document.getElementById('selHorario');
+  sel.innerHTML = '<option value="">Selecione um horário</option>';
+  if (horarios.length === 0) {
+    sel.innerHTML = '<option value="">Nenhum horário disponível</option>';
+    return;
+  }
+  horarios.forEach(h => {
+    const dataFmt = formatarData(h.data);
+    sel.innerHTML += '<option value="' + h.id + '">' + dataFmt + ' às ' + h.hora + '</option>';
+  });
+}
+
+async function criarAgendamento() {
+  const servico_id = document.getElementById('selServico').value;
+  const horario_id = document.getElementById('selHorario').value;
+  if (!servico_id || !horario_id) return mostrarMsg('msgCliente', 'Selecione serviço e horário');
+  try {
+    await api('/api/agendamentos', 'POST', { servico_id: Number(servico_id), horario_id: Number(horario_id) });
+    mostrarMsg('msgCliente', 'Agendamento solicitado com sucesso! Aguarde confirmação.', 'ok');
+    document.getElementById('selServico').value = '';
+    document.getElementById('selHorario').value = '';
+    carregarHorariosLivres();
+  } catch (e) { mostrarMsg('msgCliente', e.message); }
+}
+
+async function carregarMeusAgendamentos() {
+  const lista = await api('/api/meus-agendamentos');
+  const div = document.getElementById('listaMeusAgendamentos');
+  if (lista.length === 0) { div.innerHTML = '<div class="empty">Você ainda não tem agendamentos</div>'; return; }
+  div.innerHTML = '<table><thead><tr><th>Serviço</th><th>Data</th><th>Hora</th><th>Status</th><th></th></tr></thead><tbody>' +
+    lista.map(a => '<tr>' +
+      '<td>' + escapar(a.servico_nome) + '</td>' +
+      '<td>' + formatarData(a.data) + '</td>' +
+      '<td>' + a.hora + '</td>' +
+      '<td><span class="badge badge-' + a.status + '">' + a.status + '</span></td>' +
+      '<td>' + (a.status !== 'recusado' ? '<button class="btn-danger btn-small" onclick="cancelarAgendamento(' + a.id + ')">Cancelar</button>' : '') + '</td>' +
+    '</tr>').join('') + '</tbody></table>';
+}
+
+async function cancelarAgendamento(id) {
+  if (!confirm('Deseja realmente cancelar este agendamento?')) return;
+  try {
+    await api('/api/agendamentos/' + id, 'DELETE');
+    mostrarMsg('msgMeus', 'Agendamento cancelado', 'ok');
+    carregarMeusAgendamentos();
+  } catch (e) { mostrarMsg('msgMeus', e.message); }
+}
+
+// ===== ADMIN: AGENDAMENTOS =====
+async function carregarTodosAgendamentos() {
+  const lista = await api('/api/todos-agendamentos');
+  const div = document.getElementById('listaTodosAgendamentos');
+  if (lista.length === 0) { div.innerHTML = '<div class="empty">Nenhum agendamento ainda</div>'; return; }
+  div.innerHTML = '<table><thead><tr><th>Cliente</th><th>Serviço</th><th>Data</th><th>Hora</th><th>Status</th><th>Ações</th></tr></thead><tbody>' +
+    lista.map(a => '<tr>' +
+      '<td><strong>' + escapar(a.cliente_nome) + '</strong><br><small>' + escapar(a.cliente_email) + '</small></td>' +
+      '<td>' + escapar(a.servico_nome) + '</td>' +
+      '<td>' + formatarData(a.data) + '</td>' +
+      '<td>' + a.hora + '</td>' +
+      '<td><span class="badge badge-' + a.status + '">' + a.status + '</span></td>' +
+      '<td>' +
+        (a.status !== 'confirmado' ? '<button class="btn-success btn-small" onclick="mudarStatus(' + a.id + ', \'confirmado\')">Confirmar</button> ' : '') +
+        (a.status !== 'recusado' ? '<button class="btn-warning btn-small" onclick="mudarStatus(' + a.id + ', \'recusado\')">Recusar</button> ' : '') +
+        '<button class="btn-danger btn-small" onclick="deletarAgendamentoAdmin(' + a.id + ')">Excluir</button>' +
+      '</td>' +
+    '</tr>').join('') + '</tbody></table>';
+}
+
+async function mudarStatus(id, status) {
+  try {
+    await api('/api/agendamentos/' + id + '/status', 'PUT', { status });
+    carregarTodosAgendamentos();
+  } catch (e) { mostrarMsg('msgAdminAg', e.message); }
+}
+
+async function deletarAgendamentoAdmin(id) {
+  if (!confirm('Excluir este agendamento?')) return;
+  try {
+    await api('/api/agendamentos/' + id, 'DELETE');
+    carregarTodosAgendamentos();
+  } catch (e) { mostrarMsg('msgAdminAg', e.message); }
+}
+
+// ===== ADMIN: SERVIÇOS =====
+async function carregarServicosAdmin() {
+  const servicos = await api('/api/servicos');
+  const div = document.getElementById('listaServicosAdmin');
+  if (servicos.length === 0) { div.innerHTML = '<div class="empty">Nenhum serviço cadastrado</div>'; return; }
+  div.innerHTML = '<table><thead><tr><th>Nome</th><th>Descrição</th><th>Preço</th><th></th></tr></thead><tbody>' +
+    servicos.map(s => '<tr>' +
+      '<td>' + escapar(s.nome) + '</td>' +
+      '<td>' + escapar(s.descricao || '-') + '</td>' +
+      '<td>' + (s.preco ? 'R$ ' + Number(s.preco).toFixed(2) : '-') + '</td>' +
+      '<td><button class="btn-primary btn-small" onclick=\'editarServico(' + JSON.stringify(s).replace(/'/g, "&#39;") + ')\'>Editar</button> ' +
+          '<button class="btn-danger btn-small" onclick="deletarServico(' + s.id + ')">Excluir</button></td>' +
+    '</tr>').join('') + '</tbody></table>';
+}
+
+function editarServico(s) {
+  document.getElementById('servicoEditId').value = s.id;
+  document.getElementById('servNome').value = s.nome;
+  document.getElementById('servPreco').value = s.preco || '';
+  document.getElementById('servDesc').value = s.descricao || '';
+  document.getElementById('tituloFormServico').textContent = 'Editar serviço';
+  document.getElementById('btnCancelarServ').style.display = 'inline-block';
+  window.scrollTo(0, 0);
+}
+
+function cancelarEdicaoServico() {
+  document.getElementById('servicoEditId').value = '';
+  document.getElementById('servNome').value = '';
+  document.getElementById('servPreco').value = '';
+  document.getElementById('servDesc').value = '';
+  document.getElementById('tituloFormServico').textContent = 'Novo serviço';
+  document.getElementById('btnCancelarServ').style.display = 'none';
+}
+
+async function salvarServico() {
+  const id = document.getElementById('servicoEditId').value;
+  const dados = {
+    nome: document.getElementById('servNome').value.trim(),
+    descricao: document.getElementById('servDesc').value.trim(),
+    preco: parseFloat(document.getElementById('servPreco').value) || 0
+  };
+  if (!dados.nome) return mostrarMsg('msgAdminServ', 'Informe o nome do serviço');
+  try {
+    if (id) await api('/api/servicos/' + id, 'PUT', dados);
+    else await api('/api/servicos', 'POST', dados);
+    mostrarMsg('msgAdminServ', 'Serviço salvo!', 'ok');
+    cancelarEdicaoServico();
+    carregarServicosAdmin();
+  } catch (e) { mostrarMsg('msgAdminServ', e.message); }
+}
+
+async function deletarServico(id) {
+  if (!confirm('Excluir este serviço?')) return;
+  try {
+    await api('/api/servicos/' + id, 'DELETE');
+    carregarServicosAdmin();
+  } catch (e) { mostrarMsg('msgAdminServ', e.message); }
+}
+
+// ===== ADMIN: HORÁRIOS =====
+async function carregarHorariosAdmin() {
+  const horarios = await api('/api/horarios');
+  const div = document.getElementById('listaHorariosAdmin');
+  if (horarios.length === 0) { div.innerHTML = '<div class="empty">Nenhum horário cadastrado</div>'; return; }
+  const agora = new Date();
+  div.innerHTML = '<table><thead><tr><th>Data</th><th>Hora</th><th>Situação</th><th></th></tr></thead><tbody>' +
+    horarios.map(h => '<tr>' +
+      '<td>' + formatarData(h.data) + '</td>' +
+      '<td>' + h.hora + '</td>' +
+      '<td>' + (h.disponivel ? '<span class="badge badge-confirmado">Ativo</span>' : '<span class="badge badge-recusado">Inativo</span>') + '</td>' +
+      '<td><button class="btn-warning btn-small" onclick="toggleHorario(' + h.id + ', ' + (h.disponivel ? 0 : 1) + ')">' + (h.disponivel ? 'Desativar' : 'Ativar') + '</button> ' +
+          '<button class="btn-danger btn-small" onclick="deletarHorario(' + h.id + ')">Excluir</button></td>' +
+    '</tr>').join('') + '</tbody></table>';
+}
+
+async function criarHorario() {
+  const data = document.getElementById('horData').value;
+  const hora = document.getElementById('horHora').value;
+  if (!data || !hora) return mostrarMsg('msgAdminHor', 'Informe data e hora');
+  try {
+    await api('/api/horarios', 'POST', { data, hora });
+    mostrarMsg('msgAdminHor', 'Horário adicionado!', 'ok');
+    document.getElementById('horData').value = '';
+    document.getElementById('horHora').value = '';
+    carregarHorariosAdmin();
+  } catch (e) { mostrarMsg('msgAdminHor', e.message); }
+}
+
+async function toggleHorario(id, ativo) {
+  const horarios = await api('/api/horarios');
+  const h = horarios.find(x => x.id === id);
+  if (!h) return;
+  try {
+    await api('/api/horarios/' + id, 'PUT', { data: h.data, hora: h.hora, disponivel: ativo });
+    carregarHorariosAdmin();
+  } catch (e) { mostrarMsg('msgAdminHor', e.message); }
+}
+
+async function deletarHorario(id) {
+  if (!confirm('Excluir este horário?')) return;
+  try {
+    await api('/api/horarios/' + id, 'DELETE');
+    carregarHorariosAdmin();
+  } catch (e) { mostrarMsg('msgAdminHor', e.message); }
+}
+
+// ===== UTIL =====
+function escapar(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function formatarData(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  return d + '/' + m + '/' + y;
+}
+
+// Inicializar
+(async () => {
+  try {
+    const r = await api('/api/eu');
+    if (r.usuario) {
+      usuarioAtual = r.usuario;
+      iniciar();
+    }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

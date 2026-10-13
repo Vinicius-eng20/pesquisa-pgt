@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<div class="centro">
+  <div class="cartao">
+    <h1>Criar conta</h1>
+    <p class="sub">Leitores podem criar a própria conta.</p>
+    {% if erro %}<div class="alerta erro">{{ erro }}</div>{% endif %}
+    <form method="post" action="/criar" class="form">
+      <div>
+        <label>Nome completo</label>
+        <input name="nome" required autofocus>
+      </div>
+      <div>
+        <label>Usuário</label>
+        <input name="usuario" required>
+      </div>
+      <div>
+        <label>Senha</label>
+        <input name="senha" type="password" required>
+      </div>
+      <div>
+        <label>Confirmar senha</label>
+        <input name="senha2" type="password" required>
+      </div>
+      <button class="btn primary" type="submit" style="width:100%">Criar conta</button>
+    </form>
+    <p class="sub" style="margin-top:16px">Já tem conta? <a href="/login"><b>Entrar</b></a></p>
+  </div>
+</div>
+{% endblock %}

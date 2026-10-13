@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#e5e7eb"/>
+  <circle cx="400" cy="260" r="72" fill="#cbd5e1"/>
+  <rect x="180" y="360" width="440" height="44" rx="22" fill="#cbd5e1"/>
+  <text x="400" y="470" text-anchor="middle" font-family="Arial, sans-serif" font-size="32" fill="#64748b">Sem imagem</text>
+</svg>

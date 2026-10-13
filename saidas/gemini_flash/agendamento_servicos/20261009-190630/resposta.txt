@@ -1,0 +1,2602 @@
+=== package.json ===
+{
+  "name": "sistema-de-agendamento",
+  "version": "1.0.0",
+  "description": "Sistema completo de agendamento de serviços online",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "sqlite3": "^5.1.7"
+  }
+}
+
+=== database.js ===
+const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
+const path = require('path');
+
+const dbPath = path.resolve(__dirname, 'agendamentos.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error('Erro ao conectar ao banco de dados SQLite:', err.message);
+  } else {
+    console.log('Conectado ao banco de dados SQLite local.');
+  }
+});
+
+function initDatabase() {
+  db.serialize(() => {
+    // Tabela de Usuários
+    db.run(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        phone TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'client',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Tabela de Serviços
+    db.run(`
+      CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        duration_minutes INTEGER NOT NULL DEFAULT 30,
+        price REAL NOT NULL DEFAULT 0.00,
+        active INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+
+    // Tabela de Horários de Funcionamento (dias da semana: 0 = Domingo, 1 = Segunda, etc.)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS business_hours (
+        day_of_week INTEGER PRIMARY KEY,
+        day_name TEXT NOT NULL,
+        is_open INTEGER NOT NULL DEFAULT 1,
+        start_time TEXT NOT NULL DEFAULT '08:00',
+        end_time TEXT NOT NULL DEFAULT '18:00',
+        slot_interval INTEGER NOT NULL DEFAULT 30
+      )
+    `);
+
+    // Tabela de Agendamentos
+    db.run(`
+      CREATE TABLE IF NOT EXISTS appointments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id INTEGER NOT NULL,
+        service_id INTEGER NOT NULL,
+        appointment_date TEXT NOT NULL,
+        appointment_time TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pendente',
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (client_id) REFERENCES users (id),
+        FOREIGN KEY (service_id) REFERENCES services (id)
+      )
+    `);
+
+    // Criar Administrador padrão se não existir nenhum
+    db.get(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`, (err, row) => {
+      if (!row) {
+        const adminPassword = bcrypt.hashSync('admin123', 10);
+        db.run(
+          `INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, ?)`,
+          ['Responsável (Admin)', 'admin@negocio.com', '11999999999', adminPassword, 'admin'],
+          (insertErr) => {
+            if (!insertErr) {
+              console.log('Conta de administrador criada: admin@negocio.com / senha: admin123');
+            }
+          }
+        );
+      }
+    });
+
+    // Inserir dias padrão se a tabela de horários estiver vazia
+    db.get(`SELECT COUNT(*) as count FROM business_hours`, (err, row) => {
+      if (row && row.count === 0) {
+        const days = [
+          { id: 0, name: 'Domingo', open: 0, start: '08:00', end: '12:00' },
+          { id: 1, name: 'Segunda-feira', open: 1, start: '08:00', end: '18:00' },
+          { id: 2, name: 'Terça-feira', open: 1, start: '08:00', end: '18:00' },
+          { id: 3, name: 'Quarta-feira', open: 1, start: '08:00', end: '18:00' },
+          { id: 4, name: 'Quinta-feira', open: 1, start: '08:00', end: '18:00' },
+          { id: 5, name: 'Sexta-feira', open: 1, start: '08:00', end: '18:00' },
+          { id: 6, name: 'Sábado', open: 1, start: '08:00', end: '14:00' }
+        ];
+
+        const stmt = db.prepare(
+          `INSERT INTO business_hours (day_of_week, day_name, is_open, start_time, end_time, slot_interval) VALUES (?, ?, ?, ?, ?, 30)`
+        );
+        days.forEach(d => {
+          stmt.run(d.id, d.name, d.open, d.start, d.end);
+        });
+        stmt.finalize();
+      }
+    });
+
+    // Inserir serviços iniciais de exemplo se a tabela estiver vazia
+    db.get(`SELECT COUNT(*) as count FROM services`, (err, row) => {
+      if (row && row.count === 0) {
+        const stmt = db.prepare(
+          `INSERT INTO services (name, description, duration_minutes, price, active) VALUES (?, ?, ?, ?, 1)`
+        );
+        stmt.run('Atendimento Básico', 'Serviço rápido e prático para o dia a dia.', 30, 50.00);
+        stmt.run('Atendimento Completo', 'Experiência personalizada completa com atenção aos detalhes.', 60, 90.00);
+        stmt.run('Consultoria Especializada', 'Diagnóstico e orientações sob medida para sua necessidade.', 45, 120.00);
+        stmt.finalize();
+      }
+    });
+  });
+}
+
+initDatabase();
+
+module.exports = db;
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const db = require('./database');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(
+  session({
+    secret: 'segredo-super-seguro-agendamento-123456',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      maxAge: 1000 * 60 * 60 * 24 * 30, // 30 dias de sessão ativa
+      httpOnly: true
+    }
+  })
+);
+
+// Middleware para verificar autenticação
+function requireAuth(req, res, next) {
+  if (!req.session.user) {
+    return res.status(401).json({ error: 'Você precisa entrar na sua conta.' });
+  }
+  next();
+}
+
+// Middleware para verificar se é Admin/Responsável
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Acesso restrito ao responsável.' });
+  }
+  next();
+}
+
+// ================= ROTAS DE AUTENTICAÇÃO =================
+
+// Obter dados da sessão atual
+app.get('/api/auth/me', (req, res) => {
+  if (req.session.user) {
+    res.json({ authenticated: true, user: req.session.user });
+  } else {
+    res.json({ authenticated: false, user: null });
+  }
+});
+
+// Cadastro de novos clientes
+app.post('/api/auth/register', (req, res) => {
+  const { name, email, phone, password } = req.body;
+
+  if (!name || !email || !phone || !password) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  db.get(`SELECT id FROM users WHERE email = ?`, [cleanEmail], (err, existing) => {
+    if (err) return res.status(500).json({ error: 'Erro no servidor.' });
+    if (existing) {
+      return res.status(400).json({ error: 'Este e-mail já está cadastrado.' });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+    db.run(
+      `INSERT INTO users (name, email, phone, password_hash, role) VALUES (?, ?, ?, ?, 'client')`,
+      [name.trim(), cleanEmail, phone.trim(), passwordHash],
+      function (insertErr) {
+        if (insertErr) {
+          return res.status(500).json({ error: 'Erro ao cadastrar usuário.' });
+        }
+
+        const newUser = {
+          id: this.lastID,
+          name: name.trim(),
+          email: cleanEmail,
+          phone: phone.trim(),
+          role: 'client'
+        };
+
+        req.session.user = newUser;
+        res.status(201).json({ success: true, user: newUser });
+      }
+    );
+  });
+});
+
+// Login
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Informe e-mail e senha.' });
+  }
+
+  const cleanEmail = email.toLowerCase().trim();
+
+  db.get(`SELECT * FROM users WHERE email = ?`, [cleanEmail], (err, user) => {
+    if (err) return res.status(500).json({ error: 'Erro no servidor.' });
+    if (!user) {
+      return res.status(400).json({ error: 'E-mail ou senha incorretos.' });
+    }
+
+    const match = bcrypt.compareSync(password, user.password_hash);
+    if (!match) {
+      return res.status(400).json({ error: 'E-mail ou senha incorretos.' });
+    }
+
+    const sessionUser = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role
+    };
+
+    req.session.user = sessionUser;
+    res.json({ success: true, user: sessionUser });
+  });
+});
+
+// Sair da conta (Logout)
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ success: true, message: 'Sessão encerrada com sucesso.' });
+  });
+});
+
+// ================= ROTAS DE SERVIÇOS =================
+
+// Listar serviços ativos (para clientes e público)
+app.get('/api/services', (req, res) => {
+  const query = req.session.user && req.session.user.role === 'admin'
+    ? `SELECT * FROM services ORDER BY active DESC, name ASC`
+    : `SELECT * FROM services WHERE active = 1 ORDER BY name ASC`;
+
+  db.all(query, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro ao buscar serviços.' });
+    res.json(rows);
+  });
+});
+
+// Criar serviço (Admin)
+app.post('/api/services', requireAdmin, (req, res) => {
+  const { name, description, duration_minutes, price } = req.body;
+
+  if (!name || !duration_minutes || price === undefined) {
+    return res.status(400).json({ error: 'Nome, duração e valor são obrigatórios.' });
+  }
+
+  db.run(
+    `INSERT INTO services (name, description, duration_minutes, price, active) VALUES (?, ?, ?, ?, 1)`,
+    [name.trim(), description || '', parseInt(duration_minutes, 10), parseFloat(price)],
+    function (err) {
+      if (err) return res.status(500).json({ error: 'Erro ao salvar serviço.' });
+      res.json({ success: true, id: this.lastID });
+    }
+  );
+});
+
+// Editar serviço (Admin)
+app.put('/api/services/:id', requireAdmin, (req, res) => {
+  const { name, description, duration_minutes, price, active } = req.body;
+  const { id } = req.params;
+
+  db.run(
+    `UPDATE services SET name = ?, description = ?, duration_minutes = ?, price = ?, active = ? WHERE id = ?`,
+    [name.trim(), description || '', parseInt(duration_minutes, 10), parseFloat(price), active ? 1 : 0, id],
+    function (err) {
+      if (err) return res.status(500).json({ error: 'Erro ao atualizar serviço.' });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Excluir serviço (Admin)
+app.delete('/api/services/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  db.run(`DELETE FROM services WHERE id = ?`, [id], function (err) {
+    if (err) return res.status(500).json({ error: 'Erro ao remover serviço.' });
+    res.json({ success: true });
+  });
+});
+
+// ================= HORÁRIOS DE ATENDIMENTO =================
+
+// Listar configuração de horários de funcionamento
+app.get('/api/business-hours', (req, res) => {
+  db.all(`SELECT * FROM business_hours ORDER BY day_of_week ASC`, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro ao buscar horários.' });
+    res.json(rows);
+  });
+});
+
+// Atualizar configuração de horários (Admin)
+app.put('/api/business-hours', requireAdmin, (req, res) => {
+  const { schedule } = req.body; // array de { day_of_week, is_open, start_time, end_time, slot_interval }
+
+  if (!Array.isArray(schedule)) {
+    return res.status(400).json({ error: 'Dados inválidos.' });
+  }
+
+  db.serialize(() => {
+    const stmt = db.prepare(
+      `UPDATE business_hours SET is_open = ?, start_time = ?, end_time = ?, slot_interval = ? WHERE day_of_week = ?`
+    );
+
+    schedule.forEach(day => {
+      stmt.run(
+        day.is_open ? 1 : 0,
+        day.start_time,
+        day.end_time,
+        parseInt(day.slot_interval, 10) || 30,
+        day.day_of_week
+      );
+    });
+
+    stmt.finalize((err) => {
+      if (err) return res.status(500).json({ error: 'Erro ao salvar horários.' });
+      res.json({ success: true });
+    });
+  });
+});
+
+// Consultar horários livres para uma data específica
+app.get('/api/available-slots', (req, res) => {
+  const { date, service_id } = req.query;
+
+  if (!date) {
+    return res.status(400).json({ error: 'Data não informada.' });
+  }
+
+  // Descobrir o dia da semana da data escolhida (YYYY-MM-DD)
+  const parts = date.split('-');
+  const targetDate = new Date(parts[0], parts[1] - 1, parts[2]);
+  const dayOfWeek = targetDate.getDay();
+
+  // Buscar horário de funcionamento desse dia
+  db.get(`SELECT * FROM business_hours WHERE day_of_week = ?`, [dayOfWeek], (err, dayConfig) => {
+    if (err) return res.status(500).json({ error: 'Erro ao consultar expediente.' });
+
+    if (!dayConfig || dayConfig.is_open === 0) {
+      return res.json({ slots: [], message: 'O negócio não abre neste dia da semana.' });
+    }
+
+    // Buscar agendamentos existentes neste dia que não foram recusados ou cancelados
+    db.all(
+      `SELECT appointment_time FROM appointments 
+       WHERE appointment_date = ? AND status IN ('pendente', 'confirmado')`,
+      [date],
+      (errAppointments, bookedRows) => {
+        if (errAppointments) {
+          return res.status(500).json({ error: 'Erro ao verificar agendamentos existentes.' });
+        }
+
+        const bookedTimes = new Set(bookedRows.map(r => r.appointment_time));
+
+        // Gerar todos os slots baseados no intervalo
+        const slots = [];
+        const [startHour, startMin] = dayConfig.start_time.split(':').map(Number);
+        const [endHour, endMin] = dayConfig.end_time.split(':').map(Number);
+        const interval = dayConfig.slot_interval || 30;
+
+        let currentMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+
+        // Se a data for hoje, não mostrar horários passados
+        const now = new Date();
+        const isToday =
+          now.getFullYear() === targetDate.getFullYear() &&
+          now.getMonth() === targetDate.getMonth() &&
+          now.getDate() === targetDate.getDate();
+        const currentNowMinutes = now.getHours() * 60 + now.getMinutes();
+
+        while (currentMinutes + interval <= endMinutes) {
+          const h = Math.floor(currentMinutes / 60);
+          const m = currentMinutes % 60;
+          const timeString = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+          const isPast = isToday && currentMinutes <= currentNowMinutes;
+
+          if (!bookedTimes.has(timeString) && !isPast) {
+            slots.push(timeString);
+          }
+
+          currentMinutes += interval;
+        }
+
+        res.json({ slots, message: slots.length === 0 ? 'Nenhum horário livre restante neste dia.' : null });
+      }
+    );
+  });
+});
+
+// ================= ROTAS DE AGENDAMENTOS =================
+
+// Criar novo agendamento (Cliente)
+app.post('/api/appointments', requireAuth, (req, res) => {
+  const { service_id, appointment_date, appointment_time, notes } = req.body;
+  const client_id = req.session.user.id;
+
+  if (!service_id || !appointment_date || !appointment_time) {
+    return res.status(400).json({ error: 'Preencha serviço, data e horário.' });
+  }
+
+  // Verificar se o horário já não foi pego no mesmo milésimo de segundo
+  db.get(
+    `SELECT id FROM appointments 
+     WHERE appointment_date = ? AND appointment_time = ? AND status IN ('pendente', 'confirmado')`,
+    [appointment_date, appointment_time],
+    (err, conflict) => {
+      if (err) return res.status(500).json({ error: 'Erro no servidor.' });
+      if (conflict) {
+        return res.status(400).json({ error: 'Desculpe, este horário acabou de ser reservado. Por favor, selecione outro.' });
+      }
+
+      db.run(
+        `INSERT INTO appointments (client_id, service_id, appointment_date, appointment_time, status, notes) 
+         VALUES (?, ?, ?, ?, 'pendente', ?)`,
+        [client_id, service_id, appointment_date, appointment_time, notes || ''],
+        function (insertErr) {
+          if (insertErr) {
+            return res.status(500).json({ error: 'Não foi possível salvar o agendamento.' });
+          }
+          res.json({ success: true, appointment_id: this.lastID });
+        }
+      );
+    }
+  );
+});
+
+// Listar agendamentos do cliente logado
+app.get('/api/appointments/my', requireAuth, (req, res) => {
+  const client_id = req.session.user.id;
+
+  const query = `
+    SELECT 
+      a.id, a.appointment_date, a.appointment_time, a.status, a.notes, a.created_at,
+      s.name as service_name, s.duration_minutes, s.price
+    FROM appointments a
+    JOIN services s ON a.service_id = s.id
+    WHERE a.client_id = ?
+    ORDER BY a.appointment_date DESC, a.appointment_time DESC
+  `;
+
+  db.all(query, [client_id], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro ao carregar agendamentos.' });
+    res.json(rows);
+  });
+});
+
+// Cancelar agendamento (Cliente ou Admin)
+app.patch('/api/appointments/:id/cancel', requireAuth, (req, res) => {
+  const { id } = req.params;
+  const user = req.session.user;
+
+  // Se for cliente, só pode cancelar se for o próprio dono
+  const checkQuery = user.role === 'admin'
+    ? `SELECT id FROM appointments WHERE id = ?`
+    : `SELECT id FROM appointments WHERE id = ? AND client_id = ?`;
+
+  const params = user.role === 'admin' ? [id] : [id, user.id];
+
+  db.get(checkQuery, params, (err, row) => {
+    if (err || !row) {
+      return res.status(404).json({ error: 'Agendamento não encontrado ou não permitido.' });
+    }
+
+    db.run(`UPDATE appointments SET status = 'cancelado' WHERE id = ?`, [id], function (upErr) {
+      if (upErr) return res.status(500).json({ error: 'Erro ao cancelar agendamento.' });
+      res.json({ success: true });
+    });
+  });
+});
+
+// Listar TODOS os agendamentos (Apenas Responsável / Admin)
+app.get('/api/admin/appointments', requireAdmin, (req, res) => {
+  const { status, date } = req.query;
+
+  let query = `
+    SELECT 
+      a.id, a.appointment_date, a.appointment_time, a.status, a.notes, a.created_at,
+      s.name as service_name, s.duration_minutes, s.price,
+      u.name as client_name, u.phone as client_phone, u.email as client_email
+    FROM appointments a
+    JOIN services s ON a.service_id = s.id
+    JOIN users u ON a.client_id = u.id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (status && status !== 'todos') {
+    query += ` AND a.status = ?`;
+    params.push(status);
+  }
+
+  if (date) {
+    query += ` AND a.appointment_date = ?`;
+    params.push(date);
+  }
+
+  query += ` ORDER BY a.appointment_date ASC, a.appointment_time ASC`;
+
+  db.all(query, params, (err, rows) => {
+    if (err) return res.status(500).json({ error: 'Erro ao carregar agendamentos do sistema.' });
+    res.json(rows);
+  });
+});
+
+// Atualizar status do agendamento: 'confirmado', 'recusado' (Admin)
+app.patch('/api/admin/appointments/:id/status', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!['confirmado', 'recusado', 'concluido', 'pendente'].includes(status)) {
+    return res.status(400).json({ error: 'Status informado é inválido.' });
+  }
+
+  db.run(`UPDATE appointments SET status = ? WHERE id = ?`, [status, id], function (err) {
+    if (err) return res.status(500).json({ error: 'Erro ao atualizar status.' });
+    res.json({ success: true });
+  });
+});
+
+// Resumo/Estatísticas do Painel do Admin
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  const today = new Date().toISOString().slice(0, 10);
+
+  const query = `
+    SELECT 
+      SUM(CASE WHEN status = 'pendente' THEN 1 ELSE 0 END) as pendentes,
+      SUM(CASE WHEN status = 'confirmado' THEN 1 ELSE 0 END) as confirmados,
+      SUM(CASE WHEN appointment_date = ? AND status IN ('pendente', 'confirmado') THEN 1 ELSE 0 END) as hoje,
+      COUNT(*) as total
+    FROM appointments
+  `;
+
+  db.get(query, [today], (err, row) => {
+    if (err) return res.status(500).json({ error: 'Erro ao buscar métricas.' });
+    res.json(row || { pendentes: 0, confirmados: 0, hoje: 0, total: 0 });
+  });
+});
+
+// Retornar a página web principal para qualquer outra rota não encontrada
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`=======================================================`);
+  console.log(`Sistema de Agendamento iniciado com sucesso!`);
+  console.log(`Acesse no navegador: http://localhost:${PORT}`);
+  console.log(`Conta de Admin padrão: admin@negocio.com / Senha: admin123`);
+  console.log(`=======================================================`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Agendamento</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- TOAST / NOTIFICAÇÕES -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- CABEÇALHO -->
+  <header class="navbar">
+    <div class="nav-container">
+      <div class="brand" onclick="navigate('home')">
+        <span class="brand-icon">📅</span>
+        <span class="brand-title">AgendeFácil</span>
+      </div>
+
+      <nav class="nav-links" id="nav-links">
+        <!-- Renderizado dinamicamente pelo JavaScript -->
+      </nav>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="main-container">
+
+    <!-- SEÇÃO: PÁGINA INICIAL / BOAS-VINDAS -->
+    <section id="view-home" class="view-section active">
+      <div class="hero-card">
+        <h1>Agende seu horário com facilidade</h1>
+        <p>Escolha o serviço desejado, confira os horários livres e confirme seu agendamento em poucos segundos. Sem complicação.</p>
+        <div class="hero-buttons">
+          <button class="btn btn-primary" onclick="handleStartBooking()">Agendar Horário Agora</button>
+          <button class="btn btn-secondary" onclick="navigate('services-list')">Ver Serviços e Preços</button>
+        </div>
+      </div>
+
+      <div class="section-title-wrap">
+        <h2>Serviços Disponíveis</h2>
+        <p>Conheça nossos atendimentos com durações e valores transparentes.</p>
+      </div>
+      <div id="home-services-list" class="grid-cards"></div>
+    </section>
+
+    <!-- SEÇÃO: LISTA DE SERVIÇOS PÚBLICA -->
+    <section id="view-services-list" class="view-section">
+      <div class="section-header">
+        <h2>Catálogo de Serviços</h2>
+        <button class="btn btn-outline" onclick="navigate('home')">← Voltar</button>
+      </div>
+      <div id="public-services-container" class="grid-cards"></div>
+    </section>
+
+    <!-- SEÇÃO: FAZER AGENDAMENTO (CLIENTE) -->
+    <section id="view-new-booking" class="view-section">
+      <div class="booking-card">
+        <h2>Novo Agendamento</h2>
+        <p class="subtitle">Selecione o serviço, o dia e o horário que melhor atendem você.</p>
+
+        <form id="form-booking" onsubmit="submitBooking(event)">
+          <!-- Passo 1: Selecionar Serviço -->
+          <div class="form-group">
+            <label for="booking-service">1. Escolha o Serviço</label>
+            <select id="booking-service" class="input-control" required onchange="onBookingServiceChange()">
+              <option value="">Carregando serviços...</option>
+            </select>
+            <div id="service-details-badge" class="service-badge" style="display:none;"></div>
+          </div>
+
+          <!-- Passo 2: Selecionar Data -->
+          <div class="form-group">
+            <label for="booking-date">2. Escolha o Dia</label>
+            <input type="date" id="booking-date" class="input-control" required onchange="fetchAvailableSlots()">
+          </div>
+
+          <!-- Passo 3: Horários Disponíveis -->
+          <div class="form-group">
+            <label>3. Horários Livres Encontrados</label>
+            <div id="slots-loading" class="slots-loading" style="display:none;">Procurando horários disponíveis...</div>
+            <div id="slots-container" class="slots-grid">
+              <p class="text-muted">Selecione uma data para verificar os horários vagos.</p>
+            </div>
+            <input type="hidden" id="selected-slot-time" required>
+          </div>
+
+          <!-- Passo 4: Observações Opcionais -->
+          <div class="form-group">
+            <label for="booking-notes">4. Alguma observação ou pedido especial? (Opcional)</label>
+            <textarea id="booking-notes" class="input-control" rows="2" placeholder="Ex: Preferência por atendimento pontual, dúvida sobre o serviço..."></textarea>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="navigate('home')">Cancelar</button>
+            <button type="submit" id="btn-submit-booking" class="btn btn-primary" disabled>Confirmar Meu Agendamento</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- SEÇÃO: MEUS AGENDAMENTOS (CLIENTE) -->
+    <section id="view-my-bookings" class="view-section">
+      <div class="section-header">
+        <div>
+          <h2>Meus Agendamentos</h2>
+          <p class="subtitle">Acompanhe a situação dos seus horários marcados ou cancele se necessário.</p>
+        </div>
+        <button class="btn btn-primary" onclick="navigate('new-booking')">+ Novo Agendamento</button>
+      </div>
+
+      <div id="my-bookings-list" class="appointments-list">
+        <p class="text-muted">Carregando seus agendamentos...</p>
+      </div>
+    </section>
+
+    <!-- SEÇÃO: PAINEL DO RESPONSÁVEL / ADMIN -->
+    <section id="view-admin" class="view-section">
+      <div class="admin-topbar">
+        <div>
+          <h2>Painel de Controle do Responsável</h2>
+          <p class="subtitle">Gerencie todos os atendimentos, serviços ofertados e seus horários de trabalho.</p>
+        </div>
+      </div>
+
+      <!-- Resumo Rápido -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">Pendentes de Confirmação</span>
+          <span class="stat-value text-warning" id="stat-pendentes">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Confirmados</span>
+          <span class="stat-value text-success" id="stat-confirmados">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Agendados para Hoje</span>
+          <span class="stat-value text-info" id="stat-hoje">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Total Histórico</span>
+          <span class="stat-value" id="stat-total">0</span>
+        </div>
+      </div>
+
+      <!-- Abas de Administração -->
+      <div class="admin-tabs">
+        <button class="tab-btn active" onclick="switchAdminTab('appointments')">📋 Todos os Agendamentos</button>
+        <button class="tab-btn" onclick="switchAdminTab('services')">✂️ Serviços e Preços</button>
+        <button class="tab-btn" onclick="switchAdminTab('hours')">⏰ Horários de Funcionamento</button>
+      </div>
+
+      <!-- ABA 1: GERENCIAR AGENDAMENTOS -->
+      <div id="admin-tab-appointments" class="admin-tab-content active">
+        <div class="filters-row">
+          <div class="filter-item">
+            <label>Filtrar por Status:</label>
+            <select id="admin-filter-status" class="input-control" onchange="loadAdminAppointments()">
+              <option value="todos">Todos os status</option>
+              <option value="pendente" selected>Apenas Pendentes</option>
+              <option value="confirmado">Confirmados</option>
+              <option value="recusado">Recusados</option>
+              <option value="cancelado">Cancelados</option>
+            </select>
+          </div>
+          <div class="filter-item">
+            <label>Filtrar por Data:</label>
+            <input type="date" id="admin-filter-date" class="input-control" onchange="loadAdminAppointments()">
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="clearAdminFilters()">Limpar Filtros</button>
+        </div>
+
+        <div id="admin-appointments-list" class="appointments-table-container">
+          <!-- Tabela de agendamentos preenchida via JS -->
+        </div>
+      </div>
+
+      <!-- ABA 2: GERENCIAR SERVIÇOS -->
+      <div id="admin-tab-services" class="admin-tab-content">
+        <div class="section-header">
+          <h3>Serviços Cadastrados</h3>
+          <button class="btn btn-primary btn-sm" onclick="openServiceModal()">+ Cadastrar Novo Serviço</button>
+        </div>
+        <div id="admin-services-list" class="grid-cards"></div>
+      </div>
+
+      <!-- ABA 3: HORÁRIOS DE FUNCIONAMENTO -->
+      <div id="admin-tab-hours" class="admin-tab-content">
+        <div class="card p-4">
+          <h3>Definir Dias e Horários de Atendimento</h3>
+          <p class="subtitle mb-4">Escolha quais dias seu negócio abre, o horário de abertura/fechamento e o intervalo padrão de cada atendimento.</p>
+          
+          <form id="form-business-hours" onsubmit="saveBusinessHours(event)">
+            <div id="business-hours-rows" class="hours-rows-container">
+              <!-- Renderizado via JS -->
+            </div>
+            <div class="mt-4">
+              <button type="submit" class="btn btn-primary">Salvar Horários de Atendimento</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: ENTRAR / CRIAR CONTA -->
+  <div id="modal-auth" class="modal-backdrop">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeAuthModal()">✕</button>
+
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab-btn active" onclick="toggleAuthMode('login')">Entrar na Conta</button>
+        <button id="auth-tab-register" class="auth-tab-btn" onclick="toggleAuthMode('register')">Criar Nova Conta</button>
+      </div>
+
+      <!-- Formulário de Login -->
+      <form id="form-login" onsubmit="submitLogin(event)">
+        <div class="form-group">
+          <label for="login-email">Seu E-mail</label>
+          <input type="email" id="login-email" class="input-control" required placeholder="exemplo@email.com">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Sua Senha</label>
+          <input type="password" id="login-password" class="input-control" required placeholder="Digite sua senha">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+      </form>
+
+      <!-- Formulário de Cadastro -->
+      <form id="form-register" style="display:none;" onsubmit="submitRegister(event)">
+        <div class="form-group">
+          <label for="register-name">Seu Nome Completo</label>
+          <input type="text" id="register-name" class="input-control" required placeholder="Ex: Maria da Silva">
+        </div>
+        <div class="form-group">
+          <label for="register-phone">WhatsApp / Telefone</label>
+          <input type="tel" id="register-phone" class="input-control" required placeholder="Ex: (11) 99999-9999">
+        </div>
+        <div class="form-group">
+          <label for="register-email">Seu E-mail</label>
+          <input type="email" id="register-email" class="input-control" required placeholder="seu@email.com">
+        </div>
+        <div class="form-group">
+          <label for="register-password">Crie uma Senha</label>
+          <input type="password" id="register-password" class="input-control" required minlength="4" placeholder="Mínimo 4 caracteres">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Cadastrar e Continuar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: CADASTRAR / EDITAR SERVIÇO -->
+  <div id="modal-service" class="modal-backdrop">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeServiceModal()">✕</button>
+      <h3 id="service-modal-title">Cadastrar Novo Serviço</h3>
+
+      <form id="form-save-service" onsubmit="saveService(event)">
+        <input type="hidden" id="service-id">
+        <div class="form-group">
+          <label for="service-name">Nome do Serviço</label>
+          <input type="text" id="service-name" class="input-control" required placeholder="Ex: Corte de Cabelo, Limpeza, etc.">
+        </div>
+        <div class="form-group">
+          <label for="service-description">Descrição Breve</label>
+          <textarea id="service-description" class="input-control" rows="2" placeholder="Descreva os benefícios e o que está incluso"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="service-duration">Duração (Minutos)</label>
+            <input type="number" id="service-duration" class="input-control" min="5" step="5" required value="30">
+          </div>
+          <div class="form-group">
+            <label for="service-price">Preço (R$)</label>
+            <input type="number" id="service-price" class="input-control" min="0" step="0.50" required placeholder="0.00">
+          </div>
+        </div>
+        <div class="form-group" id="service-status-toggle">
+          <label class="checkbox-label">
+            <input type="checkbox" id="service-active" checked>
+            <span>Serviço Ativo e Visível para Agendamento</span>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeServiceModal()">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar Serviço</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+  --slate-50: #f8fafc;
+  --white: #ffffff;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--slate-50);
+  color: var(--slate-800);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* NAVBAR */
+.navbar {
+  background: var(--white);
+  border-bottom: 1px solid var(--slate-200);
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.brand-icon {
+  font-size: 1.5rem;
+}
+
+.brand-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.5px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--slate-700);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-btn:hover {
+  background-color: var(--slate-100);
+  color: var(--primary);
+}
+
+.user-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: var(--slate-100);
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.admin-tag {
+  background-color: #fef3c7;
+  color: #b45309;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* MAIN LAYOUT */
+.main-container {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+  flex: 1;
+}
+
+.view-section {
+  display: none;
+  animation: fadeIn 0.25s ease;
+}
+
+.view-section.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* HERO SECTION */
+.hero-card {
+  background: linear-gradient(135deg, #1e3a8a, var(--primary));
+  color: var(--white);
+  padding: 3rem 2rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+
+.hero-card h1 {
+  font-size: 2.2rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.5px;
+}
+
+.hero-card p {
+  font-size: 1.1rem;
+  opacity: 0.9;
+  max-width: 600px;
+  margin: 0 auto 1.5rem auto;
+}
+
+.hero-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* BUTTONS */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--white);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+.btn-primary:disabled {
+  background-color: var(--slate-300);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--white);
+  color: var(--slate-700);
+  border-color: var(--slate-300);
+}
+
+.btn-secondary:hover {
+  background-color: var(--slate-100);
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.btn-outline:hover {
+  background-color: var(--primary-light);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-danger {
+  background-color: #fee2e2;
+  color: var(--danger);
+  border-color: #fca5a5;
+}
+
+.btn-danger:hover {
+  background-color: #fecaca;
+}
+
+.btn-success {
+  background-color: #dcfce7;
+  color: var(--success);
+  border-color: #86efac;
+}
+
+.btn-success:hover {
+  background-color: #bbf7d0;
+}
+
+/* SECTION HEADERS */
+.section-title-wrap {
+  margin-bottom: 1.5rem;
+}
+
+.section-title-wrap h2, .section-header h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--slate-900);
+}
+
+.section-title-wrap p, .subtitle {
+  color: var(--slate-500);
+  margin-top: 0.25rem;
+  font-size: 0.95rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/* CARDS GRID */
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.service-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.service-card h3 {
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+  color: var(--slate-900);
+}
+
+.service-desc {
+  color: var(--slate-600);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  flex-grow: 1;
+}
+
+.service-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--slate-100);
+  padding-top: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.service-price {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--slate-900);
+}
+
+.service-duration {
+  font-size: 0.85rem;
+  color: var(--slate-500);
+  background: var(--slate-100);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+/* BOOKING FORM */
+.booking-card {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  box-shadow: var(--shadow-sm);
+  max-width: 650px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: var(--slate-700);
+}
+
+.input-control {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.95rem;
+  border: 1px solid var(--slate-300);
+  border-radius: var(--radius-md);
+  background-color: var(--white);
+  color: var(--slate-800);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-control:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.service-badge {
+  background-color: var(--primary-light);
+  color: var(--primary);
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.slot-btn {
+  padding: 0.6rem 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: 1px solid var(--slate-300);
+  background: var(--white);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.slot-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.slot-btn.selected {
+  background: var(--primary);
+  color: var(--white);
+  border-color: var(--primary);
+}
+
+.slots-loading {
+  font-size: 0.9rem;
+  color: var(--slate-500);
+  padding: 0.5rem 0;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+/* LIST OF APPOINTMENTS */
+.appointments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.appointment-item {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.appointment-info h4 {
+  font-size: 1.1rem;
+  color: var(--slate-900);
+}
+
+.appointment-info p {
+  color: var(--slate-500);
+  font-size: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.appointment-status {
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-pendente {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.status-confirmado {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.status-recusado {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.status-cancelado {
+  background-color: var(--slate-200);
+  color: var(--slate-600);
+}
+
+/* ADMIN PANEL */
+.admin-topbar {
+  margin-bottom: 1.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.stat-card {
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+  padding: 1.2rem;
+  text-align: center;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--slate-500);
+  font-weight: 500;
+  margin-bottom: 0.3rem;
+}
+
+.stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--slate-800);
+}
+
+.text-warning { color: var(--warning); }
+.text-success { color: var(--success); }
+.text-info { color: var(--primary); }
+
+.admin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--slate-300);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  padding: 0.75rem 1.2rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--slate-500);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--primary);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+.admin-tab-content {
+  display: none;
+}
+
+.admin-tab-content.active {
+  display: block;
+}
+
+.filters-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+  background: var(--white);
+  padding: 1rem;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.filter-item label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--slate-600);
+}
+
+/* TABLE */
+.appointments-table-container {
+  overflow-x: auto;
+  background: var(--white);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-md);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.data-table th, .data-table td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--slate-200);
+}
+
+.data-table th {
+  background: var(--slate-100);
+  color: var(--slate-700);
+  font-weight: 600;
+}
+
+.actions-cell {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* HOURS CONFIG ROWS */
+.hours-rows-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hour-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  flex-wrap: wrap;
+}
+
+.hour-row-day {
+  width: 130px;
+  font-weight: 600;
+}
+
+.hour-row-times {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* MODAL */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal-box {
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 440px;
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  animation: modalScale 0.2s ease;
+}
+
+@keyframes modalScale {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--slate-400);
+}
+
+.modal-close:hover {
+  color: var(--slate-800);
+}
+
+.auth-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--slate-200);
+  margin-bottom: 1.5rem;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0.65rem;
+  font-weight: 600;
+  color: var(--slate-400);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.auth-tab-btn.active {
+  color: var(--primary);
+  border-bottom: 2px solid var(--primary);
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* TOASTS */
+.toast-container {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toast {
+  padding: 0.8rem 1.25rem;
+  border-radius: var(--radius-md);
+  color: var(--white);
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  animation: toastIn 0.25s ease;
+}
+
+@keyframes toastIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.toast-success { background-color: var(--success); }
+.toast-error { background-color: var(--danger); }
+.toast-info { background-color: var(--primary); }
+
+.text-muted {
+  color: var(--slate-500);
+  font-size: 0.9rem;
+}
+
+/* RESPONSIVE */
+@media (max-width: 640px) {
+  .hero-card {
+    padding: 2rem 1.25rem;
+  }
+  .hero-card h1 {
+    font-size: 1.6rem;
+  }
+  .booking-card {
+    padding: 1.25rem;
+  }
+  .nav-container {
+    padding: 0.75rem 1rem;
+  }
+  .hour-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+=== public/app.js ===
+// ESTADO DA APLICAÇÃO
+let currentUser = null;
+let currentServices = [];
+let currentBusinessHours = [];
+let authMode = 'login'; // 'login' ou 'register'
+
+// INICIALIZAÇÃO
+document.addEventListener('DOMContentLoaded', async () => {
+  // Limitar o input de data para hoje em diante
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dateInput = document.getElementById('booking-date');
+  if (dateInput) {
+    dateInput.min = todayStr;
+    dateInput.value = todayStr;
+  }
+
+  await checkAuth();
+  await loadServices();
+  await loadBusinessHours();
+
+  // Se o usuário já selecionou a data padrão, carregar slots
+  if (dateInput) {
+    fetchAvailableSlots();
+  }
+});
+
+// SISTEMA DE NOTIFICAÇÕES (TOAST)
+function showToast(message, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-10px)';
+    toast.style.transition = 'all 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3500);
+}
+
+// NAVEGAÇÃO ENTRE TELAS
+function navigate(viewName) {
+  const sections = document.querySelectorAll('.view-section');
+  sections.forEach(sec => sec.classList.remove('active'));
+
+  const target = document.getElementById(`view-${viewName}`);
+  if (target) {
+    target.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  if (viewName === 'my-bookings') {
+    loadMyBookings();
+  } else if (viewName === 'admin') {
+    loadAdminStats();
+    loadAdminAppointments();
+    renderAdminServices();
+    renderBusinessHoursForm();
+  } else if (viewName === 'services-list') {
+    renderPublicServices();
+  }
+}
+
+// ATUALIZAÇÃO DA BARRA DE NAVEGAÇÃO CONFORME ESTADO
+function updateNavbar() {
+  const navContainer = document.getElementById('nav-links');
+
+  if (!currentUser) {
+    navContainer.innerHTML = `
+      <button class="nav-btn" onclick="navigate('home')">Início</button>
+      <button class="nav-btn" onclick="navigate('services-list')">Serviços</button>
+      <button class="btn btn-primary btn-sm" onclick="openAuthModal('login')">Entrar / Cadastrar</button>
+    `;
+  } else if (currentUser.role === 'admin') {
+    navContainer.innerHTML = `
+      <div class="user-badge">
+        <span>${currentUser.name.split(' ')[0]}</span>
+        <span class="admin-tag">Responsável</span>
+      </div>
+      <button class="nav-btn" onclick="navigate('admin')">Painel Geral</button>
+      <button class="nav-btn" onclick="navigate('home')">Ver Site</button>
+      <button class="btn btn-secondary btn-sm" onclick="logout()">Sair</button>
+    `;
+  } else {
+    navContainer.innerHTML = `
+      <div class="user-badge">
+        <span>Olá, ${currentUser.name.split(' ')[0]}</span>
+      </div>
+      <button class="nav-btn" onclick="navigate('new-booking')">+ Agendar</button>
+      <button class="nav-btn" onclick="navigate('my-bookings')">Meus Horários</button>
+      <button class="btn btn-secondary btn-sm" onclick="logout()">Sair</button>
+    `;
+  }
+}
+
+// VERIFICAR SESSÃO NO SERVIDOR
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    currentUser = data.authenticated ? data.user : null;
+    updateNavbar();
+  } catch (err) {
+    console.error('Erro ao verificar autenticação:', err);
+  }
+}
+
+// MODAL DE AUTENTICAÇÃO
+function openAuthModal(mode = 'login') {
+  toggleAuthMode(mode);
+  document.getElementById('modal-auth').classList.add('open');
+}
+
+function closeAuthModal() {
+  document.getElementById('modal-auth').classList.remove('open');
+}
+
+function toggleAuthMode(mode) {
+  authMode = mode;
+  const loginTab = document.getElementById('auth-tab-login');
+  const regTab = document.getElementById('auth-tab-register');
+  const loginForm = document.getElementById('form-login');
+  const regForm = document.getElementById('form-register');
+
+  if (mode === 'login') {
+    loginTab.classList.add('active');
+    regTab.classList.remove('active');
+    loginForm.style.display = 'block';
+    regForm.style.display = 'none';
+  } else {
+    loginTab.classList.remove('active');
+    regTab.classList.add('active');
+    loginForm.style.display = 'none';
+    regForm.style.display = 'block';
+  }
+}
+
+async function submitLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao realizar login', 'error');
+      return;
+    }
+
+    currentUser = data.user;
+    updateNavbar();
+    closeAuthModal();
+    showToast(`Bem-vindo(a) de volta, ${currentUser.name}!`, 'success');
+
+    if (currentUser.role === 'admin') {
+      navigate('admin');
+    } else {
+      navigate('my-bookings');
+    }
+  } catch (err) {
+    showToast('Falha na comunicação com o servidor.', 'error');
+  }
+}
+
+async function submitRegister(e) {
+  e.preventDefault();
+  const name = document.getElementById('register-name').value;
+  const phone = document.getElementById('register-phone').value;
+  const email = document.getElementById('register-email').value;
+  const password = document.getElementById('register-password').value;
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, email, password })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao criar conta', 'error');
+      return;
+    }
+
+    currentUser = data.user;
+    updateNavbar();
+    closeAuthModal();
+    showToast('Conta criada com sucesso!', 'success');
+    navigate('new-booking');
+  } catch (err) {
+    showToast('Falha na conexão ao criar conta.', 'error');
+  }
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    currentUser = null;
+    updateNavbar();
+    showToast('Você saiu da sua conta.', 'info');
+    navigate('home');
+  } catch (err) {
+    showToast('Erro ao sair.', 'error');
+  }
+}
+
+function handleStartBooking(serviceId = null) {
+  if (!currentUser) {
+    showToast('Por favor, faça login ou cadastre-se para agendar.', 'info');
+    openAuthModal('login');
+    return;
+  }
+  navigate('new-booking');
+  if (serviceId) {
+    const select = document.getElementById('booking-service');
+    select.value = serviceId;
+    onBookingServiceChange();
+  }
+}
+
+// ================= GESTÃO DE SERVIÇOS =================
+
+async function loadServices() {
+  try {
+    const res = await fetch('/api/services');
+    currentServices = await res.json();
+
+    renderHomeServices();
+    renderPublicServices();
+    populateBookingServiceSelect();
+  } catch (err) {
+    console.error('Erro ao carregar serviços:', err);
+  }
+}
+
+function renderHomeServices() {
+  const container = document.getElementById('home-services-list');
+  if (!container) return;
+
+  container.innerHTML = currentServices.map(s => `
+    <div class="card service-card">
+      <div>
+        <h3>${escapeHtml(s.name)}</h3>
+        <p class="service-desc">${escapeHtml(s.description || 'Sem descrição informada.')}</p>
+      </div>
+      <div>
+        <div class="service-meta">
+          <span class="service-price">R$ ${Number(s.price).toFixed(2).replace('.', ',')}</span>
+          <span class="service-duration">⏱ ${s.duration_minutes} min</span>
+        </div>
+        <button class="btn btn-outline btn-block" onclick="handleStartBooking(${s.id})">Agendar Este</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPublicServices() {
+  const container = document.getElementById('public-services-container');
+  if (!container) return;
+
+  container.innerHTML = currentServices.map(s => `
+    <div class="card service-card">
+      <div>
+        <h3>${escapeHtml(s.name)}</h3>
+        <p class="service-desc">${escapeHtml(s.description || 'Sem descrição informada.')}</p>
+      </div>
+      <div>
+        <div class="service-meta">
+          <span class="service-price">R$ ${Number(s.price).toFixed(2).replace('.', ',')}</span>
+          <span class="service-duration">⏱ ${s.duration_minutes} min</span>
+        </div>
+        <button class="btn btn-primary btn-block" onclick="handleStartBooking(${s.id})">Agendar Horário</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function populateBookingServiceSelect() {
+  const select = document.getElementById('booking-service');
+  if (!select) return;
+
+  if (currentServices.length === 0) {
+    select.innerHTML = '<option value="">Nenhum serviço disponível no momento</option>';
+    return;
+  }
+
+  select.innerHTML = '<option value="">Selecione um serviço...</option>' +
+    currentServices.map(s => `
+      <option value="${s.id}" data-duration="${s.duration_minutes}" data-price="${s.price}">
+        ${escapeHtml(s.name)} — R$ ${Number(s.price).toFixed(2).replace('.', ',')} (${s.duration_minutes} min)
+      </option>
+    `).join('');
+}
+
+function onBookingServiceChange() {
+  const select = document.getElementById('booking-service');
+  const badge = document.getElementById('service-details-badge');
+  const selected = select.options[select.selectedIndex];
+
+  if (select.value) {
+    badge.style.display = 'block';
+    badge.textContent = `Duração aproximada: ${selected.dataset.duration} minutos | Valor: R$ ${Number(selected.dataset.price).toFixed(2).replace('.', ',')}`;
+  } else {
+    badge.style.display = 'none';
+  }
+
+  fetchAvailableSlots();
+}
+
+// ================= HORÁRIOS & CONSULTA DE SLOTS =================
+
+async function loadBusinessHours() {
+  try {
+    const res = await fetch('/api/business-hours');
+    currentBusinessHours = await res.json();
+  } catch (err) {
+    console.error('Erro ao buscar horários:', err);
+  }
+}
+
+async function fetchAvailableSlots() {
+  const dateInput = document.getElementById('booking-date');
+  const serviceSelect = document.getElementById('booking-service');
+  const slotsContainer = document.getElementById('slots-container');
+  const loading = document.getElementById('slots-loading');
+  const submitBtn = document.getElementById('btn-submit-booking');
+  const selectedSlotInput = document.getElementById('selected-slot-time');
+
+  selectedSlotInput.value = '';
+  submitBtn.disabled = true;
+
+  if (!dateInput.value) {
+    slotsContainer.innerHTML = '<p class="text-muted">Selecione uma data para ver os horários.</p>';
+    return;
+  }
+
+  loading.style.display = 'block';
+  slotsContainer.innerHTML = '';
+
+  try {
+    const res = await fetch(`/api/available-slots?date=${dateInput.value}&service_id=${serviceSelect.value}`);
+    const data = await res.json();
+    loading.style.display = 'none';
+
+    if (data.slots && data.slots.length > 0) {
+      slotsContainer.innerHTML = data.slots.map(time => `
+        <button type="button" class="slot-btn" onclick="selectSlot(this, '${time}')">${time}</button>
+      `).join('');
+    } else {
+      slotsContainer.innerHTML = `<p class="text-muted">${data.message || 'Nenhum horário disponível para este dia.'}</p>`;
+    }
+  } catch (err) {
+    loading.style.display = 'none';
+    slotsContainer.innerHTML = '<p class="text-muted">Erro ao carregar horários livres.</p>';
+  }
+}
+
+function selectSlot(button, time) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+  button.classList.add('selected');
+  document.getElementById('selected-slot-time').value = time;
+  document.getElementById('btn-submit-booking').disabled = false;
+}
+
+// ================= ENVIAR AGENDAMENTO (CLIENTE) =================
+
+async function submitBooking(e) {
+  e.preventDefault();
+  if (!currentUser) {
+    showToast('Você precisa entrar na sua conta para confirmar.', 'error');
+    openAuthModal('login');
+    return;
+  }
+
+  const service_id = document.getElementById('booking-service').value;
+  const appointment_date = document.getElementById('booking-date').value;
+  const appointment_time = document.getElementById('selected-slot-time').value;
+  const notes = document.getElementById('booking-notes').value;
+
+  if (!service_id || !appointment_date || !appointment_time) {
+    showToast('Por favor, escolha o serviço, o dia e o horário.', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/appointments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ service_id, appointment_date, appointment_time, notes })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao realizar agendamento.', 'error');
+      fetchAvailableSlots();
+      return;
+    }
+
+    showToast('Agendamento realizado com sucesso!', 'success');
+    document.getElementById('form-booking').reset();
+    document.getElementById('selected-slot-time').value = '';
+    document.getElementById('service-details-badge').style.display = 'none';
+    navigate('my-bookings');
+  } catch (err) {
+    showToast('Erro de conexão com o servidor.', 'error');
+  }
+}
+
+// ================= LISTAGEM CLIENTE =================
+
+async function loadMyBookings() {
+  const container = document.getElementById('my-bookings-list');
+  container.innerHTML = '<p class="text-muted">Buscando seus agendamentos...</p>';
+
+  try {
+    const res = await fetch('/api/appointments/my');
+    const list = await res.json();
+
+    if (!list || list.length === 0) {
+      container.innerHTML = `
+        <div class="card text-center p-4">
+          <p class="text-muted">Você ainda não tem nenhum horário agendado.</p>
+          <button class="btn btn-primary btn-sm mt-3" onclick="navigate('new-booking')">Agendar Agora</button>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = list.map(item => {
+      const formattedDate = formatDateBR(item.appointment_date);
+      const canCancel = item.status === 'pendente' || item.status === 'confirmado';
+
+      return `
+        <div class="appointment-item">
+          <div class="appointment-info">
+            <h4>${escapeHtml(item.service_name)}</h4>
+            <p>🗓 <strong>${formattedDate}</strong> às <strong>${item.appointment_time}</strong> (${item.duration_minutes} min)</p>
+            <p>Valor: R$ ${Number(item.price).toFixed(2).replace('.', ',')} ${item.notes ? `| <em>"${escapeHtml(item.notes)}"</em>` : ''}</p>
+          </div>
+          <div style="display:flex; align-items:center; gap:0.75rem;">
+            <span class="appointment-status status-${item.status}">${item.status}</span>
+            ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="cancelAppointment(${item.id})">Cancelar</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = '<p class="text-muted">Erro ao carregar agendamentos.</p>';
+  }
+}
+
+async function cancelAppointment(id) {
+  if (!confirm('Tem certeza que deseja cancelar este agendamento?')) return;
+
+  try {
+    const res = await fetch(`/api/appointments/${id}/cancel`, { method: 'PATCH' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao cancelar.', 'error');
+      return;
+    }
+
+    showToast('Agendamento cancelado com sucesso.', 'info');
+    if (currentUser.role === 'admin') {
+      loadAdminAppointments();
+      loadAdminStats();
+    } else {
+      loadMyBookings();
+    }
+  } catch (err) {
+    showToast('Erro ao solicitar cancelamento.', 'error');
+  }
+}
+
+// ================= PAINEL DO RESPONSÁVEL (ADMIN) =================
+
+function switchAdminTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+
+  event.currentTarget.classList.add('active');
+  document.getElementById(`admin-tab-${tabName}`).classList.add('active');
+}
+
+async function loadAdminStats() {
+  try {
+    const res = await fetch('/api/admin/stats');
+    const data = await res.json();
+    document.getElementById('stat-pendentes').textContent = data.pendentes || 0;
+    document.getElementById('stat-confirmados').textContent = data.confirmados || 0;
+    document.getElementById('stat-hoje').textContent = data.hoje || 0;
+    document.getElementById('stat-total').textContent = data.total || 0;
+  } catch (err) {
+    console.error('Erro ao carregar estatísticas:', err);
+  }
+}
+
+async function loadAdminAppointments() {
+  const status = document.getElementById('admin-filter-status').value;
+  const date = document.getElementById('admin-filter-date').value;
+  const container = document.getElementById('admin-appointments-list');
+
+  container.innerHTML = '<p class="p-3 text-muted">Atualizando agendamentos...</p>';
+
+  try {
+    const res = await fetch(`/api/admin/appointments?status=${status}&date=${date}`);
+    const rows = await res.json();
+
+    if (rows.length === 0) {
+      container.innerHTML = '<p class="p-3 text-muted">Nenhum agendamento encontrado para este filtro.</p>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Telefone / Contato</th>
+            <th>Serviço</th>
+            <th>Data e Horário</th>
+            <th>Status</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(item => `
+            <tr>
+              <td>
+                <strong>${escapeHtml(item.client_name)}</strong>
+                ${item.notes ? `<div style="font-size:0.8rem; color:#64748b;">Obs: ${escapeHtml(item.notes)}</div>` : ''}
+              </td>
+              <td>${escapeHtml(item.client_phone)}<br><small style="color:#64748b;">${escapeHtml(item.client_email)}</small></td>
+              <td>${escapeHtml(item.service_name)} (R$ ${Number(item.price).toFixed(2).replace('.', ',')})</td>
+              <td><strong>${formatDateBR(item.appointment_date)}</strong><br>às ${item.appointment_time}</td>
+              <td><span class="appointment-status status-${item.status}">${item.status}</span></td>
+              <td>
+                <div class="actions-cell">
+                  ${item.status === 'pendente' ? `
+                    <button class="btn btn-success btn-sm" title="Confirmar Agendamento" onclick="setAppointmentStatus(${item.id}, 'confirmado')">Aprovar</button>
+                    <button class="btn btn-danger btn-sm" title="Recusar Agendamento" onclick="setAppointmentStatus(${item.id}, 'recusado')">Recusar</button>
+                  ` : ''}
+                  ${item.status === 'confirmado' ? `
+                    <button class="btn btn-secondary btn-sm" onclick="setAppointmentStatus(${item.id}, 'concluido')">Concluir</button>
+                    <button class="btn btn-danger btn-sm" onclick="cancelAppointment(${item.id})">Cancelar</button>
+                  ` : ''}
+                  ${(item.status === 'recusado' || item.status === 'cancelado' || item.status === 'concluido') ? `
+                    <span style="font-size:0.85rem; color:#94a3b8;">Finalizado</span>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    container.innerHTML = '<p class="p-3 text-muted">Erro ao carregar agendamentos.</p>';
+  }
+}
+
+async function setAppointmentStatus(id, newStatus) {
+  try {
+    const res = await fetch(`/api/admin/appointments/${id}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao mudar status.', 'error');
+      return;
+    }
+
+    showToast(`Agendamento marcado como: ${newStatus}`, 'success');
+    loadAdminAppointments();
+    loadAdminStats();
+  } catch (err) {
+    showToast('Falha na comunicação com o servidor.', 'error');
+  }
+}
+
+function clearAdminFilters() {
+  document.getElementById('admin-filter-status').value = 'todos';
+  document.getElementById('admin-filter-date').value = '';
+  loadAdminAppointments();
+}
+
+// ================= GESTÃO DE SERVIÇOS NO ADMIN =================
+
+function renderAdminServices() {
+  const container = document.getElementById('admin-services-list');
+  if (!container) return;
+
+  container.innerHTML = currentServices.map(s => `
+    <div class="card service-card">
+      <div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <h3>${escapeHtml(s.name)}</h3>
+          <span style="font-size:0.75rem; padding:2px 6px; border-radius:4px; ${s.active ? 'background:#dcfce7; color:#15803d;' : 'background:#fee2e2; color:#b91c1c;'}">
+            ${s.active ? 'Ativo' : 'Inativo'}
+          </span>
+        </div>
+        <p class="service-desc">${escapeHtml(s.description || 'Sem descrição')}</p>
+      </div>
+      <div>
+        <div class="service-meta">
+          <span class="service-price">R$ ${Number(s.price).toFixed(2).replace('.', ',')}</span>
+          <span class="service-duration">${s.duration_minutes} min</span>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="openServiceModal(${s.id})">Editar</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteService(${s.id})">Excluir</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openServiceModal(serviceId = null) {
+  const form = document.getElementById('form-save-service');
+  form.reset();
+
+  const idInput = document.getElementById('service-id');
+  const title = document.getElementById('service-modal-title');
+  const activeToggle = document.getElementById('service-status-toggle');
+
+  if (serviceId) {
+    const s = currentServices.find(item => item.id === serviceId);
+    if (!s) return;
+    idInput.value = s.id;
+    title.textContent = 'Editar Serviço';
+    document.getElementById('service-name').value = s.name;
+    document.getElementById('service-description').value = s.description;
+    document.getElementById('service-duration').value = s.duration_minutes;
+    document.getElementById('service-price').value = s.price;
+    document.getElementById('service-active').checked = s.active === 1;
+    activeToggle.style.display = 'block';
+  } else {
+    idInput.value = '';
+    title.textContent = 'Cadastrar Novo Serviço';
+    document.getElementById('service-active').checked = true;
+    activeToggle.style.display = 'none';
+  }
+
+  document.getElementById('modal-service').classList.add('open');
+}
+
+function closeServiceModal() {
+  document.getElementById('modal-service').classList.remove('open');
+}
+
+async function saveService(e) {
+  e.preventDefault();
+  const id = document.getElementById('service-id').value;
+  const name = document.getElementById('service-name').value;
+  const description = document.getElementById('service-description').value;
+  const duration_minutes = document.getElementById('service-duration').value;
+  const price = document.getElementById('service-price').value;
+  const active = document.getElementById('service-active').checked ? 1 : 0;
+
+  const url = id ? `/api/services/${id}` : '/api/services';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, duration_minutes, price, active })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao salvar serviço.', 'error');
+      return;
+    }
+
+    showToast('Serviço gravado com sucesso!', 'success');
+    closeServiceModal();
+    await loadServices();
+    renderAdminServices();
+  } catch (err) {
+    showToast('Erro ao conectar ao servidor.', 'error');
+  }
+}
+
+async function deleteService(id) {
+  if (!confirm('Deseja realmente excluir este serviço do catálogo?')) return;
+
+  try {
+    const res = await fetch(`/api/services/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao excluir.', 'error');
+      return;
+    }
+
+    showToast('Serviço excluído.', 'info');
+    await loadServices();
+    renderAdminServices();
+  } catch (err) {
+    showToast('Erro ao excluir serviço.', 'error');
+  }
+}
+
+// ================= GESTÃO DE HORÁRIOS DE ATENDIMENTO =================
+
+function renderBusinessHoursForm() {
+  const container = document.getElementById('business-hours-rows');
+  if (!container) return;
+
+  container.innerHTML = currentBusinessHours.map(d => `
+    <div class="hour-row" data-day="${d.day_of_week}">
+      <div class="hour-row-day">
+        <label class="checkbox-label">
+          <input type="checkbox" class="hour-is-open" ${d.is_open ? 'checked' : ''}>
+          <span>${d.day_name}</span>
+        </label>
+      </div>
+
+      <div class="hour-row-times">
+        <label style="font-size:0.8rem; color:#64748b;">Das</label>
+        <input type="time" class="input-control hour-start" value="${d.start_time}" style="width:115px; padding:0.4rem;">
+        <label style="font-size:0.8rem; color:#64748b;">às</label>
+        <input type="time" class="input-control hour-end" value="${d.end_time}" style="width:115px; padding:0.4rem;">
+      </div>
+
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <label style="font-size:0.8rem; color:#64748b;">Intervalo (min):</label>
+        <input type="number" class="input-control hour-interval" value="${d.slot_interval || 30}" min="10" step="5" style="width:75px; padding:0.4rem;">
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveBusinessHours(e) {
+  e.preventDefault();
+  const rows = document.querySelectorAll('.hour-row');
+  const schedule = [];
+
+  rows.forEach(row => {
+    schedule.push({
+      day_of_week: parseInt(row.dataset.day, 10),
+      is_open: row.querySelector('.hour-is-open').checked ? 1 : 0,
+      start_time: row.querySelector('.hour-start').value,
+      end_time: row.querySelector('.hour-end').value,
+      slot_interval: parseInt(row.querySelector('.hour-interval').value, 10) || 30
+    });
+  });
+
+  try {
+    const res = await fetch('/api/business-hours', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedule })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showToast(data.error || 'Erro ao salvar expediente.', 'error');
+      return;
+    }
+
+    showToast('Horários de funcionamento atualizados com sucesso!', 'success');
+    await loadBusinessHours();
+  } catch (err) {
+    showToast('Falha ao gravar horários.', 'error');
+  }
+}
+
+// UTILITÁRIOS
+function formatDateBR(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+=== README.md ===
+# Sistema de Agendamento de Serviços
+
+Sistema completo, moderno e pronto para funcionar de agendamento de serviços online.
+Ele roda direto no seu computador ou servidor web, com banco de dados próprio incluso e sem depender de contas ou integrações de terceiros.
+
+---
+
+## 🚀 Como instalar e colocar para funcionar (Passo a Passo)
+
+### 1. Pré-requisito
+Você só precisa ter o **Node.js** instalado no seu computador.
+* Se ainda não tiver, baixe e instale a versão LTS oficial em: [https://nodejs.org](https://nodejs.org) (basta avançar e concluir a instalação normalmente).
+
+---
+
+### 2. Baixar as dependências e iniciar o site
+
+Abra a pasta do projeto no Terminal (ou no Prompt de Comando / PowerShell do Windows) e execute apenas estes 2 comandos:
+
+```bash
+npm install
+```
+
+Quando a instalação terminar, inicie o sistema com:
+
+```bash
+npm start
+```
+
+Pronto! O site já está funcionando.
+
+---
+
+### 3. Acessar o site
+
+Abra qualquer navegador (Chrome, Edge, Safari, Firefox, celular ou computador) e digite o endereço:
+
+👉 **http://localhost:3000**
+
+---
+
+## 🔑 Contas de Acesso
+
+O sistema já cria automaticamente no primeiro início a conta do responsável:
+
+* **E-mail do Responsável:** `admin@negocio.com`
+* **Senha:** `admin123`
+
+> Os seus clientes podem clicar no botão **"Entrar / Cadastrar"** no topo da página e criar a própria conta em segundos informando apenas nome, telefone/WhatsApp, e-mail e senha.
+
+---
+
+## 🌟 O que o sistema faz
+
+### Para os Clientes:
+1. **Ver Serviços:** Acessar o catálogo com nome, descrição, duração e preço de cada serviço.
+2. **Consultar Horários Livres:** Escolher um serviço e uma data. O sistema calcula automaticamente e exibe apenas os horários em que o negócio está aberto e que ainda não foram reservados por ninguém.
+3. **Fazer o Agendamento:** Clicar no horário desejado e confirmar a reserva.
+4. **Meus Horários:** Ver todos os agendamentos já feitos, acompanhar o status (Pendente, Confirmado, Recusado, Cancelado) e cancelar caso tenha um imprevisto.
+
+### Para o Responsável pelo Negócio (Painel do Administrador):
+1. **Painel Geral com Indicadores:** Quantidade de agendamentos pendentes, confirmados, agendados para hoje e total acumulado.
+2. **Gerenciamento de Agendamentos:**
+   * Ver todos os agendamentos de todos os clientes com nome, telefone e observações.
+   * Botões para **Aprovar** ou **Recusar** agendamentos pendentes com 1 clique.
+   * Filtros por status e por dia.
+3. **Gerenciamento de Serviços:**
+   * Cadastrar novos serviços.
+   * Alterar nome, preço, duração em minutos e descrição.
+   * Desativar ou excluir serviços.
+4. **Horários de Funcionamento:**
+   * Ativar ou desativar os dias da semana em que você atende.
+   * Definir o horário de início e término de cada dia (ex: 08:00 às 18:00).
+   * Definir a duração dos intervalos de horário (ex: 30 em 30 minutos).
+
+---
+
+## 💾 Onde as informações ficam salvas?
+
+Tudo fica salvo em um banco de dados próprio (`agendamentos.db`) que é gerado na própria pasta do projeto. 
+* Nada é perdido quando você desliga o computador ou reinicia o servidor.
+* Se um cliente marcar um horário pelo celular, o responsável vê no computador imediatamente.
+* Não é preciso pagar bancos de dados em nuvem nem criar contas externas.
+
+---
+
+## 🌐 Como colocar na internet para clientes reais usarem?
+
+Basta subir esta mesma pasta para qualquer serviço de hospedagem simples de Node.js gratuito ou de baixo custo, como:
+* **Render.com** (Basta conectar e clicar em Deploy)
+* **Railway.app**
+* Qualquer servidor VPS (Ubuntu/Debian com `npm start`)
+
+O sistema lê a porta padrão da internet automaticamente (`process.env.PORT`) sem precisar mudar nenhuma linha de código.
