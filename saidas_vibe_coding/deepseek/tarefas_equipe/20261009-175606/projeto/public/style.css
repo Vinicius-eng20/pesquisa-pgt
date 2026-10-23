@@ -1,0 +1,60 @@
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body { background: #f0f2f5; color: #1c1e21; min-height: 100vh; }
+.tela-auth { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.card-auth { background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+.card-auth h1 { font-size: 22px; margin-bottom: 6px; color: #1877f2; }
+.card-auth p.sub { color: #65676b; font-size: 14px; margin-bottom: 20px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tabs button { flex: 1; padding: 8px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.tabs button.ativo { background: #1877f2; color: white; border-color: #1877f2; }
+input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 14px; font-family: inherit; }
+textarea { resize: vertical; min-height: 60px; }
+button.principal { width: 100%; padding: 11px; background: #1877f2; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: 600; }
+button.principal:hover { background: #166fe5; }
+.erro { color: #e41e3f; font-size: 13px; margin: 6px 0; }
+.info { color: #65676b; font-size: 12px; margin-top: 12px; text-align: center; line-height: 1.5; }
+
+/* App */
+header.topo { background: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); position: sticky; top: 0; z-index: 10; }
+header.topo h1 { font-size: 17px; color: #1877f2; }
+header.topo .user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+header.topo .user-info span { color: #65676b; }
+header.topo .user-info b { color: #1c1e21; }
+.btn-sair { padding: 6px 12px; background: #e4e6eb; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-sair:hover { background: #d8dadf; }
+main { max-width: 900px; margin: 20px auto; padding: 0 16px 40px; }
+.painel { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.painel h2 { font-size: 16px; margin-bottom: 14px; color: #1c1e21; }
+.btn-nova { padding: 9px 16px; background: #1877f2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.filtros { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filtros button { padding: 6px 12px; border: 1px solid #ddd; background: white; border-radius: 20px; font-size: 13px; cursor: pointer; }
+.filtros button.ativo { background: #1877f2; color: white; border-color: #1877f2; }
+
+.tarefa { border: 1px solid #e4e6eb; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+.tarefa.concluida { opacity: 0.65; }
+.tarefa .linha-topo { display: flex; justify-content: space-between; align-items: start; gap: 10px; margin-bottom: 8px; }
+.tarefa h3 { font-size: 15px; }
+.tarefa .desc { color: #65676b; font-size: 13px; margin-bottom: 8px; }
+.tarefa .meta { display: flex; gap: 14px; font-size: 12px; color: #65676b; flex-wrap: wrap; align-items: center; }
+.badge { padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.badge.pendente { background: #fff3cd; color: #856404; }
+.badge.em_andamento { background: #cce5ff; color: #004085; }
+.badge.concluida { background: #d4edda; color: #155724; }
+.acoes { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.acoes button, .acoes select { padding: 6px 10px; font-size: 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; }
+.acoes .btn-excluir { color: #e41e3f; }
+.acoes select { padding: 5px 8px; }
+
+.modal-fundo { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+.modal { background: white; border-radius: 12px; padding: 24px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+.modal h2 { margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 13px; color: #65676b; margin-bottom: 5px; font-weight: 600; }
+.modal .botoes { display: flex; gap: 10px; margin-top: 8px; }
+.modal .botoes button { flex: 1; padding: 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; }
+.modal .botoes .cancelar { background: #e4e6eb; color: #1c1e21; }
+.modal .botoes .salvar { background: #1877f2; color: white; }
+.vazio { text-align: center; color: #65676b; padding: 30px 10px; font-size: 14px; }
+@media (max-width: 500px) {
+  header.topo h1 { font-size: 15px; }
+  header.topo .user-info span { display: none; }
+}

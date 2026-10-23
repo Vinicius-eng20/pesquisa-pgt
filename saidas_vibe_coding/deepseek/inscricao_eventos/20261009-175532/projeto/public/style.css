@@ -1,0 +1,251 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --azul: #2563eb;
+  --azul-esc: #1d4ed8;
+  --verde: #16a34a;
+  --vermelho: #dc2626;
+  --amarelo: #f59e0b;
+  --cinza: #64748b;
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --texto: #0f172a;
+  --borda: #e2e8f0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+  background: var(--bg);
+  color: var(--texto);
+  min-height: 100vh;
+}
+
+.topo {
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  color: white;
+  padding: 14px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-icon { color: #fbbf24; }
+
+#nav { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+#nav button, #nav a {
+  background: rgba(255,255,255,0.15);
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  text-decoration: none;
+  transition: all .2s;
+}
+#nav button:hover, #nav a:hover { background: rgba(255,255,255,0.28); }
+
+#nav .usuario-info {
+  background: rgba(255,255,255,0.2);
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+#app {
+  max-width: 1000px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  margin-bottom: 18px;
+}
+
+h1 { font-size: 26px; margin-bottom: 6px; }
+h2 { font-size: 20px; margin-bottom: 14px; color: var(--texto); }
+.sub { color: var(--cinza); margin-bottom: 20px; font-size: 14px; }
+
+.form-group { margin-bottom: 14px; }
+label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #334155; }
+
+input, textarea, select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #f8fafc;
+  transition: border .2s;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--azul);
+  background: white;
+}
+
+textarea { resize: vertical; min-height: 80px; }
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s;
+  text-decoration: none;
+  color: white;
+}
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primario { background: var(--azul); }
+.btn-primario:hover:not(:disabled) { background: var(--azul-esc); }
+.btn-verde { background: var(--verde); }
+.btn-verde:hover:not(:disabled) { background: #15803d; }
+.btn-vermelho { background: var(--vermelho); }
+.btn-vermelho:hover:not(:disabled) { background: #b91c1c; }
+.btn-cinza { background: var(--cinza); }
+.btn-cinza:hover:not(:disabled) { background: #475569; }
+.btn-bloco { width: 100%; padding: 12px; font-size: 15px; }
+
+.grid-eventos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.evento-card {
+  background: white;
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--borda);
+}
+
+.evento-titulo { font-size: 17px; font-weight: 700; }
+.evento-meta { font-size: 13px; color: var(--cinza); display: flex; flex-direction: column; gap: 3px; }
+.evento-desc { font-size: 14px; color: #475569; line-height: 1.4; }
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.badge-pendente { background: #fef3c7; color: #92400e; }
+.badge-confirmada { background: #dcfce7; color: #166534; }
+.badge-cancelada { background: #fee2e2; color: #991b1b; }
+.badge-info { background: #dbeafe; color: #1e40af; }
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--borda);
+  overflow-x: auto;
+}
+.tab {
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cinza);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--azul); }
+.tab.ativa { color: var(--azul); border-bottom-color: var(--azul); }
+
+.login-box {
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+.lista { display: flex; flex-direction: column; gap: 12px; }
+
+.item-lista {
+  background: #f8fafc;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.item-lista .info { flex: 1; min-width: 200px; }
+.item-lista .info strong { display: block; margin-bottom: 3px; }
+.item-lista .info small { color: var(--cinza); font-size: 13px; display: block; }
+
+.acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.erro-msg, .ok-msg {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+.erro-msg { background: #fee2e2; color: #991b1b; }
+.ok-msg { background: #dcfce7; color: #166534; }
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(200%);
+  background: #0f172a;
+  color: white;
+  padding: 12px 22px;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: transform .3s;
+  z-index: 999;
+  max-width: 90%;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+.toast.erro { background: var(--vermelho); }
+
+.vazio {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--cinza);
+}
+
+.rodape { text-align: center; padding: 30px; color: var(--cinza); font-size: 13px; }
+
+@media (max-width: 640px) {
+  .topo { padding: 12px 16px; }
+  .logo { font-size: 17px; }
+  #nav button, #nav a { padding: 7px 11px; font-size: 13px; }
+  #app { margin: 16px auto; }
+  .card { padding: 16px; }
+  h1 { font-size: 22px; }
+}

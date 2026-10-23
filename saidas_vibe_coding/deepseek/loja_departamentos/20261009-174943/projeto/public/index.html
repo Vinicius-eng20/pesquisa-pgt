@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping Virtual</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <a href="#" class="logo" onclick="irPara('home');return false;">🛒 Shopping Virtual</a>
+    <div class="busca">
+      <input id="campoBusca" placeholder="O que você procura?" onkeydown="if(event.key==='Enter') buscar()">
+      <button onclick="buscar()">Buscar</button>
+    </div>
+    <div class="header-acoes">
+      <button class="btn-carrinho" onclick="abrirCarrinho()">🛍️ Carrinho <span id="badgeCarrinho">0</span></button>
+      <div id="areaUsuario"></div>
+    </div>
+  </div>
+  <nav id="navDepartamentos"></nav>
+</header>
+
+<main id="conteudo"></main>
+
+<div id="modal" class="modal oculto"><div class="modal-conteudo" id="modalConteudo"></div></div>
+<div id="toast" class="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

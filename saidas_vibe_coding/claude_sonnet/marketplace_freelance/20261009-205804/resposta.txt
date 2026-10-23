@@ -1,0 +1,2065 @@
+# Marketplace de Serviços Freelance
+
+=== README.md ===
+# Marketplace de Serviços Freelance
+
+Sistema completo de marketplace para contratação de serviços freelance.
+
+## Requisitos
+
+- Node.js 18+ instalado
+- Navegador web moderno
+
+## Instalação
+
+```bash
+npm install
+```
+
+## Executar o projeto
+
+```bash
+npm start
+```
+
+O site estará disponível em: http://localhost:3000
+
+## Primeiro Acesso
+
+### Conta Administrador (já criada):
+- Email: admin@marketplace.com
+- Senha: Admin123!
+
+### Criar contas de usuários:
+Clique em "Cadastrar" na página inicial e preencha o formulário.
+
+## Funcionalidades
+
+### Usuários (Freelancers/Clientes):
+- Publicar serviços que oferece
+- Contratar serviços de outros usuários
+- Ver contratos em que participa
+- Editar perfil
+
+### Administrador:
+- Aprovar ou remover serviços publicados
+- Suspender contas de usuários
+- Ver todos os serviços e contratos
+- Painel completo de administração
+
+## Notas
+
+- Todos os dados são salvos no arquivo `database.json`
+- O site funciona em qualquer dispositivo (responsivo)
+- Não necessita conexão com serviços externos
+
+=== package.json ===
+{
+  "name": "marketplace-freelance",
+  "version": "1.0.0",
+  "description": "Marketplace de serviços freelance",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "bcryptjs": "^2.4.3",
+    "express-session": "^1.17.3"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = 3000;
+const DB_FILE = path.join(__dirname, 'database.json');
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+app.use(session({
+  secret: 'marketplace-secret-key-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+}));
+
+// Inicializar banco de dados
+function initDatabase() {
+  if (!fs.existsSync(DB_FILE)) {
+    const initialData = {
+      users: [
+        {
+          id: 1,
+          name: 'Administrador',
+          email: 'admin@marketplace.com',
+          password: bcrypt.hashSync('Admin123!', 10),
+          role: 'admin',
+          suspended: false,
+          createdAt: new Date().toISOString()
+        }
+      ],
+      services: [],
+      contracts: [],
+      nextUserId: 2,
+      nextServiceId: 1,
+      nextContractId: 1
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
+  }
+}
+
+function readDB() {
+  const data = fs.readFileSync(DB_FILE, 'utf8');
+  return JSON.parse(data);
+}
+
+function writeDB(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
+
+initDatabase();
+
+// Middleware de autenticação
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: 'Não autenticado' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.userId || req.session.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+  next();
+}
+
+// Rotas de autenticação
+app.post('/api/register', (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres' });
+  }
+
+  const db = readDB();
+  
+  if (db.users.find(u => u.email === email)) {
+    return res.status(400).json({ error: 'Email já cadastrado' });
+  }
+
+  const newUser = {
+    id: db.nextUserId++,
+    name,
+    email,
+    password: bcrypt.hashSync(password, 10),
+    role: 'user',
+    suspended: false,
+    createdAt: new Date().toISOString()
+  };
+
+  db.users.push(newUser);
+  writeDB(db);
+
+  req.session.userId = newUser.id;
+  req.session.userName = newUser.name;
+  req.session.userRole = newUser.role;
+
+  res.json({ 
+    success: true, 
+    user: { 
+      id: newUser.id, 
+      name: newUser.name, 
+      email: newUser.email, 
+      role: newUser.role 
+    } 
+  });
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email e senha são obrigatórios' });
+  }
+
+  const db = readDB();
+  const user = db.users.find(u => u.email === email);
+
+  if (!user || !bcrypt.compareSync(password, user.password)) {
+    return res.status(401).json({ error: 'Email ou senha incorretos' });
+  }
+
+  if (user.suspended) {
+    return res.status(403).json({ error: 'Conta suspensa. Entre em contato com o administrador.' });
+  }
+
+  req.session.userId = user.id;
+  req.session.userName = user.name;
+  req.session.userRole = user.role;
+
+  res.json({ 
+    success: true, 
+    user: { 
+      id: user.id, 
+      name: user.name, 
+      email: user.email, 
+      role: user.role 
+    } 
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  const db = readDB();
+  const user = db.users.find(u => u.id === req.session.userId);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'Usuário não encontrado' });
+  }
+
+  res.json({ 
+    id: user.id, 
+    name: user.name, 
+    email: user.email, 
+    role: user.role,
+    suspended: user.suspended
+  });
+});
+
+// Rotas de serviços
+app.post('/api/services', requireAuth, (req, res) => {
+  const { title, description, price, category } = req.body;
+
+  if (!title || !description || !price || !category) {
+    return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+  }
+
+  const db = readDB();
+  const user = db.users.find(u => u.id === req.session.userId);
+
+  if (user.suspended) {
+    return res.status(403).json({ error: 'Conta suspensa' });
+  }
+
+  const newService = {
+    id: db.nextServiceId++,
+    userId: req.session.userId,
+    userName: req.session.userName,
+    title,
+    description,
+    price: parseFloat(price),
+    category,
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  };
+
+  db.services.push(newService);
+  writeDB(db);
+
+  res.json({ success: true, service: newService });
+});
+
+app.get('/api/services', requireAuth, (req, res) => {
+  const db = readDB();
+  let services = db.services;
+
+  if (req.session.userRole !== 'admin') {
+    services = services.filter(s => s.status === 'approved');
+  }
+
+  res.json(services);
+});
+
+app.get('/api/services/my', requireAuth, (req, res) => {
+  const db = readDB();
+  const myServices = db.services.filter(s => s.userId === req.session.userId);
+  res.json(myServices);
+});
+
+app.delete('/api/services/:id', requireAuth, (req, res) => {
+  const serviceId = parseInt(req.params.id);
+  const db = readDB();
+  
+  const serviceIndex = db.services.findIndex(s => s.id === serviceId);
+  
+  if (serviceIndex === -1) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  const service = db.services[serviceIndex];
+
+  if (service.userId !== req.session.userId && req.session.userRole !== 'admin') {
+    return res.status(403).json({ error: 'Sem permissão' });
+  }
+
+  db.services.splice(serviceIndex, 1);
+  writeDB(db);
+
+  res.json({ success: true });
+});
+
+app.patch('/api/services/:id/approve', requireAdmin, (req, res) => {
+  const serviceId = parseInt(req.params.id);
+  const db = readDB();
+  
+  const service = db.services.find(s => s.id === serviceId);
+  
+  if (!service) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  service.status = 'approved';
+  writeDB(db);
+
+  res.json({ success: true, service });
+});
+
+app.delete('/api/admin/services/:id', requireAdmin, (req, res) => {
+  const serviceId = parseInt(req.params.id);
+  const db = readDB();
+  
+  const serviceIndex = db.services.findIndex(s => s.id === serviceId);
+  
+  if (serviceIndex === -1) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  db.services.splice(serviceIndex, 1);
+  writeDB(db);
+
+  res.json({ success: true });
+});
+
+// Rotas de contratos
+app.post('/api/contracts', requireAuth, (req, res) => {
+  const { serviceId } = req.body;
+
+  if (!serviceId) {
+    return res.status(400).json({ error: 'ID do serviço é obrigatório' });
+  }
+
+  const db = readDB();
+  const service = db.services.find(s => s.id === parseInt(serviceId));
+
+  if (!service) {
+    return res.status(404).json({ error: 'Serviço não encontrado' });
+  }
+
+  if (service.status !== 'approved') {
+    return res.status(400).json({ error: 'Serviço não está aprovado' });
+  }
+
+  if (service.userId === req.session.userId) {
+    return res.status(400).json({ error: 'Você não pode contratar seu próprio serviço' });
+  }
+
+  const user = db.users.find(u => u.id === req.session.userId);
+  if (user.suspended) {
+    return res.status(403).json({ error: 'Conta suspensa' });
+  }
+
+  const newContract = {
+    id: db.nextContractId++,
+    serviceId: service.id,
+    serviceTitle: service.title,
+    providerId: service.userId,
+    providerName: service.userName,
+    clientId: req.session.userId,
+    clientName: req.session.userName,
+    price: service.price,
+    status: 'active',
+    createdAt: new Date().toISOString()
+  };
+
+  db.contracts.push(newContract);
+  writeDB(db);
+
+  res.json({ success: true, contract: newContract });
+});
+
+app.get('/api/contracts', requireAuth, (req, res) => {
+  const db = readDB();
+  let contracts = db.contracts;
+
+  if (req.session.userRole !== 'admin') {
+    contracts = contracts.filter(c => 
+      c.clientId === req.session.userId || c.providerId === req.session.userId
+    );
+  }
+
+  res.json(contracts);
+});
+
+// Rotas de administração
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const db = readDB();
+  const users = db.users.map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    role: u.role,
+    suspended: u.suspended,
+    createdAt: u.createdAt
+  }));
+  res.json(users);
+});
+
+app.patch('/api/admin/users/:id/suspend', requireAdmin, (req, res) => {
+  const userId = parseInt(req.params.id);
+  const db = readDB();
+  
+  const user = db.users.find(u => u.id === userId);
+  
+  if (!user) {
+    return res.status(404).json({ error: 'Usuário não encontrado' });
+  }
+
+  if (user.role === 'admin') {
+    return res.status(400).json({ error: 'Não é possível suspender um administrador' });
+  }
+
+  user.suspended = !user.suspended;
+  writeDB(db);
+
+  res.json({ success: true, user: { id: user.id, suspended: user.suspended } });
+});
+
+// Rotas de páginas
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/dashboard', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
+  console.log(`\n📝 Conta admin:`);
+  console.log(`   Email: admin@marketplace.com`);
+  console.log(`   Senha: Admin123!\n`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marketplace de Serviços Freelance</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="auth-card">
+      <h1>🎯 Marketplace Freelance</h1>
+      <p class="subtitle">Conectando profissionais e clientes</p>
+
+      <div id="loginForm" class="form-section">
+        <h2>Entrar</h2>
+        <form id="loginFormElement">
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="loginEmail" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" id="loginPassword" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+        </form>
+        <p class="form-switch">
+          Não tem conta? <a href="#" id="showRegister">Cadastre-se</a>
+        </p>
+      </div>
+
+      <div id="registerForm" class="form-section" style="display: none;">
+        <h2>Cadastrar</h2>
+        <form id="registerFormElement">
+          <div class="form-group">
+            <label>Nome Completo</label>
+            <input type="text" id="registerName" required>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="registerEmail" required>
+          </div>
+          <div class="form-group">
+            <label>Senha (mínimo 6 caracteres)</label>
+            <input type="password" id="registerPassword" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary">Cadastrar</button>
+        </form>
+        <p class="form-switch">
+          Já tem conta? <a href="#" id="showLogin">Entre aqui</a>
+        </p>
+      </div>
+
+      <div id="errorMessage" class="error-message"></div>
+    </div>
+  </div>
+
+  <script src="auth.js"></script>
+</body>
+</html>
+
+=== public/dashboard.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Marketplace</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <h1 class="nav-logo">🎯 Marketplace</h1>
+      <div class="nav-user">
+        <span id="userName"></span>
+        <button onclick="logout()" class="btn btn-secondary">Sair</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-button active" onclick="showTab('services')">Serviços Disponíveis</button>
+      <button class="tab-button" onclick="showTab('myServices')">Meus Serviços</button>
+      <button class="tab-button" onclick="showTab('contracts')">Meus Contratos</button>
+      <button class="tab-button" onclick="showTab('publish')">Publicar Serviço</button>
+    </div>
+
+    <div id="servicesTab" class="tab-content active">
+      <h2>Serviços Disponíveis</h2>
+      <div class="filter-bar">
+        <select id="categoryFilter" onchange="filterServices()">
+          <option value="">Todas as categorias</option>
+          <option value="design">Design</option>
+          <option value="programacao">Programação</option>
+          <option value="marketing">Marketing</option>
+          <option value="redacao">Redação</option>
+          <option value="traducao">Tradução</option>
+          <option value="consultoria">Consultoria</option>
+          <option value="outros">Outros</option>
+        </select>
+      </div>
+      <div id="servicesList" class="services-grid"></div>
+    </div>
+
+    <div id="myServicesTab" class="tab-content">
+      <h2>Meus Serviços Publicados</h2>
+      <div id="myServicesList" class="services-grid"></div>
+    </div>
+
+    <div id="contractsTab" class="tab-content">
+      <h2>Meus Contratos</h2>
+      <div class="contracts-filter">
+        <button class="filter-btn active" onclick="filterContracts('all')">Todos</button>
+        <button class="filter-btn" onclick="filterContracts('client')">Como Cliente</button>
+        <button class="filter-btn" onclick="filterContracts('provider')">Como Prestador</button>
+      </div>
+      <div id="contractsList" class="contracts-list"></div>
+    </div>
+
+    <div id="publishTab" class="tab-content">
+      <h2>Publicar Novo Serviço</h2>
+      <form id="publishForm" class="publish-form">
+        <div class="form-group">
+          <label>Título do Serviço</label>
+          <input type="text" id="serviceTitle" required placeholder="Ex: Criação de Logo Profissional">
+        </div>
+        <div class="form-group">
+          <label>Categoria</label>
+          <select id="serviceCategory" required>
+            <option value="">Selecione uma categoria</option>
+            <option value="design">Design</option>
+            <option value="programacao">Programação</option>
+            <option value="marketing">Marketing</option>
+            <option value="redacao">Redação</option>
+            <option value="traducao">Tradução</option>
+            <option value="consultoria">Consultoria</option>
+            <option value="outros">Outros</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Descrição</label>
+          <textarea id="serviceDescription" required rows="5" placeholder="Descreva o serviço que você oferece..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Preço (R$)</label>
+          <input type="number" id="servicePrice" required min="0" step="0.01" placeholder="0.00">
+        </div>
+        <button type="submit" class="btn btn-primary">Publicar Serviço</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
+
+=== public/admin.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Admin - Marketplace</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <h1 class="nav-logo">🎯 Admin - Marketplace</h1>
+      <div class="nav-user">
+        <span id="userName"></span>
+        <button onclick="goToDashboard()" class="btn btn-secondary">Dashboard</button>
+        <button onclick="logout()" class="btn btn-secondary">Sair</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-button active" onclick="showTab('pendingServices')">Serviços Pendentes</button>
+      <button class="tab-button" onclick="showTab('allServices')">Todos os Serviços</button>
+      <button class="tab-button" onclick="showTab('users')">Usuários</button>
+      <button class="tab-button" onclick="showTab('allContracts')">Todos os Contratos</button>
+    </div>
+
+    <div id="pendingServicesTab" class="tab-content active">
+      <h2>Serviços Aguardando Aprovação</h2>
+      <div id="pendingServicesList" class="services-grid"></div>
+    </div>
+
+    <div id="allServicesTab" class="tab-content">
+      <h2>Todos os Serviços</h2>
+      <div class="filter-bar">
+        <select id="statusFilter" onchange="loadAllServices()">
+          <option value="">Todos os status</option>
+          <option value="pending">Pendente</option>
+          <option value="approved">Aprovado</option>
+        </select>
+      </div>
+      <div id="allServicesList" class="services-grid"></div>
+    </div>
+
+    <div id="usersTab" class="tab-content">
+      <h2>Gerenciar Usuários</h2>
+      <div id="usersList" class="users-list"></div>
+    </div>
+
+    <div id="allContractsTab" class="tab-content">
+      <h2>Todos os Contratos do Sistema</h2>
+      <div id="allContractsList" class="contracts-list"></div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
+  color: #333;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Navbar */
+.navbar {
+  background: white;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  margin-bottom: 30px;
+}
+
+.nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 15px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.nav-logo {
+  font-size: 24px;
+  color: #667eea;
+}
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.nav-user span {
+  font-weight: 600;
+  color: #333;
+}
+
+/* Auth Card */
+.auth-card {
+  background: white;
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 450px;
+  margin: 50px auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.auth-card h1 {
+  text-align: center;
+  color: #667eea;
+  margin-bottom: 10px;
+  font-size: 32px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #666;
+  margin-bottom: 30px;
+}
+
+/* Forms */
+.form-section h2 {
+  color: #333;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #555;
+  font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 16px;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.form-group textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-switch {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+.form-switch a {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.form-switch a:hover {
+  text-decoration: underline;
+}
+
+/* Buttons */
+.btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  width: 100%;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-secondary {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  flex-wrap: wrap;
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.tab-button {
+  padding: 12px 24px;
+  background: #f5f5f5;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+  color: #666;
+}
+
+.tab-button:hover {
+  background: #e0e0e0;
+}
+
+.tab-button.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.tab-content {
+  display: none;
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.tab-content h2 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+/* Services Grid */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.service-card {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  transition: all 0.3s;
+}
+
+.service-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+.service-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 15px;
+}
+
+.service-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.service-category {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #667eea;
+  color: white;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.service-provider {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.service-description {
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.service-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.service-price {
+  font-size: 24px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.service-status {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.service-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.service-actions button {
+  flex: 1;
+}
+
+/* Contracts */
+.contracts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.contract-card {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.contract-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 15px;
+}
+
+.contract-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+}
+
+.contract-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.contract-info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.contract-info-label {
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.contract-info-value {
+  font-size: 14px;
+  color: #333;
+}
+
+.contracts-filter {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.filter-btn {
+  padding: 10px 20px;
+  background: #f5f5f5;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+}
+
+.filter-btn:hover {
+  background: #e0e0e0;
+}
+
+.filter-btn.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+/* Users List */
+.users-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.user-card {
+  background: #f9fafb;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.user-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 10px;
+}
+
+.user-email {
+  color: #666;
+  margin-bottom: 5px;
+}
+
+.user-role {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #667eea;
+  color: white;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.user-suspended {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #ef4444;
+  color: white;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 5px;
+}
+
+.user-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+/* Filter Bar */
+.filter-bar {
+  margin-bottom: 20px;
+}
+
+.filter-bar select {
+  padding: 10px 15px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* Publish Form */
+.publish-form {
+  max-width: 600px;
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+}
+
+.modal.show {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.modal-content {
+  background-color: white;
+  padding: 30px;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  font-size: 28px;
+  font-weight: bold;
+  color: #999;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: #333;
+}
+
+/* Messages */
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 15px;
+  display: none;
+}
+
+.error-message.show {
+  display: block;
+}
+
+.success-message {
+  background: #d1fae5;
+  color: #065f46;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+}
+
+.empty-state-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .services-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .users-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .tabs {
+    flex-direction: column;
+  }
+  
+  .tab-button {
+    width: 100%;
+  }
+  
+  .nav-container {
+    flex-direction: column;
+    gap: 15px;
+  }
+  
+  .nav-user {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .nav-user button {
+    width: 100%;
+  }
+  
+  .contract-info {
+    grid-template-columns: 1fr;
+  }
+}
+
+=== public/auth.js ===
+document.addEventListener('DOMContentLoaded', () => {
+  checkAuth();
+
+  document.getElementById('showRegister').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('loginForm').style.display = 'none';
+    document.getElementById('registerForm').style.display = 'block';
+    document.getElementById('errorMessage').classList.remove('show');
+  });
+
+  document.getElementById('showLogin').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('registerForm').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('errorMessage').classList.remove('show');
+  });
+
+  document.getElementById('loginFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.user.role === 'admin') {
+          window.location.href = '/admin';
+        } else {
+          window.location.href = '/dashboard';
+        }
+      } else {
+        showError(data.error);
+      }
+    } catch (error) {
+      showError('Erro ao fazer login. Tente novamente.');
+    }
+  });
+
+  document.getElementById('registerFormElement').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = document.getElementById('registerName').value;
+    const email = document.getElementById('registerEmail').value;
+    const password = document.getElementById('registerPassword').value;
+
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        window.location.href = '/dashboard';
+      } else {
+        showError(data.error);
+      }
+    } catch (error) {
+      showError('Erro ao cadastrar. Tente novamente.');
+    }
+  });
+});
+
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/me');
+    if (response.ok) {
+      const user = await response.json();
+      if (user.role === 'admin') {
+        window.location.href = '/admin';
+      } else {
+        window.location.href = '/dashboard';
+      }
+    }
+  } catch (error) {
+    // Usuário não autenticado, permanece na página de login
+  }
+}
+
+function showError(message) {
+  const errorDiv = document.getElementById('errorMessage');
+  errorDiv.textContent = message;
+  errorDiv.classList.add('show');
+  
+  setTimeout(() => {
+    errorDiv.classList.remove('show');
+  }, 5000);
+}
+
+=== public/dashboard.js ===
+let currentUser = null;
+let allServices = [];
+let currentFilter = 'all';
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await checkAuth();
+  await loadUserData();
+  showTab('services');
+});
+
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/me');
+    if (!response.ok) {
+      window.location.href = '/';
+      return;
+    }
+    currentUser = await response.json();
+    document.getElementById('userName').textContent = currentUser.name;
+  } catch (error) {
+    window.location.href = '/';
+  }
+}
+
+async function loadUserData() {
+  await loadServices();
+  await loadMyServices();
+  await loadContracts();
+}
+
+async function loadServices() {
+  try {
+    const response = await fetch('/api/services');
+    allServices = await response.json();
+    filterServices();
+  } catch (error) {
+    console.error('Erro ao carregar serviços:', error);
+  }
+}
+
+function filterServices() {
+  const category = document.getElementById('categoryFilter').value;
+  let filtered = allServices.filter(s => s.status === 'approved');
+  
+  if (category) {
+    filtered = filtered.filter(s => s.category === category);
+  }
+
+  const container = document.getElementById('servicesList');
+  
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🔍</div>
+        <h3>Nenhum serviço encontrado</h3>
+        <p>Não há serviços disponíveis nesta categoria no momento.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = filtered.map(service => `
+    <div class="service-card">
+      <div class="service-header">
+        <div>
+          <div class="service-title">${service.title}</div>
+          <div class="service-category">${getCategoryName(service.category)}</div>
+        </div>
+      </div>
+      <div class="service-provider">Por: ${service.userName}</div>
+      <div class="service-description">${service.description}</div>
+      <div class="service-footer">
+        <div class="service-price">R$ ${service.price.toFixed(2)}</div>
+      </div>
+      ${service.userId !== currentUser.id ? `
+        <div class="service-actions">
+          <button class="btn btn-primary btn-small" onclick="hireService(${service.id})">
+            Contratar Serviço
+          </button>
+        </div>
+      ` : '<p style="margin-top: 15px; color: #999; font-size: 14px;">Este é seu serviço</p>'}
+    </div>
+  `).join('');
+}
+
+async function loadMyServices() {
+  try {
+    const response = await fetch('/api/services/my');
+    const services = await response.json();
+    
+    const container = document.getElementById('myServicesList');
+    
+    if (services.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📝</div>
+          <h3>Nenhum serviço publicado</h3>
+          <p>Você ainda não publicou nenhum serviço. Clique em "Publicar Serviço" para começar!</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = services.map(service => `
+      <div class="service-card">
+        <div class="service-header">
+          <div>
+            <div class="service-title">${service.title}</div>
+            <div class="service-category">${getCategoryName(service.category)}</div>
+          </div>
+          <span class="service-status status-${service.status}">
+            ${service.status === 'pending' ? 'Aguardando Aprovação' : 'Aprovado'}
+          </span>
+        </div>
+        <div class="service-description">${service.description}</div>
+        <div class="service-footer">
+          <div class="service-price">R$ ${service.price.toFixed(2)}</div>
+        </div>
+        <div class="service-actions">
+          <button class="btn btn-danger btn-small" onclick="deleteService(${service.id})">
+            Excluir
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar meus serviços:', error);
+  }
+}
+
+async function loadContracts() {
+  try {
+    const response = await fetch('/api/contracts');
+    const contracts = await response.json();
+    
+    window.allContracts = contracts;
+    displayContracts(contracts);
+  } catch (error) {
+    console.error('Erro ao carregar contratos:', error);
+  }
+}
+
+function filterContracts(type) {
+  const buttons = document.querySelectorAll('.contracts-filter .filter-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+
+  let filtered = window.allContracts;
+  
+  if (type === 'client') {
+    filtered = filtered.filter(c => c.clientId === currentUser.id);
+  } else if (type === 'provider') {
+    filtered = filtered.filter(c => c.providerId === currentUser.id);
+  }
+
+  displayContracts(filtered);
+}
+
+function displayContracts(contracts) {
+  const container = document.getElementById('contractsList');
+  
+  if (contracts.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📋</div>
+        <h3>Nenhum contrato encontrado</h3>
+        <p>Você ainda não tem contratos ativos.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = contracts.map(contract => {
+    const isClient = contract.clientId === currentUser.id;
+    return `
+      <div class="contract-card">
+        <div class="contract-header">
+          <div class="contract-title">${contract.serviceTitle}</div>
+        </div>
+        <div class="contract-info">
+          <div class="contract-info-item">
+            <div class="contract-info-label">Tipo</div>
+            <div class="contract-info-value">${isClient ? '👤 Cliente' : '⚙️ Prestador'}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">${isClient ? 'Prestador' : 'Cliente'}</div>
+            <div class="contract-info-value">${isClient ? contract.providerName : contract.clientName}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">Valor</div>
+            <div class="contract-info-value">R$ ${contract.price.toFixed(2)}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">Data</div>
+            <div class="contract-info-value">${new Date(contract.createdAt).toLocaleDateString('pt-BR')}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+document.getElementById('publishForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const title = document.getElementById('serviceTitle').value;
+  const description = document.getElementById('serviceDescription').value;
+  const price = document.getElementById('servicePrice').value;
+  const category = document.getElementById('serviceCategory').value;
+
+  try {
+    const response = await fetch('/api/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, price, category })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showModal('Sucesso', 'Serviço publicado! Aguarde a aprovação do administrador.');
+      document.getElementById('publishForm').reset();
+      await loadMyServices();
+    } else {
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao publicar serviço. Tente novamente.');
+  }
+});
+
+async function hireService(serviceId) {
+  if (!confirm('Deseja realmente contratar este serviço?')) {
+    return;
+  }
+
+  try {
+    const response = await fetch('/api/contracts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serviceId })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showModal('Sucesso', 'Serviço contratado com sucesso!');
+      await loadContracts();
+      showTab('contracts');
+    } else {
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao contratar serviço. Tente novamente.');
+  }
+}
+
+async function deleteService(serviceId) {
+  if (!confirm('Deseja realmente excluir este serviço?')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/services/${serviceId}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      showModal('Sucesso', 'Serviço excluído com sucesso!');
+      await loadMyServices();
+    } else {
+      const data = await response.json();
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao excluir serviço. Tente novamente.');
+  }
+}
+
+function showTab(tabName) {
+  document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  event?.target?.classList.add('active');
+  document.getElementById(tabName + 'Tab').classList.add('active');
+}
+
+function showModal(title, message) {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modalBody');
+  
+  modalBody.innerHTML = `
+    <h2>${title}</h2>
+    <p style="margin-top: 15px; color: #666;">${message}</p>
+    <button class="btn btn-primary" onclick="closeModal()" style="margin-top: 20px; width: 100%;">
+      OK
+    </button>
+  `;
+  
+  modal.classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+function getCategoryName(category) {
+  const categories = {
+    design: 'Design',
+    programacao: 'Programação',
+    marketing: 'Marketing',
+    redacao: 'Redação',
+    traducao: 'Tradução',
+    consultoria: 'Consultoria',
+    outros: 'Outros'
+  };
+  return categories[category] || category;
+}
+
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/';
+  } catch (error) {
+    window.location.href = '/';
+  }
+}
+
+=== public/admin.js ===
+let currentUser = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await checkAuth();
+  await loadAdminData();
+  showTab('pendingServices');
+});
+
+async function checkAuth() {
+  try {
+    const response = await fetch('/api/me');
+    if (!response.ok) {
+      window.location.href = '/';
+      return;
+    }
+    currentUser = await response.json();
+    
+    if (currentUser.role !== 'admin') {
+      window.location.href = '/dashboard';
+      return;
+    }
+    
+    document.getElementById('userName').textContent = currentUser.name;
+  } catch (error) {
+    window.location.href = '/';
+  }
+}
+
+async function loadAdminData() {
+  await loadPendingServices();
+  await loadAllServices();
+  await loadUsers();
+  await loadAllContracts();
+}
+
+async function loadPendingServices() {
+  try {
+    const response = await fetch('/api/services');
+    const services = await response.json();
+    const pending = services.filter(s => s.status === 'pending');
+    
+    const container = document.getElementById('pendingServicesList');
+    
+    if (pending.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">✅</div>
+          <h3>Nenhum serviço pendente</h3>
+          <p>Não há serviços aguardando aprovação no momento.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = pending.map(service => `
+      <div class="service-card">
+        <div class="service-header">
+          <div>
+            <div class="service-title">${service.title}</div>
+            <div class="service-category">${getCategoryName(service.category)}</div>
+          </div>
+          <span class="service-status status-pending">Pendente</span>
+        </div>
+        <div class="service-provider">Por: ${service.userName}</div>
+        <div class="service-description">${service.description}</div>
+        <div class="service-footer">
+          <div class="service-price">R$ ${service.price.toFixed(2)}</div>
+        </div>
+        <div class="service-actions">
+          <button class="btn btn-success btn-small" onclick="approveService(${service.id})">
+            Aprovar
+          </button>
+          <button class="btn btn-danger btn-small" onclick="deleteServiceAdmin(${service.id})">
+            Remover
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar serviços pendentes:', error);
+  }
+}
+
+async function loadAllServices() {
+  try {
+    const response = await fetch('/api/services');
+    let services = await response.json();
+    
+    const statusFilter = document.getElementById('statusFilter')?.value;
+    if (statusFilter) {
+      services = services.filter(s => s.status === statusFilter);
+    }
+    
+    const container = document.getElementById('allServicesList');
+    
+    if (services.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📦</div>
+          <h3>Nenhum serviço encontrado</h3>
+          <p>Não há serviços cadastrados no sistema.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = services.map(service => `
+      <div class="service-card">
+        <div class="service-header">
+          <div>
+            <div class="service-title">${service.title}</div>
+            <div class="service-category">${getCategoryName(service.category)}</div>
+          </div>
+          <span class="service-status status-${service.status}">
+            ${service.status === 'pending' ? 'Pendente' : 'Aprovado'}
+          </span>
+        </div>
+        <div class="service-provider">Por: ${service.userName}</div>
+        <div class="service-description">${service.description}</div>
+        <div class="service-footer">
+          <div class="service-price">R$ ${service.price.toFixed(2)}</div>
+        </div>
+        <div class="service-actions">
+          ${service.status === 'pending' ? `
+            <button class="btn btn-success btn-small" onclick="approveService(${service.id})">
+              Aprovar
+            </button>
+          ` : ''}
+          <button class="btn btn-danger btn-small" onclick="deleteServiceAdmin(${service.id})">
+            Remover
+          </button>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar todos os serviços:', error);
+  }
+}
+
+async function loadUsers() {
+  try {
+    const response = await fetch('/api/admin/users');
+    const users = await response.json();
+    
+    const container = document.getElementById('usersList');
+    
+    container.innerHTML = users.map(user => `
+      <div class="user-card">
+        <div class="user-name">${user.name}</div>
+        <div class="user-email">${user.email}</div>
+        <div>
+          <span class="user-role">${user.role === 'admin' ? 'Administrador' : 'Usuário'}</span>
+          ${user.suspended ? '<span class="user-suspended">Suspensa</span>' : ''}
+        </div>
+        <div style="margin-top: 10px; font-size: 12px; color: #999;">
+          Cadastro: ${new Date(user.createdAt).toLocaleDateString('pt-BR')}
+        </div>
+        ${user.role !== 'admin' ? `
+          <div class="user-actions">
+            <button class="btn ${user.suspended ? 'btn-success' : 'btn-danger'} btn-small" 
+                    onclick="toggleSuspendUser(${user.id}, ${user.suspended})">
+              ${user.suspended ? 'Reativar' : 'Suspender'}
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar usuários:', error);
+  }
+}
+
+async function loadAllContracts() {
+  try {
+    const response = await fetch('/api/contracts');
+    const contracts = await response.json();
+    
+    const container = document.getElementById('allContractsList');
+    
+    if (contracts.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <h3>Nenhum contrato encontrado</h3>
+          <p>Não há contratos registrados no sistema.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = contracts.map(contract => `
+      <div class="contract-card">
+        <div class="contract-header">
+          <div class="contract-title">${contract.serviceTitle}</div>
+        </div>
+        <div class="contract-info">
+          <div class="contract-info-item">
+            <div class="contract-info-label">Cliente</div>
+            <div class="contract-info-value">${contract.clientName}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">Prestador</div>
+            <div class="contract-info-value">${contract.providerName}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">Valor</div>
+            <div class="contract-info-value">R$ ${contract.price.toFixed(2)}</div>
+          </div>
+          <div class="contract-info-item">
+            <div class="contract-info-label">Data</div>
+            <div class="contract-info-value">${new Date(contract.createdAt).toLocaleDateString('pt-BR')}</div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar contratos:', error);
+  }
+}
+
+async function approveService(serviceId) {
+  try {
+    const response = await fetch(`/api/services/${serviceId}/approve`, {
+      method: 'PATCH'
+    });
+
+    if (response.ok) {
+      showModal('Sucesso', 'Serviço aprovado com sucesso!');
+      await loadPendingServices();
+      await loadAllServices();
+    } else {
+      const data = await response.json();
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao aprovar serviço. Tente novamente.');
+  }
+}
+
+async function deleteServiceAdmin(serviceId) {
+  if (!confirm('Deseja realmente remover este serviço?')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/services/${serviceId}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      showModal('Sucesso', 'Serviço removido com sucesso!');
+      await loadPendingServices();
+      await loadAllServices();
+    } else {
+      const data = await response.json();
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao remover serviço. Tente novamente.');
+  }
+}
+
+async function toggleSuspendUser(userId, isSuspended) {
+  const action = isSuspended ? 'reativar' : 'suspender';
+  if (!confirm(`Deseja realmente ${action} esta conta?`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/admin/users/${userId}/suspend`, {
+      method: 'PATCH'
+    });
+
+    if (response.ok) {
+      showModal('Sucesso', `Conta ${isSuspended ? 'reativada' : 'suspensa'} com sucesso!`);
+      await loadUsers();
+    } else {
+      const data = await response.json();
+      showModal('Erro', data.error);
+    }
+  } catch (error) {
+    showModal('Erro', 'Erro ao modificar conta. Tente novamente.');
+  }
+}
+
+function showTab(tabName) {
+  document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+  
+  event?.target?.classList.add('active');
+  document.getElementById(tabName + 'Tab').classList.add('active');
+}
+
+function showModal(title, message) {
+  const modal = document.getElementById('modal');
+  const modalBody = document.getElementById('modalBody');
+  
+  modalBody.innerHTML = `
+    <h2>${title}</h2>
+    <p style="margin-top: 15px; color: #666;">${message}</p>
+    <button class="btn btn-primary" onclick="closeModal()" style="margin-top: 20px; width: 100%;">
+      OK
+    </button>
+  `;
+  
+  modal.classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+function getCategoryName(category) {
+  const categories = {
+    design: 'Design',
+    programacao: 'Programação',
+    marketing: 'Marketing',
+    redacao: 'Redação',
+    traducao: 'Tradução',
+    consultoria: 'Consultoria',
+    outros: 'Outros'
+  };
+  return categories[category] || category;
+}
+
+function goToDashboard() {
+  window.location.href = '/dashboard';
+}
+
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/';
+  } catch (error) {
+    window.location.href = '/';
+  }
+}

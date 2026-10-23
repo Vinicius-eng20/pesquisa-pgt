@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestão de Tarefas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Tela de Login -->
+  <div id="login-screen" class="screen active">
+    <div class="login-container">
+      <h1>🎯 Sistema de Gestão de Tarefas</h1>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">Usuário</label>
+          <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        <div id="login-error" class="error-message"></div>
+      </form>
+      <div class="login-info">
+        <p><strong>Contas de teste:</strong></p>
+        <p>Gerente: gerente / gerente123</p>
+        <p>Membro: joao / joao123</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tela Principal -->
+  <div id="main-screen" class="screen">
+    <header>
+      <div class="header-content">
+        <h1>🎯 Gestão de Tarefas</h1>
+        <div class="header-user">
+          <span id="user-name"></span>
+          <button id="logout-btn" class="btn btn-secondary">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="container">
+        <div class="actions-bar">
+          <button id="new-task-btn" class="btn btn-primary">+ Nova Tarefa</button>
+          <button id="new-user-btn" class="btn btn-success" style="display: none;">+ Novo Membro</button>
+          <div class="filter-group">
+            <label for="status-filter">Filtrar:</label>
+            <select id="status-filter">
+              <option value="all">Todas</option>
+              <option value="pending">Pendentes</option>
+              <option value="in-progress">Em Progresso</option>
+              <option value="completed">Concluídas</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="tasks-container" class="tasks-grid">
+          <!-- Tarefas serão inseridas aqui -->
+        </div>
+
+        <div id="empty-state" class="empty-state" style="display: none;">
+          <p>📋 Nenhuma tarefa encontrada</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal de Nova/Editar Tarefa -->
+  <div id="task-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="task-modal-title">Nova Tarefa</h2>
+        <button class="close-modal">&times;</button>
+      </div>
+      <form id="task-form">
+        <input type="hidden" id="task-id">
+        <div class="form-group">
+          <label for="task-title">Título *</label>
+          <input type="text" id="task-title" required>
+        </div>
+        <div class="form-group">
+          <label for="task-description">Descrição</label>
+          <textarea id="task-description" rows="4"></textarea>
+        </div>
+        <div class="form-group" id="assign-group">
+          <label for="task-assigned">Atribuir para *</label>
+          <select id="task-assigned" required>
+            <option value="">Selecione um membro</option>
+          </select>
+        </div>
+        <div class="form-group" id="status-group" style="display: none;">
+          <label for="task-status">Status</label>
+          <select id="task-status">
+            <option value="pending">Pendente</option>
+            <option value="in-progress">Em Progresso</option>
+            <option value="completed">Concluída</option>
+          </select>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary close-modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Novo Usuário -->
+  <div id="user-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Novo Membro da Equipe</h2>
+        <button class="close-modal">&times;</button>
+      </div>
+      <form id="user-form">
+        <div class="form-group">
+          <label for="user-name">Nome Completo *</label>
+          <input type="text" id="user-name" required>
+        </div>
+        <div class="form-group">
+          <label for="user-username">Nome de Usuário *</label>
+          <input type="text" id="user-username" required>
+        </div>
+        <div class="form-group">
+          <label for="user-password">Senha *</label>
+          <input type="password" id="user-password" required>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary close-modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Criar Membro</button>
+        </div>
+        <div id="user-error" class="error-message"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

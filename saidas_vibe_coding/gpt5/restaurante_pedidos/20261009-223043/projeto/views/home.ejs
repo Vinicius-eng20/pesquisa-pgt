@@ -1,0 +1,60 @@
+<%- include('partials/head', { title: 'Cardápio' }) %>
+<%- include('partials/header') %>
+
+<section class="hero">
+  <div>
+    <h1>Cardápio</h1>
+    <p>Escolha seus pratos, envie o pedido e acompanhe tudo pela sua conta.</p>
+  </div>
+</section>
+
+<% if (!user) { %>
+  <div class="card center">
+    <h2>Entre para fazer seu pedido</h2>
+    <p>Você pode ver o cardápio agora, mas precisa entrar ou criar uma conta para pedir.</p>
+    <div class="actions-center">
+      <a class="button" href="/login">Entrar</a>
+      <a class="button secondary" href="/cadastro">Criar conta</a>
+    </div>
+  </div>
+<% } %>
+
+<form action="/pedido" method="POST" class="order-form">
+  <div class="grid">
+    <% if (dishes.length === 0) { %>
+      <div class="card">
+        <p>Nenhum prato disponível no momento.</p>
+      </div>
+    <% } %>
+
+    <% dishes.forEach(dish => { %>
+      <article class="dish card">
+        <div>
+          <h2><%= dish.name %></h2>
+          <p><%= dish.description || 'Sem descrição.' %></p>
+          <strong><%= formatMoney(dish.price) %></strong>
+        </div>
+
+        <% if (user && user.role === 'customer') { %>
+          <label class="quantity">
+            Quantidade
+            <input type="number" min="0" step="1" name="quantities[<%= dish.id %>]" value="0">
+          </label>
+        <% } %>
+      </article>
+    <% }) %>
+  </div>
+
+  <% if (user && user.role === 'customer' && dishes.length > 0) { %>
+    <div class="card">
+      <label>
+        Observações do pedido
+        <textarea name="notes" rows="3" placeholder="Exemplo: sem cebola, entregar na portaria..."></textarea>
+      </label>
+
+      <button class="button full" type="submit">Enviar pedido</button>
+    </div>
+  <% } %>
+</form>
+
+<%- include('partials/footer') %>

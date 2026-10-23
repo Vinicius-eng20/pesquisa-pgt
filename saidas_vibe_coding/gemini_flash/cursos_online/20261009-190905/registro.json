@@ -1,0 +1,46 @@
+{
+  "data_hora_utc": "2026-10-09T19:09:05+00:00",
+  "modelo": "gemini_flash",
+  "modelo_id": "google/gemini-3.8-flash",
+  "dominio": "cursos_online",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": true
+    }
+  },
+  "pasta": "saidas\\gemini_flash\\cursos_online\\20261009-190905",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma plataforma de cursos online com matrícula. Não sei nada de programação, só quero que funcione.\n\nVão usar os alunos e o administrador da plataforma. Os alunos precisam poder ver os cursos disponíveis, se matricular em um curso e ver os cursos em que estão matriculados. O administrador da plataforma precisa poder cadastrar, editar e remover cursos, cancelar matrículas e ver todas as matrículas de todos os alunos.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "prompt_versao": "v2",
+  "provedor": "Google",
+  "id_geracao": "gen-1791572946-7SLaRpofSQ8NAY6jt5fK",
+  "modelo_servido": "google/gemini-3.8-flash",
+  "tokens_entrada": 266,
+  "tokens_saida": 21098,
+  "tokens_raciocinio": 2357,
+  "tokens_total": 21364,
+  "custo_usd": 0.079317,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 108.5,
+  "duracao_api_s": 108.5,
+  "tokens_por_s": 194.5,
+  "n_arquivos": 7,
+  "arquivos": [
+    "package.json",
+    "db.js",
+    "server.js",
+    "public/index.html",
+    "public/style.css",
+    "public/app.js",
+    "README.md"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<h1>Administração</h1>
+<p class="sub">Gerencie o acervo, as contas e os bloqueios.</p>
+{% if msg %}<div class="alerta ok">{{ msg }}</div>{% endif %}
+
+<div class="tabs">
+  <a class="ativo" href="/admin">Itens do acervo</a>
+  <a href="/admin/usuarios" onclick="location.href='/admin#usuarios';return false">Usuários</a>
+  <a href="/admin/historico">Histórico</a>
+</div>
+
+<div class="grid" style="gap:16px">
+  <div class="cartao">
+    <h2>Cadastrar novo item</h2>
+    <form method="post" action="/admin/item" class="grid c2" style="margin-top:8px">
+      <input type="hidden" name="acao" value="novo">
+      <div style="grid-column:1 / -1">
+        <label>Título *</label>
+        <input name="titulo" required>
+      </div>
+      <div><label>Autor</label><input name="autor"></div>
+      <div><label>Tipo</label>
+        <select name="tipo">
+          <option>Livro</option><option>Revista</option><option>Periódico</option>
+          <option>Ficha musical</option><option>Outro</option>
+        </select>
+      </div>
+      <div><label>Gênero</label><input name="genero"></div>
+      <div><label>ISBN</label><input name="isbn"></div>
+      <div><label>Ano</label><input name="ano"></div>
+      <div><label>Exemplares</label><input name="exemplares" type="number" min="1" value="1"></div>
+      <div><label>Prazo (dias)</label><input name="prazo_dias" type="number" min="1" value="14"></div>
+      <div style="grid-column:1 / -1">
+        <label>Descrição</label><textarea name="desc"></textarea>
+      </div>
+      <div style="grid-column:1 / -1">
+        <button class="btn primary" type="submit">Cadastrar item</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="cartao" id="itens">
+    <h2>Itens do acervo ({{ itens|length }})</h2>
+    {% if itens %}
+      <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Título</th><th>Autor</th><th>Disp.</th><th>Prévia</th><th></th></tr></thead>
+        <tbody>
+          {% for i in itens %}
+          {% set disp = _exemplares_disponiveis(i) %}
+          <tr>
+            <td>{{ i.titulo }}</td>
+            <td>{{ i.autor or "—" }}</td>
+            <td>
+              {% if disp > 0 %}<span class="selo ok">{{ disp }}</span>
+              {% else %}<span class="selo aviso">0</span>{% endif %}
+            </td>
+            <td>{{ i.prazo_dias }} d</td>
+            <td style="text-align:right">
+              <a class="btn mini" href="/admin/editar/{{ i.id }}">Editar</a>
+              <form method="post" action="/admin/item/remove/{{ i.id }}" style="display:inline"
+                    onsubmit="return confirm('Remover {{ i.titulo }} do acervo?')">
+                <button class="btn mini perigo" type="submit">Remover</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <div class="vazio">Nenhum item cadastrado ainda.</div>
+    {% endif %}
+  </div>
+
+  <div class="cartao" id="usuarios">
+    <h2>Usuários e bloqueios</h2>
+    <p class="sub">Aqui você bloqueia leitores com atraso e vê quem está em atraso.</p>
+    <div class="tabela-wrap">
+    <table>
+      <thead><tr><th>Nome</th><th>Usuário</th><th>Papel</th><th>Situação</th><th>Ações</th></tr></thead>
+      <tbody>
+        {% for x in usuarios %}
+        {% set tem_atr = atraso.get(x.id, 0) > 0 %}
+        <tr>
+          <td>{{ x.nome }}</td>
+          <td>{{ x.usuario }}</td>
+          <td>{% if x.papel == "bibliotecario" %}<span class="selo neutro">bibliotecário</span>
+              {% else %}<span class="selo neutro">leitor</span>{% endif %}</td>
+          <td>
+            {% if not x.ativo %}<span class="selo erro">inativa</span>
+            {% elif tem_atr %}<span class="selo aviso">em atraso ({{ atraso.get(x.id) }})</span>
+            {% elif x.bloqueado %}<span class="selo erro">bloqueado</span>
+            {% else %}<span class="selo ok">ok</span>{% endif %}
+          </td>
+          <td>
+            <a class="btn mini" href="/admin/leitor/{{ x.id }}">Histórico</a>
+            {% if x.id != u.id %}
+            <form method="post" action="/admin/user/bloquear/{{ x.id }}" style="display:inline">
+              <button class="btn mini {% if x.bloqueado %}primary{% else %}perigo{% endif %}" type="submit">
+                {% if x.bloqueado %}Desbloquear{% else %}Bloquear{% endif %}
+              </button>
+            </form>
+            {% if x.ativo %}
+            <form method="post" action="/admin/user/desativar/{{ x.id }}" style="display:inline">
+              <button class="btn mini perigo" type="submit"
+                      onclick="return confirm('Desativar a conta de {{ x.nome }}?')">Desativar</button>
+            </form>
+            {% else %}
+            <form method="post" action="/admin/user/ativar/{{ x.id }}" style="display:inline">
+              <button class="btn mini" type="submit">Reativar</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/admin/user/papel/{{ x.id }}" style="display:inline">
+              <button class="btn mini" type="submit">
+                {% if x.papel == "leitor" %}Tornar bibliotecário{% else %}Tornar leitor{% endif %}
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

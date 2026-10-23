@@ -1,0 +1,27 @@
+<%- include('layout-header') %>
+<h1>Cursos Disponíveis</h1>
+<% if (!user) { %>
+  <div class="info">Faça <a href="/login">login</a> ou <a href="/register">cadastre-se</a> para se matricular nos cursos.</div>
+<% } %>
+<div class="grid">
+  <% courses.forEach(c => { %>
+    <div class="card">
+      <h3><%= c.title %></h3>
+      <p><%= c.description %></p>
+      <div class="meta">👨‍🏫 <%= c.instructor %> • ⏱ <%= c.duration %></div>
+      <% if (user) { %>
+        <% if (enrolledIds.includes(c.id)) { %>
+          <span class="tag">✓ Matriculado</span>
+        <% } else { %>
+          <form method="POST" action="/enroll/<%= c.id %>">
+            <button class="btn" type="submit">Matricular-se</button>
+          </form>
+        <% } %>
+      <% } %>
+    </div>
+  <% }); %>
+  <% if (courses.length === 0) { %>
+    <p>Nenhum curso disponível no momento.</p>
+  <% } %>
+</div>
+<%- include('layout-footer') %>

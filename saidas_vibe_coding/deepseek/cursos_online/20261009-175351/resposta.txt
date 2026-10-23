@@ -1,0 +1,494 @@
+=== package.json ===
+{
+  "name": "plataforma-cursos",
+  "version": "1.0.0",
+  "description": "Plataforma de cursos online com matrícula",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "bcryptjs": "^2.4.3",
+    "connect-sqlite3": "^0.9.13",
+    "sqlite3": "^5.1.6",
+    "ejs": "^3.1.9",
+    "cookie-parser": "^1.4.6"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const fs = require('fs');
+const sqlite3 = require('sqlite3').verbose();
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const db = new sqlite3.Database(path.join(DATA_DIR, 'app.db'));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'student'
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    instructor TEXT NOT NULL,
+    duration TEXT NOT NULL
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS enrollments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    course_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, course_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE
+  )`);
+
+  db.get(`SELECT COUNT(*) as count FROM users WHERE role='admin'`, (err, row) => {
+    if (!err && row.count === 0) {
+      const hash = bcrypt.hashSync('admin123', 10);
+      db.run(`INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'admin')`,
+        ['Administrador', 'admin@admin.com', hash]);
+      console.log('Admin criado: admin@admin.com / admin123');
+    }
+  });
+
+  db.get(`SELECT COUNT(*) as count FROM courses`, (err, row) => {
+    if (!err && row.count === 0) {
+      const stmt = db.prepare(`INSERT INTO courses (title, description, instructor, duration) VALUES (?, ?, ?, ?)`);
+      stmt.run('Introdução à Programação', 'Aprenda os fundamentos da programação com Python.', 'Prof. Ana Silva', '20 horas');
+      stmt.run('Design Gráfico Essencial', 'Domine as ferramentas e princípios do design moderno.', 'Prof. Carlos Mendes', '15 horas');
+      stmt.run('Marketing Digital', 'Estratégias completas para vender na internet.', 'Prof. Julia Costa', '30 horas');
+      stmt.finalize();
+    }
+  });
+});
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: DATA_DIR }),
+  secret: 'segredo-super-secreto-plataforma',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
+}));
+
+app.use((req, res, next) => {
+  res.locals.user = req.session.user || null;
+  next();
+});
+
+function requireAuth(req, res, next) {
+  if (!req.session.user) return res.redirect('/login');
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== 'admin') return res.redirect('/');
+  next();
+}
+
+// Home
+app.get('/', (req, res) => {
+  db.all('SELECT * FROM courses ORDER BY id DESC', (err, courses) => {
+    if (err) courses = [];
+    let enrolledIds = [];
+    const finish = () => res.render('home', { courses, enrolledIds });
+    if (!req.session.user) return finish();
+    db.all('SELECT course_id FROM enrollments WHERE user_id = ?', [req.session.user.id], (err2, rows) => {
+      enrolledIds = err2 ? [] : rows.map(r => r.course_id);
+      finish();
+    });
+  });
+});
+
+// Register
+app.get('/register', (req, res) => res.render('register', { error: null }));
+app.post('/register', (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) return res.render('register', { error: 'Preencha todos os campos.' });
+  if (password.length < 4) return res.render('register', { error: 'Senha deve ter pelo menos 4 caracteres.' });
+  db.get('SELECT id FROM users WHERE email = ?', [email], (err, row) => {
+    if (row) return res.render('register', { error: 'E-mail já cadastrado.' });
+    const hash = bcrypt.hashSync(password, 10);
+    db.run('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, "student")',
+      [name, email, hash], function(err2) {
+        if (err2) return res.render('register', { error: 'Erro ao cadastrar.' });
+        req.session.user = { id: this.lastID, name, email, role: 'student' };
+        res.redirect('/');
+      });
+  });
+});
+
+// Login
+app.get('/login', (req, res) => res.render('login', { error: null }));
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.render('login', { error: 'E-mail ou senha inválidos.' });
+    }
+    req.session.user = { id: user.id, name: user.name, email: user.email, role: user.role };
+    res.redirect('/');
+  });
+});
+
+app.get('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/'));
+});
+
+// Minhas matrículas
+app.get('/my-courses', requireAuth, (req, res) => {
+  db.all(`SELECT courses.*, enrollments.id as enrollment_id, enrollments.created_at
+    FROM enrollments JOIN courses ON courses.id = enrollments.course_id
+    WHERE enrollments.user_id = ? ORDER BY enrollments.created_at DESC`,
+    [req.session.user.id], (err, courses) => {
+      res.render('my-courses', { courses: courses || [] });
+    });
+});
+
+// Matricular
+app.post('/enroll/:courseId', requireAuth, (req, res) => {
+  const courseId = req.params.courseId;
+  db.run('INSERT OR IGNORE INTO enrollments (user_id, course_id, created_at) VALUES (?, ?, ?)',
+    [req.session.user.id, courseId, new Date().toISOString()], () => res.redirect('/my-courses'));
+});
+
+// Cancelar matrícula (aluno)
+app.post('/unenroll/:courseId', requireAuth, (req, res) => {
+  db.run('DELETE FROM enrollments WHERE user_id = ? AND course_id = ?',
+    [req.session.user.id, req.params.courseId], () => res.redirect('/my-courses'));
+});
+
+// Admin: cursos
+app.get('/admin', requireAdmin, (req, res) => {
+  db.all('SELECT * FROM courses ORDER BY id DESC', (err, courses) => {
+    db.all(`SELECT e.id, e.created_at, u.name as user_name, u.email as user_email,
+      c.title as course_title, c.id as course_id, u.id as user_id
+      FROM enrollments e
+      JOIN users u ON u.id = e.user_id
+      JOIN courses c ON c.id = e.course_id
+      ORDER BY e.created_at DESC`, (err2, enrollments) => {
+      res.render('admin', { courses: courses || [], enrollments: enrollments || [] });
+    });
+  });
+});
+
+app.post('/admin/courses', requireAdmin, (req, res) => {
+  const { title, description, instructor, duration } = req.body;
+  db.run('INSERT INTO courses (title, description, instructor, duration) VALUES (?, ?, ?, ?)',
+    [title, description, instructor, duration], () => res.redirect('/admin'));
+});
+
+app.post('/admin/courses/:id/edit', requireAdmin, (req, res) => {
+  const { title, description, instructor, duration } = req.body;
+  db.run('UPDATE courses SET title=?, description=?, instructor=?, duration=? WHERE id=?',
+    [title, description, instructor, duration, req.params.id], () => res.redirect('/admin'));
+});
+
+app.post('/admin/courses/:id/delete', requireAdmin, (req, res) => {
+  db.run('DELETE FROM courses WHERE id=?', [req.params.id], () => res.redirect('/admin'));
+});
+
+app.post('/admin/enrollments/:id/cancel', requireAdmin, (req, res) => {
+  db.run('DELETE FROM enrollments WHERE id=?', [req.params.id], () => res.redirect('/admin'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+});
+
+=== views/layout-header.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plataforma de Cursos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f4f6fa; color: #222; min-height: 100vh; }
+    header { background: #1e3a8a; color: white; padding: 14px 22px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    header a { color: white; text-decoration: none; margin-right: 16px; font-weight: 500; }
+    header a:hover { text-decoration: underline; }
+    header .brand { font-size: 1.2em; font-weight: 700; }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    h1, h2 { color: #1e3a8a; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+    .card { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .card h3 { color: #1e3a8a; margin-bottom: 8px; }
+    .card p { margin-bottom: 8px; color: #555; font-size: 0.95em; }
+    .card .meta { color: #888; font-size: 0.85em; margin-bottom: 12px; }
+    .btn { display: inline-block; background: #1e3a8a; color: white; padding: 9px 16px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 0.95em; }
+    .btn:hover { background: #152a66; }
+    .btn-danger { background: #dc2626; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    form { display: inline; }
+    .form-box { background: white; padding: 24px; border-radius: 10px; max-width: 420px; margin: 40px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .form-box input, .form-box textarea { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 1em; }
+    .form-box label { display: block; margin-bottom: 4px; color: #333; font-weight: 500; }
+    .error { background: #fee2e2; color: #991b1b; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
+    .info { background: #dbeafe; color: #1e3a8a; padding: 10px; border-radius: 6px; margin-bottom: 12px; }
+    .admin-section { background: white; border-radius: 10px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .admin-section input, .admin-section textarea { width: 100%; padding: 9px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; font-size: 0.92em; }
+    th { background: #f1f5f9; color: #1e3a8a; }
+    .tag { display: inline-block; background: #dbeafe; color: #1e3a8a; padding: 3px 10px; border-radius: 20px; font-size: 0.8em; margin-bottom: 6px; }
+    @media (max-width: 640px) {
+      header { flex-direction: column; align-items: flex-start; }
+      table { font-size: 0.82em; }
+      th, td { padding: 6px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <a href="/" class="brand">📚 Plataforma de Cursos</a>
+  </div>
+  <div>
+    <% if (user) { %>
+      <a href="/">Cursos</a>
+      <a href="/my-courses">Minhas Matrículas</a>
+      <% if (user.role === 'admin') { %><a href="/admin">Admin</a><% } %>
+      <span style="margin-right:12px; opacity:.85;">Olá, <%= user.name %></span>
+      <a href="/logout">Sair</a>
+    <% } else { %>
+      <a href="/">Cursos</a>
+      <a href="/login">Entrar</a>
+      <a href="/register">Cadastrar</a>
+    <% } %>
+  </div>
+</header>
+<div class="container">
+
+=== views/layout-footer.ejs ===
+</div>
+</body>
+</html>
+
+=== views/home.ejs ===
+<%- include('layout-header') %>
+<h1>Cursos Disponíveis</h1>
+<% if (!user) { %>
+  <div class="info">Faça <a href="/login">login</a> ou <a href="/register">cadastre-se</a> para se matricular nos cursos.</div>
+<% } %>
+<div class="grid">
+  <% courses.forEach(c => { %>
+    <div class="card">
+      <h3><%= c.title %></h3>
+      <p><%= c.description %></p>
+      <div class="meta">👨‍🏫 <%= c.instructor %> • ⏱ <%= c.duration %></div>
+      <% if (user) { %>
+        <% if (enrolledIds.includes(c.id)) { %>
+          <span class="tag">✓ Matriculado</span>
+        <% } else { %>
+          <form method="POST" action="/enroll/<%= c.id %>">
+            <button class="btn" type="submit">Matricular-se</button>
+          </form>
+        <% } %>
+      <% } %>
+    </div>
+  <% }); %>
+  <% if (courses.length === 0) { %>
+    <p>Nenhum curso disponível no momento.</p>
+  <% } %>
+</div>
+<%- include('layout-footer') %>
+
+=== views/my-courses.ejs ===
+<%- include('layout-header') %>
+<h1>Minhas Matrículas</h1>
+<div class="grid">
+  <% courses.forEach(c => { %>
+    <div class="card">
+      <h3><%= c.title %></h3>
+      <p><%= c.description %></p>
+      <div class="meta">👨‍🏫 <%= c.instructor %> • ⏱ <%= c.duration %></div>
+      <div class="meta">Matriculado em: <%= new Date(c.created_at).toLocaleDateString('pt-BR') %></div>
+      <form method="POST" action="/unenroll/<%= c.id %>">
+        <button class="btn btn-danger" type="submit">Cancelar matrícula</button>
+      </form>
+    </div>
+  <% }); %>
+  <% if (courses.length === 0) { %>
+    <p>Você ainda não está matriculado em nenhum curso. <a href="/">Ver cursos</a></p>
+  <% } %>
+</div>
+<%- include('layout-footer') %>
+
+=== views/login.ejs ===
+<%- include('layout-header') %>
+<div class="form-box">
+  <h1>Entrar</h1>
+  <% if (error) { %><div class="error"><%= error %></div><% } %>
+  <form method="POST" action="/login">
+    <label>E-mail</label>
+    <input type="email" name="email" required>
+    <label>Senha</label>
+    <input type="password" name="password" required>
+    <button class="btn" type="submit" style="width:100%;">Entrar</button>
+  </form>
+  <p style="margin-top:14px; text-align:center;">Não tem conta? <a href="/register">Cadastre-se</a></p>
+</div>
+<%- include('layout-footer') %>
+
+=== views/register.ejs ===
+<%- include('layout-header') %>
+<div class="form-box">
+  <h1>Criar Conta</h1>
+  <% if (error) { %><div class="error"><%= error %></div><% } %>
+  <form method="POST" action="/register">
+    <label>Nome completo</label>
+    <input type="text" name="name" required>
+    <label>E-mail</label>
+    <input type="email" name="email" required>
+    <label>Senha</label>
+    <input type="password" name="password" required minlength="4">
+    <button class="btn" type="submit" style="width:100%;">Cadastrar</button>
+  </form>
+  <p style="margin-top:14px; text-align:center;">Já tem conta? <a href="/login">Entrar</a></p>
+</div>
+<%- include('layout-footer') %>
+
+=== views/admin.ejs ===
+<%- include('layout-header') %>
+<h1>Painel do Administrador</h1>
+
+<div class="admin-section">
+  <h2>Cadastrar Novo Curso</h2>
+  <form method="POST" action="/admin/courses">
+    <input type="text" name="title" placeholder="Título do curso" required>
+    <textarea name="description" placeholder="Descrição" required rows="2"></textarea>
+    <input type="text" name="instructor" placeholder="Instrutor" required>
+    <input type="text" name="duration" placeholder="Duração (ex: 20 horas)" required>
+    <button class="btn" type="submit">Cadastrar Curso</button>
+  </form>
+</div>
+
+<div class="admin-section">
+  <h2>Cursos Cadastrados</h2>
+  <% courses.forEach(c => { %>
+    <div style="border:1px solid #eee; border-radius:8px; padding:12px; margin-bottom:12px;">
+      <form method="POST" action="/admin/courses/<%= c.id %>/edit">
+        <input type="text" name="title" value="<%= c.title %>" required>
+        <textarea name="description" required rows="2"><%= c.description %></textarea>
+        <input type="text" name="instructor" value="<%= c.instructor %>" required>
+        <input type="text" name="duration" value="<%= c.duration %>" required>
+        <button class="btn btn-secondary" type="submit">Salvar</button>
+      </form>
+      <form method="POST" action="/admin/courses/<%= c.id %>/delete" onsubmit="return confirm('Remover este curso? As matrículas serão canceladas.');" style="margin-top:8px;">
+        <button class="btn btn-danger" type="submit">Remover Curso</button>
+      </form>
+    </div>
+  <% }); %>
+  <% if (courses.length === 0) { %><p>Nenhum curso cadastrado.</p><% } %>
+</div>
+
+<div class="admin-section">
+  <h2>Todas as Matrículas</h2>
+  <% if (enrollments.length > 0) { %>
+    <table>
+      <thead>
+        <tr><th>Aluno</th><th>E-mail</th><th>Curso</th><th>Data</th><th>Ação</th></tr>
+      </thead>
+      <tbody>
+        <% enrollments.forEach(e => { %>
+          <tr>
+            <td><%= e.user_name %></td>
+            <td><%= e.user_email %></td>
+            <td><%= e.course_title %></td>
+            <td><%= new Date(e.created_at).toLocaleDateString('pt-BR') %></td>
+            <td>
+              <form method="POST" action="/admin/enrollments/<%= e.id %>/cancel" onsubmit="return confirm('Cancelar esta matrícula?');">
+                <button class="btn btn-danger" type="submit" style="padding:5px 10px; font-size:0.85em;">Cancelar</button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } else { %>
+    <p>Nenhuma matrícula registrada.</p>
+  <% } %>
+</div>
+<%- include('layout-footer') %>
+
+=== public/.gitkeep ===
+
+=== README.md ===
+# Plataforma de Cursos Online
+
+Site completo de cursos online com matrícula, contas de aluno e administrador. Tudo salvo no próprio servidor (banco de dados SQLite), funciona em qualquer computador ou celular pela internet.
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (versão 18 ou superior). Baixe em https://nodejs.org.
+
+No terminal, dentro da pasta do projeto, execute:
+
+```bash
+npm install
+npm start
+```
+
+O site ficará disponível em: **http://localhost:3000**
+
+## Conta de administrador padrão
+
+- **E-mail:** admin@admin.com
+- **Senha:** admin123
+
+(Recomendado trocar a senha depois do primeiro acesso.)
+
+## O que os alunos podem fazer
+
+- Ver todos os cursos disponíveis
+- Criar conta e fazer login
+- Matricular-se em cursos
+- Ver e cancelar suas próprias matrículas
+
+## O que o administrador pode fazer
+
+- Cadastrar, editar e remover cursos
+- Ver todas as matrículas de todos os alunos
+- Cancelar qualquer matrícula
+
+## Persistência de dados
+
+Todos os dados ficam salvos na pasta `data/` (arquivos `app.db` e `sessions.db`). Isso significa que:
+- Se você fechar e abrir o site, nada se perde.
+- Se um aluno entrar pelo celular, verá os mesmos dados que via no computador.
+- O administrador vê as matrículas feitas por todos os alunos, de qualquer aparelho.
+
+## Como colocar na internet
+
+O site usa apenas Node.js e arquivos locais, sem serviços externos. Para publicá-lo:
+
+1. Envie o projeto para um serviço de hospedagem que rode Node.js (ex.: Render, Railway, Fly.io, VPS própria).
+2. Configure o comando de start como `npm start`.
+3. Pronto — o site estará acessível por qualquer navegador.
+
+Lembre-se de fazer backup periódico da pasta `data/` para não perder os dados.

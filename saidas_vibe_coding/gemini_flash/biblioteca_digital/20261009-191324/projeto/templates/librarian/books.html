@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciamento de Acervo - Bibliotecário{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  <h2>Gerenciamento do Acervo</h2>
+  <a href="{{ url_for('librarian_add_book') }}" class="btn btn-success">+ Cadastrar Novo Livro</a>
+</div>
+
+<div class="search-bar">
+  <form action="{{ url_for('librarian_books') }}" method="GET" style="display: flex; width: 100%; gap: 0.8rem;">
+    <input type="text" name="q" value="{{ query }}" placeholder="Filtrar por título, autor ou ISBN..." class="form-control">
+    <button type="submit" class="btn btn-primary">Filtrar</button>
+    {% if query %}
+      <a href="{{ url_for('librarian_books') }}" class="btn btn-outline">Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Título</th>
+          <th>Autor</th>
+          <th>Gênero</th>
+          <th>ISBN</th>
+          <th>Cópias Disponíveis / Total</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for book in books %}
+          <tr>
+            <td>#{{ book.id }}</td>
+            <td><strong>{{ book.title }}</strong></td>
+            <td>{{ book.author }}</td>
+            <td><span class="badge badge-secondary">{{ book.category }}</span></td>
+            <td><code>{{ book.isbn or '---' }}</code></td>
+            <td>
+              {% if book.available_copies > 0 %}
+                <span class="badge badge-success">{{ book.available_copies }} / {{ book.total_copies }}</span>
+              {% else %}
+                <span class="badge badge-danger">0 / {{ book.total_copies }}</span>
+              {% endif %}
+            </td>
+            <td>
+              <div style="display: flex; gap: 0.4rem;">
+                <a href="{{ url_for('librarian_edit_book', book_id=book.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                <form action="{{ url_for('librarian_delete_book', book_id=book.id) }}" method="POST" onsubmit="return confirm('Deseja excluir permanentemente este livro?');">
+                  <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 2rem;">Nenhum livro encontrado.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

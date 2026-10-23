@@ -1,0 +1,615 @@
+=== package.json ===
+{
+  "name": "gestao-tarefas-equipe",
+  "version": "1.0.0",
+  "description": "Sistema de gestão de tarefas de equipe",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "sqlite3": "^5.1.6"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Banco de dados persistente em arquivo
+const db = new sqlite3.Database(path.join(__dirname, 'dados.db'));
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    senha TEXT NOT NULL,
+    papel TEXT NOT NULL
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS tarefas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titulo TEXT NOT NULL,
+    descricao TEXT,
+    status TEXT NOT NULL DEFAULT 'pendente',
+    membro_id INTEGER,
+    criado_por INTEGER,
+    criado_em TEXT NOT NULL,
+    FOREIGN KEY (membro_id) REFERENCES usuarios(id),
+    FOREIGN KEY (criado_por) REFERENCES usuarios(id)
+  )`);
+
+  // Cria gerente padrão se não existir
+  db.get(`SELECT COUNT(*) as n FROM usuarios WHERE papel = 'gerente'`, (err, row) => {
+    if (row && row.n === 0) {
+      const hash = bcrypt.hashSync('admin123', 10);
+      db.run(`INSERT INTO usuarios (nome, email, senha, papel) VALUES (?, ?, ?, ?)`,
+        ['Gerente', 'gerente@equipe.com', hash, 'gerente']);
+      console.log('Gerente padrão criado: gerente@equipe.com / admin123');
+    }
+  });
+});
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(session({
+  secret: 'segredo-super-secreto-tarefas-equipe-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 } // 30 dias
+}));
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+function precisaLogin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ erro: 'Não autenticado' });
+  next();
+}
+
+function apenasGerente(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ erro: 'Não autenticado' });
+  if (req.session.papel !== 'gerente') return res.status(403).json({ erro: 'Apenas gerente' });
+  next();
+}
+
+// ===== AUTENTICAÇÃO =====
+app.post('/api/registrar', (req, res) => {
+  const { nome, email, senha, papel } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  const papelFinal = papel === 'gerente' ? 'gerente' : 'membro';
+  
+  // Só permite criar gerente se não existir nenhum
+  if (papelFinal === 'gerente') {
+    db.get(`SELECT COUNT(*) as n FROM usuarios WHERE papel = 'gerente'`, (err, row) => {
+      if (row && row.n > 0) return res.status(403).json({ erro: 'Já existe um gerente' });
+      continuar();
+    });
+  } else continuar();
+
+  function continuar() {
+    const hash = bcrypt.hashSync(senha, 10);
+    db.run(`INSERT INTO usuarios (nome, email, senha, papel) VALUES (?, ?, ?, ?)`,
+      [nome, email.toLowerCase(), hash, papelFinal],
+      function(err) {
+        if (err) return res.status(400).json({ erro: 'Email já cadastrado' });
+        req.session.userId = this.lastID;
+        req.session.nome = nome;
+        req.session.papel = papelFinal;
+        res.json({ ok: true, papel: papelFinal });
+      });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  const { email, senha } = req.body;
+  db.get(`SELECT * FROM usuarios WHERE email = ?`, [email.toLowerCase()], (err, user) => {
+    if (!user) return res.status(400).json({ erro: 'Email ou senha inválidos' });
+    if (!bcrypt.compareSync(senha, user.senha)) return res.status(400).json({ erro: 'Email ou senha inválidos' });
+    req.session.userId = user.id;
+    req.session.nome = user.nome;
+    req.session.papel = user.papel;
+    res.json({ ok: true, papel: user.papel });
+  });
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/eu', (req, res) => {
+  if (!req.session.userId) return res.json({ logado: false });
+  res.json({ logado: true, id: req.session.userId, nome: req.session.nome, papel: req.session.papel });
+});
+
+// ===== USUÁRIOS =====
+app.get('/api/usuarios', precisaLogin, (req, res) => {
+  db.all(`SELECT id, nome, email, papel FROM usuarios WHERE papel = 'membro'`, (err, rows) => {
+    res.json(rows || []);
+  });
+});
+
+// ===== TAREFAS =====
+app.get('/api/tarefas', precisaLogin, (req, res) => {
+  const sql = `SELECT t.*, u.nome as membro_nome, c.nome as criador_nome 
+    FROM tarefas t 
+    LEFT JOIN usuarios u ON t.membro_id = u.id 
+    LEFT JOIN usuarios c ON t.criado_por = c.id`;
+  
+  if (req.session.papel === 'gerente') {
+    db.all(sql + ' ORDER BY t.criado_em DESC', (err, rows) => res.json(rows || []));
+  } else {
+    db.all(sql + ' WHERE t.membro_id = ? ORDER BY t.criado_em DESC', [req.session.userId], (err, rows) => res.json(rows || []));
+  }
+});
+
+app.post('/api/tarefas', precisaLogin, (req, res) => {
+  const { titulo, descricao, membro_id } = req.body;
+  if (!titulo) return res.status(400).json({ erro: 'Título obrigatório' });
+
+  let destino;
+  if (req.session.papel === 'gerente') {
+    destino = membro_id || null;
+  } else {
+    // Membro só pode criar para si mesmo
+    destino = req.session.userId;
+  }
+
+  const agora = new Date().toISOString();
+  db.run(`INSERT INTO tarefas (titulo, descricao, status, membro_id, criado_por, criado_em) 
+    VALUES (?, ?, 'pendente', ?, ?, ?)`,
+    [titulo, descricao || '', destino, req.session.userId, agora],
+    function(err) {
+      if (err) return res.status(500).json({ erro: 'Erro ao criar' });
+      res.json({ ok: true, id: this.lastID });
+    });
+});
+
+app.put('/api/tarefas/:id', precisaLogin, (req, res) => {
+  const id = req.params.id;
+  const { titulo, descricao, status, membro_id } = req.body;
+
+  db.get(`SELECT * FROM tarefas WHERE id = ?`, [id], (err, tarefa) => {
+    if (!tarefa) return res.status(404).json({ erro: 'Tarefa não encontrada' });
+
+    if (req.session.papel === 'membro') {
+      // Membro só pode mudar status da própria tarefa
+      if (tarefa.membro_id !== req.session.userId) return res.status(403).json({ erro: 'Sem permissão' });
+      if (status && ['pendente', 'em_andamento', 'concluida'].includes(status)) {
+        db.run(`UPDATE tarefas SET status = ? WHERE id = ?`, [status, id], () => res.json({ ok: true }));
+      } else {
+        res.status(400).json({ erro: 'Status inválido' });
+      }
+    } else {
+      // Gerente pode editar tudo
+      db.run(`UPDATE tarefas SET titulo = ?, descricao = ?, status = ?, membro_id = ? WHERE id = ?`,
+        [titulo, descricao, status, membro_id, id],
+        () => res.json({ ok: true }));
+    }
+  });
+});
+
+app.delete('/api/tarefas/:id', apenasGerente, (req, res) => {
+  db.run(`DELETE FROM tarefas WHERE id = ?`, [req.params.id], () => res.json({ ok: true }));
+});
+
+app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão de Tarefas da Equipe</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+body { background: #f0f2f5; color: #1c1e21; min-height: 100vh; }
+.tela-auth { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+.card-auth { background: white; padding: 32px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+.card-auth h1 { font-size: 22px; margin-bottom: 6px; color: #1877f2; }
+.card-auth p.sub { color: #65676b; font-size: 14px; margin-bottom: 20px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tabs button { flex: 1; padding: 8px; border: 1px solid #ddd; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
+.tabs button.ativo { background: #1877f2; color: white; border-color: #1877f2; }
+input, textarea, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 14px; font-family: inherit; }
+textarea { resize: vertical; min-height: 60px; }
+button.principal { width: 100%; padding: 11px; background: #1877f2; color: white; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; font-weight: 600; }
+button.principal:hover { background: #166fe5; }
+.erro { color: #e41e3f; font-size: 13px; margin: 6px 0; }
+.info { color: #65676b; font-size: 12px; margin-top: 12px; text-align: center; line-height: 1.5; }
+
+/* App */
+header.topo { background: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.08); position: sticky; top: 0; z-index: 10; }
+header.topo h1 { font-size: 17px; color: #1877f2; }
+header.topo .user-info { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+header.topo .user-info span { color: #65676b; }
+header.topo .user-info b { color: #1c1e21; }
+.btn-sair { padding: 6px 12px; background: #e4e6eb; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.btn-sair:hover { background: #d8dadf; }
+main { max-width: 900px; margin: 20px auto; padding: 0 16px 40px; }
+.painel { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.painel h2 { font-size: 16px; margin-bottom: 14px; color: #1c1e21; }
+.btn-nova { padding: 9px 16px; background: #1877f2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.filtros { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filtros button { padding: 6px 12px; border: 1px solid #ddd; background: white; border-radius: 20px; font-size: 13px; cursor: pointer; }
+.filtros button.ativo { background: #1877f2; color: white; border-color: #1877f2; }
+
+.tarefa { border: 1px solid #e4e6eb; border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+.tarefa.concluida { opacity: 0.65; }
+.tarefa .linha-topo { display: flex; justify-content: space-between; align-items: start; gap: 10px; margin-bottom: 8px; }
+.tarefa h3 { font-size: 15px; }
+.tarefa .desc { color: #65676b; font-size: 13px; margin-bottom: 8px; }
+.tarefa .meta { display: flex; gap: 14px; font-size: 12px; color: #65676b; flex-wrap: wrap; align-items: center; }
+.badge { padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.badge.pendente { background: #fff3cd; color: #856404; }
+.badge.em_andamento { background: #cce5ff; color: #004085; }
+.badge.concluida { background: #d4edda; color: #155724; }
+.acoes { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.acoes button, .acoes select { padding: 6px 10px; font-size: 12px; border: 1px solid #ddd; border-radius: 6px; background: white; cursor: pointer; }
+.acoes .btn-excluir { color: #e41e3f; }
+.acoes select { padding: 5px 8px; }
+
+.modal-fundo { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 100; }
+.modal { background: white; border-radius: 12px; padding: 24px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; }
+.modal h2 { margin-bottom: 16px; font-size: 18px; }
+.modal label { display: block; font-size: 13px; color: #65676b; margin-bottom: 5px; font-weight: 600; }
+.modal .botoes { display: flex; gap: 10px; margin-top: 8px; }
+.modal .botoes button { flex: 1; padding: 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; }
+.modal .botoes .cancelar { background: #e4e6eb; color: #1c1e21; }
+.modal .botoes .salvar { background: #1877f2; color: white; }
+.vazio { text-align: center; color: #65676b; padding: 30px 10px; font-size: 14px; }
+@media (max-width: 500px) {
+  header.topo h1 { font-size: 15px; }
+  header.topo .user-info span { display: none; }
+}
+
+=== public/app.js ===
+const app = document.getElementById('app');
+let estadoAtual = { usuario: null, tarefas: [], usuarios: [], filtro: 'todas', aberturas: null };
+
+async function api(url, opts) {
+  const r = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+async function iniciar() {
+  try {
+    const eu = await api('/api/eu');
+    if (eu.logado) {
+      estadoAtual.usuario = eu;
+      await carregarDados();
+      renderApp();
+    } else renderLogin();
+  } catch (e) { renderLogin(); }
+}
+
+async function carregarDados() {
+  estadoAtual.tarefas = await api('/api/tarefas');
+  if (estadoAtual.usuario.papel === 'gerente') {
+    estadoAtual.usuarios = await api('/api/usuarios');
+  }
+}
+
+function renderLogin() {
+  app.innerHTML = `
+    <div class="tela-auth">
+      <div class="card-auth">
+        <h1>Gestão de Tarefas</h1>
+        <p class="sub">Entre ou crie sua conta</p>
+        <div class="tabs">
+          <button id="tab-login" class="ativo">Entrar</button>
+          <button id="tab-reg">Criar conta</button>
+        </div>
+        <div id="form-area"></div>
+      </div>
+    </div>`;
+  document.getElementById('tab-login').onclick = () => trocarForm('login');
+  document.getElementById('tab-reg').onclick = () => trocarForm('reg');
+  trocarForm('login');
+}
+
+function trocarForm(tipo) {
+  document.getElementById('tab-login').classList.toggle('ativo', tipo === 'login');
+  document.getElementById('tab-reg').classList.toggle('ativo', tipo === 'reg');
+  const area = document.getElementById('form-area');
+  if (tipo === 'login') {
+    area.innerHTML = `
+      <input id="email" type="email" placeholder="Email">
+      <input id="senha" type="password" placeholder="Senha">
+      <div id="msg-erro" class="erro"></div>
+      <button class="principal" id="btn-entrar">Entrar</button>
+      <p class="info">Se você é o gerente e ainda não configurou:<br>gerente@equipe.com / admin123</p>`;
+    document.getElementById('btn-entrar').onclick = async () => {
+      try {
+        await api('/api/login', { method: 'POST', body: JSON.stringify({
+          email: document.getElementById('email').value,
+          senha: document.getElementById('senha').value
+        })});
+        await iniciar();
+      } catch (e) { document.getElementById('msg-erro').textContent = e.message; }
+    };
+  } else {
+    area.innerHTML = `
+      <input id="nome" placeholder="Nome completo">
+      <input id="email" type="email" placeholder="Email">
+      <input id="senha" type="password" placeholder="Senha (mín. 4 caracteres)">
+      <select id="papel">
+        <option value="membro">Sou membro da equipe</option>
+        <option value="gerente">Sou gerente</option>
+      </select>
+      <div id="msg-erro" class="erro"></div>
+      <button class="principal" id="btn-criar">Criar conta</button>`;
+    document.getElementById('btn-criar').onclick = async () => {
+      try {
+        await api('/api/registrar', { method: 'POST', body: JSON.stringify({
+          nome: document.getElementById('nome').value,
+          email: document.getElementById('email').value,
+          senha: document.getElementById('senha').value,
+          papel: document.getElementById('papel').value
+        })});
+        await iniciar();
+      } catch (e) { document.getElementById('msg-erro').textContent = e.message; }
+    };
+  }
+}
+
+function renderApp() {
+  const u = estadoAtual.usuario;
+  app.innerHTML = `
+    <header class="topo">
+      <h1>📋 Tarefas da Equipe</h1>
+      <div class="user-info">
+        <span>${u.papel === 'gerente' ? '👔 Gerente' : '👤 Membro'}</span>
+        <b>${escapeHtml(u.nome)}</b>
+        <button class="btn-sair" id="btn-sair">Sair</button>
+      </div>
+    </header>
+    <main>
+      <div class="painel">
+        <h2>${u.papel === 'gerente' ? 'Todas as tarefas da equipe' : 'Minhas tarefas'}</h2>
+        <button class="btn-nova" id="btn-nova">+ Nova tarefa</button>
+        <div class="filtros" id="filtros"></div>
+        <div id="lista"></div>
+      </div>
+    </main>
+    <div id="modal-area"></div>`;
+
+  document.getElementById('btn-sair').onclick = async () => {
+    await api('/api/logout', { method: 'POST' });
+    location.reload();
+  };
+  document.getElementById('btn-nova').onclick = abrirModalNova;
+  renderFiltros();
+  renderLista();
+}
+
+function renderFiltros() {
+  const f = document.getElementById('filtros');
+  const opcoes = [['todas','Todas'],['pendente','Pendentes'],['em_andamento','Em andamento'],['concluida','Concluídas']];
+  f.innerHTML = opcoes.map(([v,l]) => `<button data-f="${v}" class="${estadoAtual.filtro === v ? 'ativo':''}">${l}</button>`).join('');
+  f.querySelectorAll('button').forEach(b => b.onclick = () => { estadoAtual.filtro = b.dataset.f; renderFiltros(); renderLista(); });
+}
+
+function renderLista() {
+  const lista = document.getElementById('lista');
+  let t = estadoAtual.tarefas;
+  if (estadoAtual.filtro !== 'todas') t = t.filter(x => x.status === estadoAtual.filtro);
+  if (t.length === 0) {
+    lista.innerHTML = `<div class="vazio">Nenhuma tarefa encontrada.</div>`;
+    return;
+  }
+  const ehGerente = estadoAtual.usuario.papel === 'gerente';
+  lista.innerHTML = t.map(tarefa => {
+    const statusLabel = { pendente: 'Pendente', em_andamento: 'Em andamento', concluida: 'Concluída' }[tarefa.status];
+    return `
+    <div class="tarefa ${tarefa.status === 'concluida' ? 'concluida' : ''}">
+      <div class="linha-topo">
+        <h3>${escapeHtml(tarefa.titulo)}</h3>
+        <span class="badge ${tarefa.status}">${statusLabel}</span>
+      </div>
+      ${tarefa.descricao ? `<div class="desc">${escapeHtml(tarefa.descricao)}</div>` : ''}
+      <div class="meta">
+        ${ehGerente ? `<span>👤 ${tarefa.membro_nome ? escapeHtml(tarefa.membro_nome) : 'Não atribuída'}</span>` : ''}
+        <span>📅 ${new Date(tarefa.criado_em).toLocaleDateString('pt-BR')}</span>
+      </div>
+      <div class="acoes">
+        <select data-status="${tarefa.id}">
+          <option value="pendente" ${tarefa.status==='pendente'?'selected':''}>Pendente</option>
+          <option value="em_andamento" ${tarefa.status==='em_andamento'?'selected':''}>Em andamento</option>
+          <option value="concluida" ${tarefa.status==='concluida'?'selected':''}>Concluída</option>
+        </select>
+        ${ehGerente ? `<button data-editar="${tarefa.id}">✏️ Editar</button><button class="btn-excluir" data-excluir="${tarefa.id}">🗑️ Excluir</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  lista.querySelectorAll('[data-status]').forEach(sel => {
+    sel.onchange = async () => {
+      try {
+        await api('/api/tarefas/' + sel.dataset.status, { method: 'PUT', body: JSON.stringify({ status: sel.value }) });
+        await carregarDados(); renderLista();
+      } catch (e) { alert(e.message); }
+    };
+  });
+  lista.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => abrirModalEditar(+b.dataset.editar));
+  lista.querySelectorAll('[data-excluir]').forEach(b => b.onclick = async () => {
+    if (!confirm('Excluir esta tarefa?')) return;
+    await api('/api/tarefas/' + b.dataset.excluir, { method: 'DELETE' });
+    await carregarDados(); renderLista();
+  });
+}
+
+function abrirModalNova() {
+  const ehGerente = estadoAtual.usuario.papel === 'gerente';
+  const modal = document.getElementById('modal-area');
+  modal.innerHTML = `
+    <div class="modal-fundo">
+      <div class="modal">
+        <h2>Nova tarefa</h2>
+        <label>Título</label>
+        <input id="m-titulo" placeholder="Ex: Enviar relatório">
+        <label>Descrição</label>
+        <textarea id="m-desc" placeholder="Detalhes da tarefa..."></textarea>
+        ${ehGerente ? `
+          <label>Atribuir a</label>
+          <select id="m-membro">
+            <option value="">— Sem atribuição —</option>
+            ${estadoAtual.usuarios.map(u => `<option value="${u.id}">${escapeHtml(u.nome)}</option>`).join('')}
+          </select>` : ''}
+        <div class="botoes">
+          <button class="cancelar" id="m-cancelar">Cancelar</button>
+          <button class="salvar" id="m-salvar">Criar tarefa</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('m-cancelar').onclick = () => modal.innerHTML = '';
+  document.getElementById('m-salvar').onclick = async () => {
+    try {
+      const body = {
+        titulo: document.getElementById('m-titulo').value,
+        descricao: document.getElementById('m-desc').value
+      };
+      if (ehGerente) {
+        const mid = document.getElementById('m-membro').value;
+        body.membro_id = mid ? +mid : null;
+      }
+      await api('/api/tarefas', { method: 'POST', body: JSON.stringify(body) });
+      modal.innerHTML = '';
+      await carregarDados(); renderLista();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+function abrirModalEditar(id) {
+  const t = estadoAtual.tarefas.find(x => x.id === id);
+  if (!t) return;
+  const modal = document.getElementById('modal-area');
+  modal.innerHTML = `
+    <div class="modal-fundo">
+      <div class="modal">
+        <h2>Editar tarefa</h2>
+        <label>Título</label>
+        <input id="m-titulo" value="${escapeHtml(t.titulo)}">
+        <label>Descrição</label>
+        <textarea id="m-desc">${escapeHtml(t.descricao || '')}</textarea>
+        <label>Status</label>
+        <select id="m-status">
+          <option value="pendente" ${t.status==='pendente'?'selected':''}>Pendente</option>
+          <option value="em_andamento" ${t.status==='em_andamento'?'selected':''}>Em andamento</option>
+          <option value="concluida" ${t.status==='concluida'?'selected':''}>Concluída</option>
+        </select>
+        <label>Atribuir a</label>
+        <select id="m-membro">
+          <option value="">— Sem atribuição —</option>
+          ${estadoAtual.usuarios.map(u => `<option value="${u.id}" ${t.membro_id === u.id ? 'selected':''}>${escapeHtml(u.nome)}</option>`).join('')}
+        </select>
+        <div class="botoes">
+          <button class="cancelar" id="m-cancelar">Cancelar</button>
+          <button class="salvar" id="m-salvar">Salvar</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('m-cancelar').onclick = () => modal.innerHTML = '';
+  document.getElementById('m-salvar').onclick = async () => {
+    try {
+      const mid = document.getElementById('m-membro').value;
+      await api('/api/tarefas/' + id, { method: 'PUT', body: JSON.stringify({
+        titulo: document.getElementById('m-titulo').value,
+        descricao: document.getElementById('m-desc').value,
+        status: document.getElementById('m-status').value,
+        membro_id: mid ? +mid : null
+      })});
+      modal.innerHTML = '';
+      await carregarDados(); renderLista();
+    } catch (e) { alert(e.message); }
+  };
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+iniciar();
+
+=== README.md ===
+# Gestão de Tarefas da Equipe
+
+Sistema completo de gestão de tarefas para equipes, com contas de usuário, gerente e membros.
+
+## Como instalar e executar
+
+Você precisa ter o **Node.js** instalado (baixe em https://nodejs.org).
+
+1. Abra o terminal (ou prompt de comando) na pasta do projeto.
+2. Instale as dependências:
+   ```
+   npm install
+   ```
+3. Inicie o servidor:
+   ```
+   npm start
+   ```
+4. Abra o navegador em: **http://localhost:3000**
+
+## Primeiro acesso (gerente)
+
+- **Email:** gerente@equipe.com
+- **Senha:** admin123
+
+Troque a senha depois criando seu próprio gerente (só é possível ter um gerente por vez).
+
+## Como usar
+
+**Gerente:**
+- Cria contas de membros pela tela inicial (aba "Criar conta" → "Sou gerente" — mas só o primeiro pode ser gerente).
+- Cria tarefas e atribui aos membros.
+- Edita, remove e vê todas as tarefas de todos.
+
+**Membro:**
+- Cria sua própria conta (aba "Criar conta" → "Sou membro").
+- Vê apenas as tarefas atribuídas a ele.
+- Pode mudar o status (Pendente → Em andamento → Concluída).
+- Pode criar tarefas para si mesmo.
+
+## Funciona na internet (deploy)
+
+Os dados ficam salvos no arquivo `dados.db` na pasta do projeto (não somem ao fechar). Para colocar online:
+
+1. Suba o projeto para um serviço gratuito de hospedagem Node.js (ex: **Render**, **Railway**, **Fly.io**).
+2. Configure a variável `PORT` (a maioria já define automaticamente).
+3. Use um disco persistente (Persistent Disk) para que o arquivo `dados.db` não seja apagado em reinícios.
+
+Comandos de build/start:
+- Build: `npm install`
+- Start: `npm start`
+
+## Acesso pelo celular
+
+Como o site roda no servidor, qualquer pessoa pode acessar do celular ou computador usando o mesmo endereço. Tudo é salvo no servidor — o que você faz no celular aparece no computador e vice-versa.

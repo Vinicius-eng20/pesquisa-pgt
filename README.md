@@ -11,7 +11,7 @@ Este repositório guarda o código que gera as aplicações do experimento e as 
 Comparar o nível de segurança de aplicações web de uma mesma especificação funcional quando construídas por dois caminhos:
 
 - **Vibe coding:** um modelo de linguagem recebe o pedido de um usuário leigo e escreve a aplicação completa (frontend e backend).
-- **Low-code:** uma plataforma (Lovable, v0 e Bolt.diy) recebe o mesmo pedido e produz a aplicação com seus próprios recursos.
+- **Low-code:** uma plataforma (Lovable, Bolt.new ou Replit) recebe o mesmo pedido e produz a aplicação com seus próprios recursos.
 
 As aplicações geradas são tratadas como objeto de teste. Nenhuma delas será colocada em produção. Os resultados são classificados pelo OWASP Top 10:2025 e pontuados pelo CVSS v4.0 (Base).
 
@@ -46,7 +46,7 @@ Grupos:
 | Grupo | Ferramentas | Aplicações |
 |---|---|---|
 | Vibe coding | 6 modelos via OpenRouter | 10 domínios x 6 modelos = 60 |
-| Low-code | Lovable, v0 e Bolt.diy | 10 domínios x 3 plataformas = 30 (plano em revisão) |
+| Low-code | Lovable, Bolt.new e Replit (planos gratuitos) | 10 domínios x 3 plataformas = 30 |
 
 Modelos do grupo vibe coding (definidos em `MODELOS` no `gerar_app.py`):
 
@@ -104,7 +104,7 @@ Se a aplicação não instalar ou não iniciar, usa-se `corrigir_aplicacao(erro,
 - Mesmo modelo da geração original.
 - No máximo 3 rodadas por aplicação.
 - Nenhuma edição manual de código. Cada rodada fica em `reparo_N/`.
-- Apenas erros ocorridos no ambiente padrão de execução (contêiner Linux com versão fixa do Node) justificam reparo.
+- Apenas erros ocorridos no perfil de execução local (seção 4.1) justificam reparo.
 
 ### 3.3.1 Continuação de respostas cortadas
 
@@ -126,7 +126,7 @@ Quando a resposta termina normalmente mas não traz nenhum arquivo (estado `sem_
 
 ### 3.4 Grupo low-code (manual)
 
-Os mesmos prompts são colados na interface de cada plataforma, respeitando os créditos gratuitos. O código resultante é exportado para um repositório do GitHub (sincronização) e executado localmente. As mensagens de apoio e o limite de interações seguem o protocolo pré-registrado, e desvios são registrados.
+As plataformas do grupo estão fixadas em Lovable, Bolt.new e Replit, todas em plano gratuito. O v0 foi excluído após o piloto, por exigir conta externa (Neon) para o banco de dados e não entregar o escopo completo. O prompt v2 é colado sem alteração na interface de cada plataforma, uma geração por plataforma por dia, na ordem de domínios definida no protocolo. O código é exportado em ZIP (no Lovable, via repositório do GitHub privado) e registrado com `gerar_lowcode.py` (comandos `situacao`, `importar`, `reparo` e `resumir`), que apenas importa e registra, sem gerar. Se a cota gratuita acabar durante a geração, o domínio é registrado como `nao_entregue`. As mensagens de apoio, o limite de 5 interações, o reparo (máximo de 3 rodadas) e os desvios seguem o arquivo `protocolo-lowcode.md` (versão 1.0, congelada em 20/10/2026). As saídas ficam em `saidas_lowcode/`, separadas das saídas do grupo vibe coding.
 
 ### 3.5 Saídas e registro
 
@@ -147,6 +147,10 @@ Estados possíveis: `gerada`, `truncada`, `nao_entregue`, `sem_arquivos` e `erro
 
 ## 4. Análise de segurança (etapa seguinte)
 
+### 4.1 Perfil de execução local (único para as 90 aplicações)
+
+Todas as aplicações, dos dois grupos (60 de vibe coding e 30 de low-code), são executadas pelo mesmo perfil, para que diferenças de achados não decorram do ambiente. O perfil reproduz localmente o comportamento de uma hospedagem em nuvem: contêineres Docker, PostgreSQL 16 (ou Supabase CLI local quando o projeto usa Supabase), `NODE_ENV=production` e proxy reverso local com HTTPS (certificado local). Somente variáveis de ambiente, URLs e chaves geradas localmente podem ser alteradas; o código, as migrações e as dependências não são editados. Antes do pentest, o ZAP confirma que nenhuma requisição sai para domínios das plataformas (`*.supabase.co`, `*.lovable.app`, `*.replit.dev`, `*.replit.app`, `*.bolt.new`). A especificação completa está na seção 10 de `protocolo-lowcode.md`.
+
 Cada aplicação é executada em contêiner isolado e analisada por:
 
 - OWASP ZAP automatizado em todas as aplicações;
@@ -157,9 +161,8 @@ Cada achado é mapeado para o OWASP Top 10:2025 e pontuado com CVSS v4.0 (Base).
 
 ## 5. Pendências de definição
 
-- Regra para quando uma plataforma low-code exigir integração externa.
 - Papéis do domínio marketplace (papel único comum).
-- Tratamento de variáveis de ambiente (SESSION_SECRET, NODE_ENV) para não apagar achados.
+- Tratamento de SESSION_SECRET e demais segredos no perfil local (valores gerados localmente; NODE_ENV já definido como production).
 - Critério de contagem de achados de cabeçalhos HTTP.
 - Classificação de segredos para H2 (chave pública e URL não contam como segredo).
 - Validação e congelamento do prompt de sistema e do protocolo.

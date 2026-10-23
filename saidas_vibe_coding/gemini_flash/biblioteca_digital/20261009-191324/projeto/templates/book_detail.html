@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}{{ book.title }} - Biblioteca Digital{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('index') }}" class="btn btn-outline btn-sm" style="margin-bottom: 1rem;">&larr; Voltar ao Acervo</a>
+
+<div class="card" style="display: flex; flex-direction: column; gap: 1.5rem;">
+  <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
+    <div style="flex: 1; min-width: 250px; max-width: 320px;">
+      <div class="book-cover-placeholder" style="height: 280px; border-radius: var(--radius);">
+        <span class="icon" style="font-size: 4rem;">📖</span>
+        <h3 style="margin-top: 0.5rem; padding: 0 1rem;">{{ book.title }}</h3>
+        <p style="font-size: 0.9rem; opacity: 0.9;">{{ book.author }}</p>
+      </div>
+    </div>
+
+    <div style="flex: 2; min-width: 280px;">
+      <span class="badge badge-secondary" style="margin-bottom: 0.5rem;">{{ book.category }}</span>
+      <h1 style="color: var(--dark); font-size: 1.8rem; margin-bottom: 0.3rem;">{{ book.title }}</h1>
+      <p style="color: var(--gray-500); font-size: 1.1rem; margin-bottom: 1.25rem;">Autor: <strong>{{ book.author }}</strong></p>
+
+      {% if book.isbn %}
+        <p style="font-size: 0.9rem; color: var(--gray-500); margin-bottom: 1rem;">ISBN: <code>{{ book.isbn }}</code></p>
+      {% endif %}
+
+      <div style="margin-bottom: 1.5rem;">
+        <h4 style="margin-bottom: 0.4rem; color: var(--gray-700);">Sinopse / Descrição:</h4>
+        <p style="color: var(--gray-700); line-height: 1.6;">
+          {{ book.description or 'Sem descrição cadastrada para esta obra.' }}
+        </p>
+      </div>
+
+      <div style="background-color: var(--gray-100); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; gap: 2rem; align-items: center;">
+        <div>
+          <span style="display: block; font-size: 0.8rem; color: var(--gray-500);">Disponibilidade:</span>
+          {% if book.available_copies > 0 %}
+            <span class="badge badge-success" style="font-size: 0.95rem;">{{ book.available_copies }} exemplares disponíveis</span>
+          {% else %}
+            <span class="badge badge-danger" style="font-size: 0.95rem;">Indisponível no momento</span>
+          {% endif %}
+        </div>
+        <div>
+          <span style="display: block; font-size: 0.8rem; color: var(--gray-500);">Total no Acervo:</span>
+          <strong>{{ book.total_copies }} exemplares</strong>
+        </div>
+      </div>
+
+      <!-- BOTÕES DE AÇÃO -->
+      <div>
+        {% if session.get('role') == 'reader' %}
+          {% if user_active_loan %}
+            <div class="alert alert-info">
+              Você já está com este livro emprestado! Data de devolução: <strong>{{ user_active_loan.due_date }}</strong>.
+              <form action="{{ url_for('return_book', loan_id=user_active_loan.id) }}" method="POST" style="margin-top: 0.5rem;">
+                <button type="submit" class="btn btn-warning btn-sm">Devolver Agora</button>
+              </form>
+            </div>
+          {% elif book.available_copies > 0 %}
+            <form action="{{ url_for('borrow_book', book_id=book.id) }}" method="POST">
+              <button type="submit" class="btn btn-success" style="font-size: 1.1rem; padding: 0.75rem 1.75rem;">
+                📥 Pegar Emprestado (14 Dias)
+              </button>
+            </form>
+          {% else %}
+            <button class="btn btn-outline" disabled>Indisponível no Momento</button>
+          {% endif %}
+        {% elif not session.get('user_id') %}
+          <div class="alert alert-warning">
+            Para pegar este livro emprestado, você precisa estar conectado.
+            <div style="margin-top: 0.5rem;">
+              <a href="{{ url_for('login') }}" class="btn btn-primary btn-sm">Fazer Login</a>
+              <a href="{{ url_for('register') }}" class="btn btn-outline btn-sm">Cadastre-se</a>
+            </div>
+          </div>
+        {% elif session.get('role') == 'librarian' %}
+          <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('librarian_edit_book', book_id=book.id) }}" class="btn btn-primary">Editar Livro</a>
+            <form action="{{ url_for('librarian_delete_book', book_id=book.id) }}" method="POST" onsubmit="return confirm('Deseja realmente excluir este livro?');">
+              <button type="submit" class="btn btn-danger">Excluir Livro</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

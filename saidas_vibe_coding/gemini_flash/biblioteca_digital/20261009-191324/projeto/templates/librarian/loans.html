@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Histórico Geral de Empréstimos - Bibliotecário{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  <h2>Histórico de Empréstimos</h2>
+</div>
+
+<!-- FILTROS -->
+<div class="search-bar">
+  <form action="{{ url_for('librarian_loans') }}" method="GET" style="display: flex; width: 100%; gap: 0.8rem; flex-wrap: wrap;">
+    <input type="text" name="q" value="{{ search }}" placeholder="Buscar por leitor ou livro..." class="form-control" style="flex: 2; min-width: 200px;">
+
+    <select name="status" class="form-control" style="flex: 1; min-width: 150px;">
+      <option value="all" {% if filter_status == 'all' %}selected{% endif %}>Todos os Status</option>
+      <option value="active" {% if filter_status == 'active' %}selected{% endif %}>Em Aberto (No Prazo)</option>
+      <option value="overdue" {% if filter_status == 'overdue' %}selected{% endif %}>Em Atraso ⚠️</option>
+      <option value="returned" {% if filter_status == 'returned' %}selected{% endif %}>Devolvidos</option>
+    </select>
+
+    <button type="submit" class="btn btn-primary">Filtrar</button>
+    {% if search or filter_status != 'all' %}
+      <a href="{{ url_for('librarian_loans') }}" class="btn btn-outline">Limpar</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Livro</th>
+          <th>Leitor</th>
+          <th>Empréstimo</th>
+          <th>Devolução Prevista</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for loan in loans %}
+          {% set is_overdue = (loan.status == 'active' and loan.due_date < today) %}
+          <tr style="{% if is_overdue %}background-color: #fef2f2;{% endif %}">
+            <td>#{{ loan.id }}</td>
+            <td><strong>{{ loan.book_title }}</strong></td>
+            <td>
+              {{ loan.user_name }}<br>
+              <small style="color: var(--gray-500);">{{ loan.user_email }}</small>
+            </td>
+            <td>{{ loan.loan_date }}</td>
+            <td>
+              <strong style="{% if is_overdue %}color: var(--danger);{% endif %}">{{ loan.due_date }}</strong>
+              {% if is_overdue %}
+                <br><span style="color: var(--danger); font-size: 0.8rem; font-weight: bold;">(Atrasado)</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if loan.status == 'returned' %}
+                <span class="badge badge-secondary">Devolvido ({{ loan.return_date }})</span>
+              {% elif is_overdue %}
+                <span class="badge badge-danger">Atrasado</span>
+              {% else %}
+                <span class="badge badge-success">No Prazo</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if loan.status == 'active' %}
+                <form action="{{ url_for('return_book', loan_id=loan.id) }}" method="POST">
+                  <button type="submit" class="btn btn-sm btn-warning">Confirmar Devolução</button>
+                </form>
+              {% else %}
+                <span style="color: var(--gray-500); font-size: 0.85rem;">Finalizado</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 2rem;">Nenhum empréstimo encontrado.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

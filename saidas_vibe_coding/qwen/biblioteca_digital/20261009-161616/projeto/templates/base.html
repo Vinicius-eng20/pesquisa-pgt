@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}{{ titulo }} | {{ TITULO }}{% endblock %}</title>
+  <style>
+    :root{
+      --fundo:#f5f7fb; --cartao:#ffffff; --texto:#1f2430; --suave:#5b6473;
+      --borda:#e3e8f0; --marca:#2f6df6; --marca-escura:#1f4fd0;
+      --ok:#1f9d55; --ok-fundo:#e6f6ec; --erro:#d64545; --erro-fundo:#fdeaea;
+      --aviso:#b9770e; --aviso-fundo:#fff6e5; --sombra:0 1px 3px rgba(20,30,60,.08);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      background:var(--fundo);color:var(--texto);line-height:1.5}
+    a{color:var(--marca);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .barra{background:var(--cartao);border-bottom:1px solid var(--borda);position:sticky;top:0;z-index:5}
+    .barra-inner{max-width:960px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+    .logo{font-weight:700;font-size:18px;color:var(--texto);display:flex;align-items:center;gap:8px}
+    .logo .ponto{width:12px;height:12px;border-radius:50%;background:var(--marca);display:inline-block}
+    .barra nav{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+    .barra nav a{padding:8px 12px;border-radius:8px;color:var(--suave);font-size:14px;font-weight:500}
+    .barra nav a:hover{background:var(--fundo);color:var(--texto);text-decoration:none}
+    .quem{font-size:13px;color:var(--suave)}
+    .quem b{color:var(--texto)}
+    main{max-width:960px;margin:22px auto;padding:0 16px 60px}
+    h1{font-size:24px;margin:0 0 4px}
+    h2{font-size:18px;margin:0 0 12px}
+    .sub{color:var(--suave);margin:0 0 20px;font-size:14px}
+    .cartao{background:var(--cartao);border:1px solid var(--borda);border-radius:12px;
+      padding:18px;box-shadow:var(--sombra);margin-bottom:16px}
+    .alerta{border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 16px}
+    .alerta.erro{background:var(--erro-fundo);color:var(--erro);border:1px solid #f3c6c6}
+    .alerta.ok{background:var(--ok-fundo);color:var(--ok);border:1px solid #bfe6cd}
+    .alerta.aviso{background:var(--aviso-fundo);color:var(--aviso);border:1px solid #f0d9ad}
+    .linha{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .form{display:grid;gap:12px;max-width:420px}
+    label{font-size:13px;font-weight:600;color:var(--suave);display:block;margin-bottom:4px}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--borda);border-radius:8px;
+      font-size:15px;font-family:inherit;background:#fff;color:var(--texto)}
+    input:focus,select:focus,textarea:focus{outline:2px solid var(--marca);border-color:transparent}
+    textarea{min-height:70px;resize:vertical}
+    .btn{display:inline-block;padding:10px 16px;border-radius:8px;border:1px solid var(--borda);
+      background:#fff;color:var(--texto);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+    .btn:hover{background:var(--fundo);text-decoration:none}
+    .btn.primary{background:var(--marca);border-color:var(--marca);color:#fff}
+    .btn.primary:hover{background:var(--marca-escura)}
+    .btn.perigo{background:#fff;border-color:#e8c4c4;color:var(--erro)}
+    .btn.perigo:hover{background:var(--erro-fundo)}
+    .btn.mini{padding:6px 10px;font-size:13px}
+    .grid{display:grid;gap:14px}
+    .grid.c2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .grid.c3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    @media(max-width:640px){.grid.c2,.grid.c3{grid-template-columns:1fr}}
+    .item{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
+      border:1px solid var(--borda);border-radius:12px;padding:14px;background:#fff}
+    .item .info h3{margin:0 0 4px;font-size:16px}
+    .item .info p{margin:2px 0;font-size:14px;color:var(--suave)}
+    .item .acao{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+    .selo{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+    .selo.ok{background:var(--ok-fundo);color:var(--ok)}
+    .selo.aviso{background:var(--aviso-fundo);color:var(--aviso)}
+    .selo.erro{background:var(--erro-fundo);color:var(--erro)}
+    .selo.neutro{background:var(--fundo);color:var(--suave)}
+    .vazio{padding:30px;text-align:center;color:var(--suave);background:#fff;border:1px dashed var(--borda);border-radius:12px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--borda)}
+    th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--suave)}
+    .tabela-wrap{overflow-x:auto}
+    .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+    .tabs a{padding:8px 14px;border-radius:999px;background:#fff;border:1px solid var(--borda);
+      font-size:14px;font-weight:500;color:var(--suave)}
+    .tabs a.ativo,.tabs a:hover{background:var(--marca);color:#fff;border-color:var(--marca);text-decoration:none}
+    .centro{max-width:400px;margin:40px auto;padding:0 16px}
+    .centro .cartao{padding:24px}
+    .centro h1{text-align:center;font-size:22px}
+    .centro .sub{text-align:center}
+    .rodape{text-align:center;color:var(--suave);font-size:13px;padding:20px}
+  </style>
+</head>
+<body>
+  {% if u %}
+  <div class="barra">
+    <div class="barra-inner">
+      <span class="logo"><span class="ponto"></span> {{ TITULO }}</span>
+      <nav>
+        <a href="/painel">Painel</a>
+        <a href="/acervo">Acervo</a>
+        {% if u.papel == "bibliotecario" %}
+        <a href="/admin">Administração</a>
+        <a href="/admin/historico">Histórico</a>
+        {% endif %}
+        <a href="/logout" onclick="return confirm('Sair da conta?')">Sair</a>
+      </nav>
+      <span class="quem">Olá, <b>{{ u.nome }}</b>
+        {% if u.papel == "bibliotecario" %}<span class="selo neutro">bibliotecário</span>
+        {% else %}<span class="selo neutro">leitor</span>{% endif %}
+      </span>
+    </div>
+  </div>
+  {% endif %}
+  <main>
+    {% block conteudo %}{% endblock %}
+  </main>
+  <div class="rodape">{{ TITULO }} — dados salvos no servidor.</div>
+</body>
+</html>

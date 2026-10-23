@@ -1,0 +1,1972 @@
+=== package.json ===
+{
+  "name": "sistema-reservas-hotel",
+  "version": "1.0.0",
+  "description": "Sistema completo de reservas de hotel com área do hóspede e do gerente",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "init-admin": "node scripts/init-admin.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.2.2",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "express-validator": "^7.0.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const path = require('path');
+const { initializeDatabase } = require('./database');
+const authRoutes = require('./routes/auth');
+const roomRoutes = require('./routes/rooms');
+const reservationRoutes = require('./routes/reservations');
+const userRoutes = require('./routes/users');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Inicializar banco de dados
+initializeDatabase();
+
+// Middlewares
+app.use(helmet({
+  contentSecurityPolicy: false // Permitir recursos inline para funcionamento simples
+}));
+app.use(compression());
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
+
+// Rotas da API
+app.use('/api/auth', authRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/reservations', reservationRoutes);
+app.use('/api/users', userRoutes);
+
+// Rota para servir o frontend
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Tratamento de erros
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Erro interno do servidor' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Acesse: http://localhost:${PORT}`);
+  console.log('\nPrimeiro acesso: execute "npm run init-admin" para criar o usuário gerente');
+});
+
+=== database.js ===
+const Database = require('better-sqlite3');
+const path = require('path');
+const bcrypt = require('bcrypt');
+
+const dbPath = path.join(__dirname, 'data', 'hotel.db');
+const db = new Database(dbPath);
+
+// Criar diretório data se não existir
+const fs = require('fs');
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+function initializeDatabase() {
+  // Tabela de usuários
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('guest', 'manager')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabela de quartos
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      price_per_night DECIMAL(10,2) NOT NULL,
+      capacity INTEGER NOT NULL,
+      amenities TEXT,
+      image_url TEXT,
+      active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Tabela de reservas
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reservations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      room_id INTEGER NOT NULL,
+      check_in DATE NOT NULL,
+      check_out DATE NOT NULL,
+      total_price DECIMAL(10,2) NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'confirmed', 'cancelled', 'rejected')),
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (room_id) REFERENCES rooms(id)
+    )
+  `);
+
+  // Índices para performance
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_reservations_dates ON reservations(check_in, check_out);
+    CREATE INDEX IF NOT EXISTS idx_reservations_user ON reservations(user_id);
+    CREATE INDEX IF NOT EXISTS idx_reservations_status ON reservations(status);
+  `);
+
+  console.log('Banco de dados inicializado com sucesso');
+}
+
+module.exports = { db, initializeDatabase };
+
+=== middleware/auth.js ===
+const jwt = require('jsonwebtoken');
+const { db } = require('../database');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'seu-segredo-super-secreto-mude-em-producao';
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Token inválido ou expirado' });
+    }
+    req.user = user;
+    next();
+  });
+}
+
+function requireManager(req, res, next) {
+  if (req.user.role !== 'manager') {
+    return res.status(403).json({ error: 'Acesso restrito ao gerente' });
+  }
+  next();
+}
+
+function requireGuest(req, res, next) {
+  if (req.user.role !== 'guest') {
+    return res.status(403).json({ error: 'Acesso restrito a hóspedes' });
+  }
+  next();
+}
+
+module.exports = { authenticateToken, requireManager, requireGuest, JWT_SECRET };
+
+=== routes/auth.js ===
+const express = require('express');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const { db } = require('../database');
+const { JWT_SECRET } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Registro de hóspede
+router.post('/register', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').isLength({ min: 6 }),
+  body('name').trim().isLength({ min: 2 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password, name } = req.body;
+
+    // Verificar se usuário já existe
+    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email já cadastrado' });
+    }
+
+    // Hash da senha
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Inserir usuário
+    const stmt = db.prepare('INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)');
+    const result = stmt.run(email, hashedPassword, name, 'guest');
+
+    // Gerar token
+    const token = jwt.sign(
+      { id: result.lastInsertRowid, email, role: 'guest' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      message: 'Cadastro realizado com sucesso',
+      token,
+      user: { id: result.lastInsertRowid, email, name, role: 'guest' }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao cadastrar usuário' });
+  }
+});
+
+// Login
+router.post('/login', [
+  body('email').isEmail().normalizeEmail(),
+  body('password').notEmpty()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { email, password } = req.body;
+
+    // Buscar usuário
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (!user) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
+    }
+
+    // Verificar senha
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Email ou senha incorretos' });
+    }
+
+    // Gerar token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      message: 'Login realizado com sucesso',
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao fazer login' });
+  }
+});
+
+module.exports = router;
+
+=== routes/rooms.js ===
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const { db } = require('../database');
+const { authenticateToken, requireManager } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Listar todos os quartos (público)
+router.get('/', (req, res) => {
+  try {
+    const { checkIn, checkOut } = req.query;
+    
+    let query = 'SELECT * FROM rooms WHERE active = 1';
+    let params = [];
+
+    // Se datas fornecidas, verificar disponibilidade
+    if (checkIn && checkOut) {
+      query = `
+        SELECT r.* FROM rooms r
+        WHERE r.active = 1
+        AND r.id NOT IN (
+          SELECT room_id FROM reservations
+          WHERE status IN ('pending', 'confirmed')
+          AND (
+            (check_in <= ? AND check_out > ?)
+            OR (check_in < ? AND check_out >= ?)
+            OR (check_in >= ? AND check_out <= ?)
+          )
+        )
+      `;
+      params = [checkIn, checkIn, checkOut, checkOut, checkIn, checkOut];
+    }
+
+    const rooms = db.prepare(query).all(...params);
+    res.json(rooms);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar quartos' });
+  }
+});
+
+// Obter quarto específico
+router.get('/:id', (req, res) => {
+  try {
+    const room = db.prepare('SELECT * FROM rooms WHERE id = ? AND active = 1').get(req.params.id);
+    if (!room) {
+      return res.status(404).json({ error: 'Quarto não encontrado' });
+    }
+    res.json(room);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar quarto' });
+  }
+});
+
+// Criar quarto (apenas gerente)
+router.post('/', authenticateToken, requireManager, [
+  body('name').trim().isLength({ min: 2 }),
+  body('price_per_night').isFloat({ min: 0 }),
+  body('capacity').isInt({ min: 1 })
+], (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, description, price_per_night, capacity, amenities, image_url } = req.body;
+
+    const stmt = db.prepare(`
+      INSERT INTO rooms (name, description, price_per_night, capacity, amenities, image_url)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(name, description, price_per_night, capacity, amenities, image_url);
+
+    res.status(201).json({
+      message: 'Quarto cadastrado com sucesso',
+      roomId: result.lastInsertRowid
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao cadastrar quarto' });
+  }
+});
+
+// Atualizar quarto (apenas gerente)
+router.put('/:id', authenticateToken, requireManager, [
+  body('name').trim().isLength({ min: 2 }),
+  body('price_per_night').isFloat({ min: 0 }),
+  body('capacity').isInt({ min: 1 })
+], (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, description, price_per_night, capacity, amenities, image_url, active } = req.body;
+
+    const stmt = db.prepare(`
+      UPDATE rooms
+      SET name = ?, description = ?, price_per_night = ?, capacity = ?, amenities = ?, image_url = ?, active = ?
+      WHERE id = ?
+    `);
+    
+    const result = stmt.run(name, description, price_per_night, capacity, amenities, image_url, active ? 1 : 0, req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Quarto não encontrado' });
+    }
+
+    res.json({ message: 'Quarto atualizado com sucesso' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao atualizar quarto' });
+  }
+});
+
+// Deletar quarto (apenas gerente)
+router.delete('/:id', authenticateToken, requireManager, (req, res) => {
+  try {
+    // Verificar se há reservas ativas
+    const activeReservations = db.prepare(`
+      SELECT COUNT(*) as count FROM reservations
+      WHERE room_id = ? AND status IN ('pending', 'confirmed')
+    `).get(req.params.id);
+
+    if (activeReservations.count > 0) {
+      return res.status(400).json({ error: 'Não é possível excluir quarto com reservas ativas' });
+    }
+
+    // Soft delete
+    const stmt = db.prepare('UPDATE rooms SET active = 0 WHERE id = ?');
+    const result = stmt.run(req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Quarto não encontrado' });
+    }
+
+    res.json({ message: 'Quarto removido com sucesso' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao remover quarto' });
+  }
+});
+
+module.exports = router;
+
+=== routes/reservations.js ===
+const express = require('express');
+const { body, validationResult } = require('express-validator');
+const { db } = require('../database');
+const { authenticateToken, requireManager, requireGuest } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Criar reserva (hóspede)
+router.post('/', authenticateToken, requireGuest, [
+  body('room_id').isInt(),
+  body('check_in').isDate(),
+  body('check_out').isDate(),
+  body('notes').optional().trim()
+], (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { room_id, check_in, check_out, notes } = req.body;
+    const user_id = req.user.id;
+
+    // Validar datas
+    if (new Date(check_in) >= new Date(check_out)) {
+      return res.status(400).json({ error: 'Data de check-out deve ser posterior ao check-in' });
+    }
+
+    if (new Date(check_in) < new Date()) {
+      return res.status(400).json({ error: 'Data de check-in não pode ser no passado' });
+    }
+
+    // Verificar disponibilidade
+    const conflicting = db.prepare(`
+      SELECT COUNT(*) as count FROM reservations
+      WHERE room_id = ? AND status IN ('pending', 'confirmed')
+      AND (
+        (check_in <= ? AND check_out > ?)
+        OR (check_in < ? AND check_out >= ?)
+        OR (check_in >= ? AND check_out <= ?)
+      )
+    `).get(room_id, check_in, check_in, check_out, check_out, check_in, check_out);
+
+    if (conflicting.count > 0) {
+      return res.status(400).json({ error: 'Quarto não disponível nas datas selecionadas' });
+    }
+
+    // Calcular preço total
+    const room = db.prepare('SELECT price_per_night FROM rooms WHERE id = ?').get(room_id);
+    if (!room) {
+      return res.status(404).json({ error: 'Quarto não encontrado' });
+    }
+
+    const nights = Math.ceil((new Date(check_out) - new Date(check_in)) / (1000 * 60 * 60 * 24));
+    const total_price = room.price_per_night * nights;
+
+    // Criar reserva
+    const stmt = db.prepare(`
+      INSERT INTO reservations (user_id, room_id, check_in, check_out, total_price, notes)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    
+    const result = stmt.run(user_id, room_id, check_in, check_out, total_price, notes);
+
+    res.status(201).json({
+      message: 'Reserva criada com sucesso. Aguardando confirmação do gerente.',
+      reservationId: result.lastInsertRowid,
+      total_price
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao criar reserva' });
+  }
+});
+
+// Listar reservas do usuário (hóspede)
+router.get('/my-reservations', authenticateToken, requireGuest, (req, res) => {
+  try {
+    const reservations = db.prepare(`
+      SELECT r.*, rooms.name as room_name, rooms.image_url, users.name as guest_name
+      FROM reservations r
+      JOIN rooms ON r.room_id = rooms.id
+      JOIN users ON r.user_id = users.id
+      WHERE r.user_id = ?
+      ORDER BY r.check_in DESC
+    `).all(req.user.id);
+
+    res.json(reservations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar reservas' });
+  }
+});
+
+// Listar todas as reservas (gerente)
+router.get('/all', authenticateToken, requireManager, (req, res) => {
+  try {
+    const { status } = req.query;
+    
+    let query = `
+      SELECT r.*, rooms.name as room_name, users.name as guest_name, users.email as guest_email
+      FROM reservations r
+      JOIN rooms ON r.room_id = rooms.id
+      JOIN users ON r.user_id = users.id
+    `;
+    let params = [];
+
+    if (status) {
+      query += ' WHERE r.status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY r.created_at DESC';
+
+    const reservations = db.prepare(query).all(...params);
+    res.json(reservations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar reservas' });
+  }
+});
+
+// Cancelar reserva (hóspede)
+router.put('/:id/cancel', authenticateToken, requireGuest, (req, res) => {
+  try {
+    const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
+    
+    if (!reservation) {
+      return res.status(404).json({ error: 'Reserva não encontrada' });
+    }
+
+    if (reservation.status === 'cancelled') {
+      return res.status(400).json({ error: 'Reserva já está cancelada' });
+    }
+
+    const stmt = db.prepare('UPDATE reservations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    stmt.run('cancelled', req.params.id);
+
+    res.json({ message: 'Reserva cancelada com sucesso' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao cancelar reserva' });
+  }
+});
+
+// Confirmar reserva (gerente)
+router.put('/:id/confirm', authenticateToken, requireManager, (req, res) => {
+  try {
+    const reservation = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
+    
+    if (!reservation) {
+      return res.status(404).json({ error: 'Reserva não encontrada' });
+    }
+
+    if (reservation.status !== 'pending') {
+      return res.status(400).json({ error: 'Apenas reservas pendentes podem ser confirmadas' });
+    }
+
+    const stmt = db.prepare('UPDATE reservations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    stmt.run('confirmed', req.params.id);
+
+    res.json({ message: 'Reserva confirmada com sucesso' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao confirmar reserva' });
+  }
+});
+
+// Recusar reserva (gerente)
+router.put('/:id/reject', authenticateToken, requireManager, (req, res) => {
+  try {
+    const reservation = db.prepare('SELECT * FROM reservations WHERE id = ?').get(req.params.id);
+    
+    if (!reservation) {
+      return res.status(404).json({ error: 'Reserva não encontrada' });
+    }
+
+    if (reservation.status !== 'pending') {
+      return res.status(400).json({ error: 'Apenas reservas pendentes podem ser recusadas' });
+    }
+
+    const stmt = db.prepare('UPDATE reservations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?');
+    stmt.run('rejected', req.params.id);
+
+    res.json({ message: 'Reserva recusada' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao recusar reserva' });
+  }
+});
+
+module.exports = router;
+
+=== routes/users.js ===
+const express = require('express');
+const { db } = require('../database');
+const { authenticateToken, requireManager } = require('../middleware/auth');
+
+const router = express.Router();
+
+// Listar todos os usuários (apenas gerente)
+router.get('/', authenticateToken, requireManager, (req, res) => {
+  try {
+    const users = db.prepare(`
+      SELECT id, email, name, role, created_at
+      FROM users
+      ORDER BY created_at DESC
+    `).all();
+    
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Erro ao buscar usuários' });
+  }
+});
+
+module.exports = router;
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Reservas - Hotel</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app">
+        <nav class="navbar">
+            <div class="container">
+                <h1 class="logo">🏨 Hotel Reservas</h1>
+                <div id="nav-menu" class="nav-menu"></div>
+            </div>
+        </nav>
+
+        <main class="container" id="main-content">
+            <!-- Conteúdo será inserido aqui via JavaScript -->
+        </main>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
+
+=== public/css/style.css ===
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f5f5f5;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Navbar */
+.navbar {
+    background: #2c3e50;
+    color: white;
+    padding: 1rem 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar .container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.logo {
+    font-size: 1.5rem;
+}
+
+.nav-menu {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.nav-menu button {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: background 0.3s;
+}
+
+.nav-menu button:hover {
+    background: rgba(255,255,255,0.1);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Forms */
+.form-container {
+    max-width: 400px;
+    margin: 50px auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.btn {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-primary {
+    background: #3498db;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #2980b9;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.btn-success {
+    background: #27ae60;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #229954;
+}
+
+.btn-sm {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 14px;
+}
+
+/* Cards */
+.rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.room-card {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.3s;
+}
+
+.room-card:hover {
+    transform: translateY(-5px);
+}
+
+.room-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+    background: #ecf0f1;
+}
+
+.room-info {
+    padding: 20px;
+}
+
+.room-name {
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+
+.room-price {
+    font-size: 1.5rem;
+    color: #27ae60;
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+/* Search Form */
+.search-form {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.search-form .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    align-items: end;
+}
+
+/* Tables */
+.table-container {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+th {
+    background: #34495e;
+    color: white;
+    font-weight: 600;
+}
+
+tr:hover {
+    background: #f8f9fa;
+}
+
+/* Badges */
+.badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-pending {
+    background: #f39c12;
+    color: white;
+}
+
+.badge-confirmed {
+    background: #27ae60;
+    color: white;
+}
+
+.badge-cancelled {
+    background: #e74c3c;
+    color: white;
+}
+
+.badge-rejected {
+    background: #95a5a6;
+    color: white;
+}
+
+/* Alert Messages */
+.alert {
+    padding: 12px 20px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.alert-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.alert-error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #ecf0f1;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #7f8c8d;
+    border-bottom: 3px solid transparent;
+    transition: all 0.3s;
+}
+
+.tab-btn.active {
+    color: #3498db;
+    border-bottom-color: #3498db;
+}
+
+/* Modal */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    margin: 50px auto;
+    padding: 30px;
+    max-width: 600px;
+    border-radius: 8px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.close {
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    color: #7f8c8d;
+}
+
+.close:hover {
+    color: #2c3e50;
+}
+
+/* Utility */
+.text-center {
+    text-align: center;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+.mb-20 {
+    margin-bottom: 20px;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .rooms-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .navbar .container {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .nav-menu {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .search-form .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    table {
+        font-size: 14px;
+    }
+    
+    th, td {
+        padding: 8px;
+    }
+}
+
+=== public/js/app.js ===
+// Estado global da aplicação
+const App = {
+    currentUser: null,
+    token: localStorage.getItem('token'),
+    apiUrl: '/api',
+
+    init() {
+        if (this.token) {
+            this.validateToken();
+        } else {
+            this.showLogin();
+        }
+        this.setupNavigation();
+    },
+
+    async validateToken() {
+        try {
+            const response = await this.apiCall('/auth/validate', 'GET');
+            if (response.user) {
+                this.currentUser = response.user;
+                this.showDashboard();
+            } else {
+                this.logout();
+            }
+        } catch (error) {
+            this.logout();
+        }
+    },
+
+    setupNavigation() {
+        document.getElementById('nav-menu').addEventListener('click', (e) => {
+            if (e.target.dataset.action) {
+                e.preventDefault();
+                this.handleNavigation(e.target.dataset.action);
+            }
+        });
+    },
+
+    handleNavigation(action) {
+        switch(action) {
+            case 'logout':
+                this.logout();
+                break;
+            case 'rooms':
+                this.showRooms();
+                break;
+            case 'my-reservations':
+                this.showMyReservations();
+                break;
+            case 'all-reservations':
+                this.showAllReservations();
+                break;
+            case 'manage-rooms':
+                this.showManageRooms();
+                break;
+        }
+    },
+
+    renderNavbar() {
+        const nav = document.getElementById('nav-menu');
+        if (!this.currentUser) {
+            nav.innerHTML = '';
+            return;
+        }
+
+        let html = `<span class="user-info">Olá, ${this.currentUser.name}</span>`;
+        
+        if (this.currentUser.role === 'guest') {
+            html += `
+                <button data-action="rooms">Quartos</button>
+                <button data-action="my-reservations">Minhas Reservas</button>
+            `;
+        } else if (this.currentUser.role === 'manager') {
+            html += `
+                <button data-action="manage-rooms">Gerenciar Quartos</button>
+                <button data-action="all-reservations">Todas Reservas</button>
+            `;
+        }
+        
+        html += `<button data-action="logout">Sair</button>`;
+        nav.innerHTML = html;
+    },
+
+    async apiCall(endpoint, method = 'GET', data = null) {
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
+
+        if (this.token) {
+            options.headers['Authorization'] = `Bearer ${this.token}`;
+        }
+
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(this.apiUrl + endpoint, options);
+        return await response.json();
+    },
+
+    showLogin() {
+        document.getElementById('main-content').innerHTML = `
+            <div class="form-container">
+                <h2 class="text-center mb-20">Login</h2>
+                <div id="alert-container"></div>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Senha:</label>
+                        <input type="password" id="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Entrar</button>
+                </form>
+                <p class="text-center mt-20">
+                    Não tem conta? <a href="#" onclick="App.showRegister()">Cadastre-se</a>
+                </p>
+            </div>
+        `;
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await this.apiCall('/auth/login', 'POST', { email, password });
+                
+                if (response.token) {
+                    this.token = response.token;
+                    this.currentUser = response.user;
+                    localStorage.setItem('token', this.token);
+                    this.showDashboard();
+                } else {
+                    this.showAlert(response.error || 'Erro ao fazer login', 'error');
+                }
+            } catch (error) {
+                this.showAlert('Erro ao conectar com o servidor', 'error');
+            }
+        });
+    },
+
+    showRegister() {
+        document.getElementById('main-content').innerHTML = `
+            <div class="form-container">
+                <h2 class="text-center mb-20">Cadastro de Hóspede</h2>
+                <div id="alert-container"></div>
+                <form id="register-form">
+                    <div class="form-group">
+                        <label>Nome completo:</label>
+                        <input type="text" id="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Email:</label>
+                        <input type="email" id="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Senha (mínimo 6 caracteres):</label>
+                        <input type="password" id="password" required minlength="6">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Cadastrar</button>
+                </form>
+                <p class="text-center mt-20">
+                    Já tem conta? <a href="#" onclick="App.showLogin()">Faça login</a>
+                </p>
+            </div>
+        `;
+
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await this.apiCall('/auth/register', 'POST', { name, email, password });
+                
+                if (response.token) {
+                    this.token = response.token;
+                    this.currentUser = response.user;
+                    localStorage.setItem('token', this.token);
+                    this.showDashboard();
+                } else {
+                    this.showAlert(response.error || 'Erro ao cadastrar', 'error');
+                }
+            } catch (error) {
+                this.showAlert('Erro ao conectar com o servidor', 'error');
+            }
+        });
+    },
+
+    showDashboard() {
+        this.renderNavbar();
+        if (this.currentUser.role === 'guest') {
+            this.showRooms();
+        } else {
+            this.showManageRooms();
+        }
+    },
+
+    async showRooms() {
+        const content = document.getElementById('main-content');
+        content.innerHTML = `
+            <h2>Buscar Quartos Disponíveis</h2>
+            <div id="alert-container"></div>
+            <div class="search-form">
+                <form id="search-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Check-in:</label>
+                            <input type="date" id="check-in" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Check-out:</label>
+                            <input type="date" id="check-out" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Buscar</button>
+                    </div>
+                </form>
+            </div>
+            <div id="rooms-container"></div>
+        `;
+
+        // Definir datas mínimas
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('check-in').min = today;
+        document.getElementById('check-out').min = today;
+
+        document.getElementById('search-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const checkIn = document.getElementById('check-in').value;
+            const checkOut = document.getElementById('check-out').value;
+            await this.loadRooms(checkIn, checkOut);
+        });
+
+        // Carregar todos os quartos inicialmente
+        await this.loadRooms();
+    },
+
+    async loadRooms(checkIn = null, checkOut = null) {
+        try {
+            let url = '/rooms';
+            if (checkIn && checkOut) {
+                url += `?checkIn=${checkIn}&checkOut=${checkOut}`;
+            }
+
+            const rooms = await this.apiCall(url);
+            const container = document.getElementById('rooms-container');
+
+            if (rooms.length === 0) {
+                container.innerHTML = '<p class="alert alert-error">Nenhum quarto disponível nas datas selecionadas.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="rooms-grid">
+                    ${rooms.map(room => `
+                        <div class="room-card">
+                            <img src="${room.image_url || 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=400'}" 
+                                 alt="${room.name}" class="room-image">
+                            <div class="room-info">
+                                <h3 class="room-name">${room.name}</h3>
+                                <p>${room.description || 'Quarto confortável e aconchegante.'}</p>
+                                <p><strong>Capacidade:</strong> ${room.capacity} pessoas</p>
+                                ${room.amenities ? `<p><strong>Comodidades:</strong> ${room.amenities}</p>` : ''}
+                                <div class="room-price">R$ ${parseFloat(room.price_per_night).toFixed(2)} / noite</div>
+                                ${checkIn && checkOut ? `
+                                    <button class="btn btn-primary" onclick="App.showReservationForm(${room.id}, '${checkIn}', '${checkOut}', ${room.price_per_night})">
+                                        Reservar
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        } catch (error) {
+            this.showAlert('Erro ao carregar quartos', 'error');
+        }
+    },
+
+    showReservationForm(roomId, checkIn, checkOut, pricePerNight) {
+        const nights = Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24));
+        const totalPrice = nights * pricePerNight;
+
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Confirmar Reserva</h3>
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                </div>
+                <div id="modal-alert"></div>
+                <form id="reservation-form">
+                    <p><strong>Check-in:</strong> ${new Date(checkIn).toLocaleDateString('pt-BR')}</p>
+                    <p><strong>Check-out:</strong> ${new Date(checkOut).toLocaleDateString('pt-BR')}</p>
+                    <p><strong>Número de noites:</strong> ${nights}</p>
+                    <p><strong>Valor total:</strong> R$ ${totalPrice.toFixed(2)}</p>
+                    <div class="form-group">
+                        <label>Observações (opcional):</label>
+                        <textarea id="notes" placeholder="Alguma solicitação especial?"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Confirmar Reserva</button>
+                </form>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('reservation-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const notes = document.getElementById('notes').value;
+
+            try {
+                const response = await this.apiCall('/reservations', 'POST', {
+                    room_id: roomId,
+                    check_in: checkIn,
+                    check_out: checkOut,
+                    notes
+                });
+
+                if (response.reservationId) {
+                    modal.remove();
+                    this.showAlert('Reserva criada com sucesso! Aguardando confirmação do gerente.', 'success');
+                    this.showRooms();
+                } else {
+                    document.getElementById('modal-alert').innerHTML = 
+                        `<div class="alert alert-error">${response.error || 'Erro ao criar reserva'}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('modal-alert').innerHTML = 
+                    '<div class="alert alert-error">Erro ao conectar com o servidor</div>';
+            }
+        });
+    },
+
+    async showMyReservations() {
+        const content = document.getElementById('main-content');
+        content.innerHTML = `
+            <h2>Minhas Reservas</h2>
+            <div id="alert-container"></div>
+            <div id="reservations-container"></div>
+        `;
+
+        try {
+            const reservations = await this.apiCall('/reservations/my-reservations');
+            const container = document.getElementById('reservations-container');
+
+            if (reservations.length === 0) {
+                container.innerHTML = '<p class="alert alert-error">Você ainda não tem reservas.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Quarto</th>
+                                <th>Check-in</th>
+                                <th>Check-out</th>
+                                <th>Valor Total</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${reservations.map(res => `
+                                <tr>
+                                    <td>${res.room_name}</td>
+                                    <td>${new Date(res.check_in).toLocaleDateString('pt-BR')}</td>
+                                    <td>${new Date(res.check_out).toLocaleDateString('pt-BR')}</td>
+                                    <td>R$ ${parseFloat(res.total_price).toFixed(2)}</td>
+                                    <td><span class="badge badge-${res.status}">${this.getStatusText(res.status)}</span></td>
+                                    <td>
+                                        ${res.status === 'pending' || res.status === 'confirmed' ? 
+                                            `<button class="btn btn-danger btn-sm" onclick="App.cancelReservation(${res.id})">Cancelar</button>` : 
+                                            ''}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            this.showAlert('Erro ao carregar reservas', 'error');
+        }
+    },
+
+    async cancelReservation(id) {
+        if (!confirm('Tem certeza que deseja cancelar esta reserva?')) return;
+
+        try {
+            const response = await this.apiCall(`/reservations/${id}/cancel`, 'PUT');
+            this.showAlert(response.message || 'Reserva cancelada', 'success');
+            this.showMyReservations();
+        } catch (error) {
+            this.showAlert('Erro ao cancelar reserva', 'error');
+        }
+    },
+
+    async showAllReservations() {
+        const content = document.getElementById('main-content');
+        content.innerHTML = `
+            <h2>Todas as Reservas</h2>
+            <div id="alert-container"></div>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="App.filterReservations('')">Todas</button>
+                <button class="tab-btn" onclick="App.filterReservations('pending')">Pendentes</button>
+                <button class="tab-btn" onclick="App.filterReservations('confirmed')">Confirmadas</button>
+                <button class="tab-btn" onclick="App.filterReservations('cancelled')">Canceladas</button>
+            </div>
+            <div id="reservations-container"></div>
+        `;
+
+        await this.filterReservations('');
+    },
+
+    async filterReservations(status) {
+        // Atualizar tabs ativas
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        try {
+            const url = status ? `/reservations/all?status=${status}` : '/reservations/all';
+            const reservations = await this.apiCall(url);
+            const container = document.getElementById('reservations-container');
+
+            if (reservations.length === 0) {
+                container.innerHTML = '<p class="alert alert-error">Nenhuma reserva encontrada.</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Hóspede</th>
+                                <th>Quarto</th>
+                                <th>Check-in</th>
+                                <th>Check-out</th>
+                                <th>Valor</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${reservations.map(res => `
+                                <tr>
+                                    <td>${res.guest_name}<br><small>${res.guest_email}</small></td>
+                                    <td>${res.room_name}</td>
+                                    <td>${new Date(res.check_in).toLocaleDateString('pt-BR')}</td>
+                                    <td>${new Date(res.check_out).toLocaleDateString('pt-BR')}</td>
+                                    <td>R$ ${parseFloat(res.total_price).toFixed(2)}</td>
+                                    <td><span class="badge badge-${res.status}">${this.getStatusText(res.status)}</span></td>
+                                    <td>
+                                        ${res.status === 'pending' ? `
+                                            <button class="btn btn-success btn-sm" onclick="App.confirmReservation(${res.id})">Confirmar</button>
+                                            <button class="btn btn-danger btn-sm" onclick="App.rejectReservation(${res.id})">Recusar</button>
+                                        ` : ''}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            this.showAlert('Erro ao carregar reservas', 'error');
+        }
+    },
+
+    async confirmReservation(id) {
+        if (!confirm('Confirmar esta reserva?')) return;
+
+        try {
+            const response = await this.apiCall(`/reservations/${id}/confirm`, 'PUT');
+            this.showAlert(response.message || 'Reserva confirmada', 'success');
+            this.showAllReservations();
+        } catch (error) {
+            this.showAlert('Erro ao confirmar reserva', 'error');
+        }
+    },
+
+    async rejectReservation(id) {
+        if (!confirm('Recusar esta reserva?')) return;
+
+        try {
+            const response = await this.apiCall(`/reservations/${id}/reject`, 'PUT');
+            this.showAlert(response.message || 'Reserva recusada', 'success');
+            this.showAllReservations();
+        } catch (error) {
+            this.showAlert('Erro ao recusar reserva', 'error');
+        }
+    },
+
+    async showManageRooms() {
+        const content = document.getElementById('main-content');
+        content.innerHTML = `
+            <h2>Gerenciar Quartos</h2>
+            <div id="alert-container"></div>
+            <button class="btn btn-primary mb-20" onclick="App.showRoomForm()">+ Adicionar Quarto</button>
+            <div id="rooms-container"></div>
+        `;
+
+        await this.loadManageRooms();
+    },
+
+    async loadManageRooms() {
+        try {
+            const rooms = await this.apiCall('/rooms');
+            const container = document.getElementById('rooms-container');
+
+            container.innerHTML = `
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Preço/Noite</th>
+                                <th>Capacidade</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rooms.map(room => `
+                                <tr>
+                                    <td>${room.name}</td>
+                                    <td>R$ ${parseFloat(room.price_per_night).toFixed(2)}</td>
+                                    <td>${room.capacity} pessoas</td>
+                                    <td>${room.active ? 'Ativo' : 'Inativo'}</td>
+                                    <td>
+                                        <button class="btn btn-primary btn-sm" onclick="App.showRoomForm(${room.id})">Editar</button>
+                                        <button class="btn btn-danger btn-sm" onclick="App.deleteRoom(${room.id})">Remover</button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        } catch (error) {
+            this.showAlert('Erro ao carregar quartos', 'error');
+        }
+    },
+
+    async showRoomForm(roomId = null) {
+        let room = null;
+        if (roomId) {
+            room = await this.apiCall(`/rooms/${roomId}`);
+        }
+
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>${roomId ? 'Editar' : 'Adicionar'} Quarto</h3>
+                    <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                </div>
+                <div id="modal-alert"></div>
+                <form id="room-form">
+                    <div class="form-group">
+                        <label>Nome do quarto:</label>
+                        <input type="text" id="room-name" value="${room?.name || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Descrição:</label>
+                        <textarea id="room-description">${room?.description || ''}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Preço por noite (R$):</label>
+                        <input type="number" step="0.01" id="room-price" value="${room?.price_per_night || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Capacidade (pessoas):</label>
+                        <input type="number" id="room-capacity" value="${room?.capacity || ''}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Comodidades:</label>
+                        <input type="text" id="room-amenities" value="${room?.amenities || ''}" placeholder="Wi-Fi, TV, Ar-condicionado...">
+                    </div>
+                    <div class="form-group">
+                        <label>URL da imagem:</label>
+                        <input type="url" id="room-image" value="${room?.image_url || ''}" placeholder="https://...">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </form>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('room-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const data = {
+                name: document.getElementById('room-name').value,
+                description: document.getElementById('room-description').value,
+                price_per_night: parseFloat(document.getElementById('room-price').value),
+                capacity: parseInt(document.getElementById('room-capacity').value),
+                amenities: document.getElementById('room-amenities').value,
+                image_url: document.getElementById('room-image').value
+            };
+
+            try {
+                const url = roomId ? `/rooms/${roomId}` : '/rooms';
+                const method = roomId ? 'PUT' : 'POST';
+                const response = await this.apiCall(url, method, data);
+
+                if (response.message) {
+                    modal.remove();
+                    this.showAlert(response.message, 'success');
+                    this.loadManageRooms();
+                } else {
+                    document.getElementById('modal-alert').innerHTML = 
+                        `<div class="alert alert-error">${response.error || 'Erro ao salvar quarto'}</div>`;
+                }
+            } catch (error) {
+                document.getElementById('modal-alert').innerHTML = 
+                    '<div class="alert alert-error">Erro ao conectar com o servidor</div>';
+            }
+        });
+    },
+
+    async deleteRoom(id) {
+        if (!confirm('Tem certeza que deseja remover este quarto?')) return;
+
+        try {
+            const response = await this.apiCall(`/rooms/${id}`, 'DELETE');
+            this.showAlert(response.message || 'Quarto removido', 'success');
+            this.loadManageRooms();
+        } catch (error) {
+            this.showAlert('Erro ao remover quarto', 'error');
+        }
+    },
+
+    getStatusText(status) {
+        const texts = {
+            'pending': 'Pendente',
+            'confirmed': 'Confirmada',
+            'cancelled': 'Cancelada',
+            'rejected': 'Recusada'
+        };
+        return texts[status] || status;
+    },
+
+    showAlert(message, type) {
+        const container = document.getElementById('alert-container');
+        container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+        setTimeout(() => container.innerHTML = '', 5000);
+    },
+
+    logout() {
+        localStorage.removeItem('token');
+        this.token = null;
+        this.currentUser = null;
+        this.showLogin();
+    }
+};
+
+// Inicializar aplicação
+App.init();
+
+=== scripts/init-admin.js ===
+const bcrypt = require('bcrypt');
+const { db, initializeDatabase } = require('../database');
+
+async function createAdminUser() {
+  initializeDatabase();
+
+  const email = 'gerente@hotel.com';
+  const password = 'admin123';
+  const name = 'Gerente do Hotel';
+
+  try {
+    // Verificar se já existe
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    
+    if (existing) {
+      console.log('Usuário gerente já existe!');
+      console.log('Email:', email);
+      console.log('Senha: admin123');
+      return;
+    }
+
+    // Criar usuário gerente
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const stmt = db.prepare('INSERT INTO users (email, password, name, role) VALUES (?, ?, ?, ?)');
+    stmt.run(email, hashedPassword, name, 'manager');
+
+    console.log('✅ Usuário gerente criado com sucesso!');
+    console.log('Email:', email);
+    console.log('Senha:', password);
+    console.log('\n⚠️  IMPORTANTE: Altere a senha após o primeiro login!');
+  } catch (error) {
+    console.error('Erro ao criar usuário gerente:', error);
+  }
+}
+
+createAdminUser();
+
+=== README.md ===
+# Sistema de Reservas de Hotel
+
+Sistema completo de reservas de hotel com área para hóspedes e gerente. Todos os dados ficam salvos em um banco de dados no servidor, permitindo acesso de qualquer dispositivo.
+
+## Funcionalidades
+
+### Para Hóspedes:
+- Criar conta e fazer login
+- Buscar quartos disponíveis por data
+- Fazer reservas
+- Ver suas reservas
+- Cancelar reservas
+
+### Para Gerente:
+- Cadastrar, editar e remover quartos
+- Ver todas as reservas
+- Confirmar ou recusar reservas pendentes
+- Gerenciar disponibilidade
+
+## Instalação
+
+### Requisitos:
+- Node.js 18 ou superior ([baixe aqui](https://nodejs.org))
+
+### Passo a passo:
+
+1. **Instalar as dependências:**
+```bash
+npm install
+```
+
+2. **Criar usuário gerente:**
+```bash
+npm run init-admin
+```
+Isso criará um usuário gerente com:
+- Email: `gerente@hotel.com`
+- Senha: `admin123`
+
+⚠️ **IMPORTANTE:** Anote essas credenciais e altere a senha após o primeiro acesso!
+
+3. **Iniciar o servidor:**
+```bash
+npm start
+```
+
+4. **Acessar o site:**
+Abra seu navegador e acesse: `http://localhost:3000`
+
+## Uso
+
+### Primeiro Acesso - Gerente:
+1. Acesse `http://localhost:3000`
+2. Faça login com:
+   - Email: `gerente@hotel.com`
+   - Senha: `admin123`
+3. Cadastre os quartos do hotel
+4. Gerencie as reservas
+
+### Hóspedes:
+1. Acesse `http://localhost:3000`
+2. Clique em "Cadastre-se"
+3. Crie sua conta
+4. Busque quartos e faça reservas
+
+## Colocar na Internet
+
+Para que o site funcione de verdade na internet (acessível de qualquer lugar), você precisa:
+
+### Opção 1: Hospedagem VPS (Recomendado)
+Contrate um VPS (servidor virtual) em provedores como:
+- DigitalOcean
+- AWS
+- Google Cloud
+- Azure
+- Locaweb
+
+Depois de contratar:
+1. Instale Node.js no servidor
+2. Envie os arquivos do projeto
+3. Execute `npm install`
+4. Execute `npm run init-admin`
+5. Execute `npm start`
+6. Configure um domínio (opcional)
+
+### Opção 2: Hospedagem Node.js
+Use serviços que suportam Node.js:
+- Heroku
+- Railway
+- Render
+- Vercel
+
+Siga as instruções específicas de cada plataforma para fazer deploy de aplicações Node.js.
+
+## Segurança
+
+Antes de colocar em produção:
+
+1. **Altere a senha do gerente**
+2. **Configure uma chave secreta forte:**
+   - Abra o arquivo `middleware/auth.js`
+   - Mude a linha `JWT_SECRET` para uma senha forte e única
+3. **Use HTTPS** (certificado SSL) - essencial para produção
+4. **Configure firewall** no servidor
+
+## Estrutura de Arquivos
+
+```
+projeto/
+├── server.js              # Servidor principal
+├── database.js            # Configuração do banco de dados
+├── package.json           # Dependências do projeto
+├── middleware/
+│   └── auth.js           # Autenticação e segurança
+├── routes/
+│   ├── auth.js           # Rotas de login/cadastro
+│   ├── rooms.js          # Rotas de quartos
+│   ├── reservations.js   # Rotas de reservas
+│   └── users.js          # Rotas de usuários
+├── scripts/
+│   └── init-admin.js     # Script para criar gerente
+├── public/
+│   ├── index.html        # Página principal
+│   ├── css/
+│   │   └── style.css     # Estilos
+│   └── js/
+│       └── app.js        # JavaScript do frontend
+└── data/
+    └── hotel.db          # Banco de dados (criado automaticamente)
+```
+
+## Backup dos Dados
+
+Todos os dados ficam no arquivo `data/hotel.db`. Para fazer backup:
+1. Pare o servidor
+2. Copie o arquivo `data/hotel.db` para um local seguro
+3. Reinicie o servidor
+
+## Solução de Problemas
+
+### Erro "Port already in use"
+Outra aplicação está usando a porta 3000. Mude a porta:
+```bash
+PORT=8080 npm start
+```
+
+### Erro ao instalar dependências
+Tente:
+```bash
+npm cache clean --force
+npm install
+```
+
+### Banco de dados corrompido
+Delete o arquivo `data/hotel.db` e execute novamente `npm run init-admin`
+
+## Suporte
+
+Para dúvidas sobre hospedagem ou configuração, consulte:
+- Documentação do Node.js: https://nodejs.org/docs
+- Tutoriais de deploy: https://www.youtube.com/results?search_query=deploy+nodejs
+
+## Tecnologias Utilizadas
+
+- **Backend:** Node.js + Express
+- **Banco de Dados:** SQLite (better-sqlite3)
+- **Autenticação:** JWT + bcrypt
+- **Frontend:** HTML, CSS e JavaScript puro
+
+O sistema está pronto para uso e todos os dados são salvos permanentemente no servidor!

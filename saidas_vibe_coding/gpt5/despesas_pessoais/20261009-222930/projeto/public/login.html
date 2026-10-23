@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar - Controle de Despesas</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="page center-page">
+    <section class="card auth-card">
+      <h1>Controle de Despesas</h1>
+      <p class="subtitle">Entre com sua conta para registrar e acompanhar seus gastos.</p>
+
+      <form id="loginForm">
+        <label for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="email" required>
+
+        <label for="password">Senha</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+
+        <button type="submit">Entrar</button>
+      </form>
+
+      <div id="message" class="message"></div>
+
+      <p class="subtitle">
+        Ainda não tem conta?
+        <a href="/register.html">Criar conta</a>
+      </p>
+
+      <hr>
+
+      <p class="subtitle">
+        Administrador inicial:<br>
+        <strong>admin@admin.com</strong><br>
+        Senha: <strong>admin123</strong>
+      </p>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

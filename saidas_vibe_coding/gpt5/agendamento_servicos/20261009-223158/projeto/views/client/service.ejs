@@ -1,0 +1,33 @@
+<%- include('../partials/header') %>
+
+<section class="card">
+  <h1><%= service.name %></h1>
+  <p><%= service.description || 'Sem descrição.' %></p>
+  <p><strong>Duração:</strong> <%= service.duration_minutes %> minutos</p>
+  <p><strong>Preço:</strong> R$ <%= Number(service.price).toFixed(2).replace('.', ',') %></p>
+</section>
+
+<section class="card">
+  <h2>Horários livres</h2>
+
+  <% if (slots.length === 0) { %>
+    <p>Não há horários livres para este serviço no momento.</p>
+  <% } else { %>
+    <div class="grid">
+      <% slots.forEach(slot => { %>
+        <div class="slot-card">
+          <h3><%= formatDateTime(slot.start_time) %></h3>
+          <form method="post" action="/cliente/agendar">
+            <input type="hidden" name="service_id" value="<%= service.id %>">
+            <input type="hidden" name="slot_id" value="<%= slot.id %>">
+            <button class="button small" type="submit">Marcar este horário</button>
+          </form>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+
+  <p><a href="/cliente">Voltar</a></p>
+</section>
+
+<%- include('../partials/footer') %>

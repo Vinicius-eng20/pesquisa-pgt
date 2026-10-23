@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pedido #<%= order.id %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <h1>Pedido #<%= order.id %></h1>
+
+      <p><strong>Cliente:</strong> <%= order.customer_name %> - <%= order.customer_email %></p>
+      <p><strong>Data:</strong> <%= order.created_at %></p>
+      <p><strong>Status:</strong> <span class="status"><%= order.status %></span></p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Preço</th>
+              <th>Quantidade</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <tr>
+                <td><%= item.product_name %></td>
+                <td><%= money(item.price) %></td>
+                <td><%= item.quantity %></td>
+                <td><%= money(item.price * item.quantity) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Total: <%= money(order.total) %></h2>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

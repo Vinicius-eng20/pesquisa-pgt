@@ -1,0 +1,51 @@
+{
+  "data_hora_utc": "2026-10-09T18:58:36+00:00",
+  "modelo": "gemini_flash",
+  "modelo_id": "google/gemini-3.8-flash",
+  "dominio": "loja_departamentos",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": true
+    }
+  },
+  "pasta": "saidas\\gemini_flash\\loja_departamentos\\20261009-185836",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja uma loja virtual de departamentos, com produtos de vários tipos, tipo um shopping online. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o dono da loja. Os clientes precisam poder ver os produtos e colocar no carrinho, finalizar o pedido e ver os pedidos que já fizeram. O dono da loja precisa poder cadastrar, editar e remover produtos, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "prompt_versao": "v2",
+  "provedor": "Google",
+  "id_geracao": "gen-1791572316-cgsLh7NLJ3lCX7q5hRkR",
+  "modelo_servido": "google/gemini-3.8-flash",
+  "tokens_entrada": 273,
+  "tokens_saida": 30416,
+  "tokens_raciocinio": 2060,
+  "tokens_total": 30689,
+  "custo_usd": 0.11426475,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 171.5,
+  "duracao_api_s": 171.5,
+  "tokens_por_s": 177.4,
+  "n_arquivos": 12,
+  "arquivos": [
+    "package.json",
+    "README.md",
+    "src/database.js",
+    "src/routes/auth.js",
+    "src/routes/products.js",
+    "src/routes/cart.js",
+    "src/routes/orders.js",
+    "src/routes/admin.js",
+    "src/server.js",
+    "public/index.html",
+    "public/css/style.css",
+    "public/js/app.js"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

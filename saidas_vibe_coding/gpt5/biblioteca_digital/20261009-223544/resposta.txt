@@ -1,0 +1,1461 @@
+=== package.json ===
+{
+  "name": "biblioteca-digital-emprestimos",
+  "version": "1.0.0",
+  "description": "Biblioteca digital com usuários, acervo, empréstimos, devoluções e painel do bibliotecário.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "connect-sqlite3": "^0.9.16",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "method-override": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
+
+=== README.md ===
+# Biblioteca Digital com Empréstimos
+
+Site completo para biblioteca digital com:
+
+- Cadastro e login de leitores e bibliotecário
+- Busca no acervo
+- Empréstimo e devolução de itens
+- Histórico de empréstimos
+- Cadastro, edição e remoção de itens pelo bibliotecário
+- Bloqueio automático de novos empréstimos para leitores com atraso
+- Banco de dados SQLite salvo no servidor, para funcionar de qualquer computador ou celular
+
+## Requisitos
+
+Instale o Node.js versão 18 ou superior.
+
+Para verificar:
+
+```bash
+node -v
+```
+
+## Instalar
+
+Na pasta do projeto, execute:
+
+```bash
+npm install
+```
+
+## Executar
+
+```bash
+npm start
+```
+
+Depois abra no navegador:
+
+```text
+http://localhost:3000
+```
+
+## Conta inicial do bibliotecário
+
+Ao iniciar pela primeira vez, o sistema cria automaticamente:
+
+- E-mail: `bibliotecario@biblioteca.local`
+- Senha: `admin123`
+
+Entre com essa conta para cadastrar itens e ver o painel do bibliotecário.
+
+## Criar leitores
+
+Na tela inicial, clique em **Criar conta de leitor**.
+
+## Dados persistentes
+
+O banco de dados fica salvo no arquivo:
+
+```text
+data/biblioteca.db
+```
+
+As sessões ficam salvas em:
+
+```text
+data/sessions.sqlite
+```
+
+Não apague a pasta `data` se quiser manter os dados.
+
+## Colocar na internet
+
+Este projeto é um site Node.js completo e usa banco SQLite local no próprio servidor. Para publicar na internet, envie a pasta do projeto para um servidor/VPS que aceite Node.js, rode `npm install` e depois `npm start`.
+
+Para uso real em produção, recomenda-se:
+
+- Usar HTTPS
+- Alterar a senha inicial do bibliotecário
+- Fazer backup periódico da pasta `data`
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const fs = require('fs');
+const methodOverride = require('method-override');
+const Database = require('better-sqlite3');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+const db = new Database(path.join(dataDir, 'biblioteca.db'));
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('reader', 'librarian')),
+  blocked INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  author TEXT,
+  type TEXT NOT NULL DEFAULT 'Livro',
+  description TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS loans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  borrowed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  due_at TEXT NOT NULL,
+  returned_at TEXT,
+  FOREIGN KEY(user_id) REFERENCES users(id),
+  FOREIGN KEY(item_id) REFERENCES items(id)
+);
+`);
+
+const adminEmail = 'bibliotecario@biblioteca.local';
+const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get(adminEmail);
+if (!adminExists) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)').run(
+    'Bibliotecário',
+    adminEmail,
+    hash,
+    'librarian'
+  );
+}
+
+const countItems = db.prepare('SELECT COUNT(*) AS total FROM items').get().total;
+if (countItems === 0) {
+  const insert = db.prepare('INSERT INTO items (title, author, type, description, quantity) VALUES (?, ?, ?, ?, ?)');
+  insert.run('Dom Casmurro', 'Machado de Assis', 'Livro', 'Clássico da literatura brasileira.', 3);
+  insert.run('O Pequeno Príncipe', 'Antoine de Saint-Exupéry', 'Livro', 'Uma história poética para todas as idades.', 2);
+  insert.run('Introdução à Programação', 'Equipe Biblioteca', 'E-book', 'Material introdutório para aprender lógica e programação.', 4);
+}
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+app.use(express.urlencoded({ extended: true }));
+app.use(methodOverride('_method'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new SQLiteStore({ db: 'sessions.sqlite', dir: dataDir }),
+  secret: process.env.SESSION_SECRET || 'troque-este-segredo-em-producao',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 14
+  }
+}));
+
+app.use((req, res, next) => {
+  res.locals.currentUser = req.session.user || null;
+  res.locals.flash = req.session.flash || null;
+  delete req.session.flash;
+  next();
+});
+
+function flash(req, type, message) {
+  req.session.flash = { type, message };
+}
+
+function requireLogin(req, res, next) {
+  if (!req.session.user) {
+    flash(req, 'error', 'Entre com sua conta para continuar.');
+    return res.redirect('/login');
+  }
+  next();
+}
+
+function requireLibrarian(req, res, next) {
+  if (!req.session.user || req.session.user.role !== 'librarian') {
+    flash(req, 'error', 'Acesso permitido apenas ao bibliotecário.');
+    return res.redirect('/');
+  }
+  next();
+}
+
+function isOverdue(loan) {
+  return !loan.returned_at && new Date(loan.due_at) < new Date();
+}
+
+function updateReaderBlocks() {
+  db.prepare(`
+    UPDATE users
+    SET blocked = 1
+    WHERE role = 'reader'
+      AND id IN (
+        SELECT DISTINCT user_id FROM loans
+        WHERE returned_at IS NULL AND datetime(due_at) < datetime('now')
+      )
+  `).run();
+
+  db.prepare(`
+    UPDATE users
+    SET blocked = 0
+    WHERE role = 'reader'
+      AND id NOT IN (
+        SELECT DISTINCT user_id FROM loans
+        WHERE returned_at IS NULL AND datetime(due_at) < datetime('now')
+      )
+  `).run();
+}
+
+function getAvailableQuantity(itemId) {
+  const item = db.prepare('SELECT quantity FROM items WHERE id = ?').get(itemId);
+  if (!item) return 0;
+  const active = db.prepare('SELECT COUNT(*) AS total FROM loans WHERE item_id = ? AND returned_at IS NULL').get(itemId).total;
+  return item.quantity - active;
+}
+
+app.get('/', (req, res) => {
+  res.redirect('/catalog');
+});
+
+app.get('/register', (req, res) => {
+  res.render('register');
+});
+
+app.post('/register', (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    flash(req, 'error', 'Preencha todos os campos.');
+    return res.redirect('/register');
+  }
+  if (password.length < 6) {
+    flash(req, 'error', 'A senha precisa ter pelo menos 6 caracteres.');
+    return res.redirect('/register');
+  }
+
+  try {
+    const hash = bcrypt.hashSync(password, 10);
+    const result = db.prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)').run(
+      name.trim(),
+      email.trim().toLowerCase(),
+      hash,
+      'reader'
+    );
+    req.session.user = { id: result.lastInsertRowid, name: name.trim(), email: email.trim().toLowerCase(), role: 'reader' };
+    flash(req, 'success', 'Conta criada com sucesso.');
+    res.redirect('/catalog');
+  } catch (err) {
+    flash(req, 'error', 'Já existe uma conta com esse e-mail.');
+    res.redirect('/register');
+  }
+});
+
+app.get('/login', (req, res) => {
+  res.render('login');
+});
+
+app.post('/login', (req, res) => {
+  const { email, password } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get((email || '').trim().toLowerCase());
+  if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+    flash(req, 'error', 'E-mail ou senha inválidos.');
+    return res.redirect('/login');
+  }
+
+  req.session.user = { id: user.id, name: user.name, email: user.email, role: user.role };
+  flash(req, 'success', 'Entrada realizada com sucesso.');
+  if (user.role === 'librarian') return res.redirect('/admin');
+  res.redirect('/catalog');
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => res.redirect('/login'));
+});
+
+app.get('/catalog', (req, res) => {
+  const q = (req.query.q || '').trim();
+  let items;
+  if (q) {
+    items = db.prepare(`
+      SELECT i.*,
+        i.quantity - (
+          SELECT COUNT(*) FROM loans l WHERE l.item_id = i.id AND l.returned_at IS NULL
+        ) AS available
+      FROM items i
+      WHERE i.title LIKE ? OR i.author LIKE ? OR i.type LIKE ? OR i.description LIKE ?
+      ORDER BY i.title
+    `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+  } else {
+    items = db.prepare(`
+      SELECT i.*,
+        i.quantity - (
+          SELECT COUNT(*) FROM loans l WHERE l.item_id = i.id AND l.returned_at IS NULL
+        ) AS available
+      FROM items i
+      ORDER BY i.title
+    `).all();
+  }
+
+  res.render('catalog', { items, q });
+});
+
+app.get('/items/:id', (req, res) => {
+  const item = db.prepare(`
+    SELECT i.*,
+      i.quantity - (
+        SELECT COUNT(*) FROM loans l WHERE l.item_id = i.id AND l.returned_at IS NULL
+      ) AS available
+    FROM items i
+    WHERE i.id = ?
+  `).get(req.params.id);
+
+  if (!item) {
+    flash(req, 'error', 'Item não encontrado.');
+    return res.redirect('/catalog');
+  }
+
+  res.render('item', { item });
+});
+
+app.post('/items/:id/borrow', requireLogin, (req, res) => {
+  if (req.session.user.role !== 'reader') {
+    flash(req, 'error', 'Apenas leitores podem pegar itens emprestados.');
+    return res.redirect(`/items/${req.params.id}`);
+  }
+
+  updateReaderBlocks();
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.session.user.id);
+  if (user.blocked) {
+    flash(req, 'error', 'Você possui empréstimo em atraso. Devolva o item atrasado para pegar novos empréstimos.');
+    return res.redirect('/my-loans');
+  }
+
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) {
+    flash(req, 'error', 'Item não encontrado.');
+    return res.redirect('/catalog');
+  }
+
+  const available = getAvailableQuantity(item.id);
+  if (available <= 0) {
+    flash(req, 'error', 'Não há exemplares disponíveis agora.');
+    return res.redirect(`/items/${item.id}`);
+  }
+
+  const alreadyBorrowed = db.prepare(`
+    SELECT id FROM loans
+    WHERE user_id = ? AND item_id = ? AND returned_at IS NULL
+  `).get(req.session.user.id, item.id);
+
+  if (alreadyBorrowed) {
+    flash(req, 'error', 'Você já está com esse item emprestado.');
+    return res.redirect('/my-loans');
+  }
+
+  db.prepare(`
+    INSERT INTO loans (user_id, item_id, due_at)
+    VALUES (?, ?, datetime('now', '+14 days'))
+  `).run(req.session.user.id, item.id);
+
+  flash(req, 'success', 'Empréstimo realizado. Devolva em até 14 dias.');
+  res.redirect('/my-loans');
+});
+
+app.get('/my-loans', requireLogin, (req, res) => {
+  if (req.session.user.role !== 'reader') return res.redirect('/admin');
+
+  updateReaderBlocks();
+
+  const loans = db.prepare(`
+    SELECT l.*, i.title, i.author, i.type
+    FROM loans l
+    JOIN items i ON i.id = l.item_id
+    WHERE l.user_id = ?
+    ORDER BY l.borrowed_at DESC
+  `).all(req.session.user.id).map(l => ({ ...l, overdue: isOverdue(l) }));
+
+  res.render('my-loans', { loans });
+});
+
+app.post('/loans/:id/return', requireLogin, (req, res) => {
+  const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(req.params.id);
+  if (!loan) {
+    flash(req, 'error', 'Empréstimo não encontrado.');
+    return res.redirect('/my-loans');
+  }
+
+  const isOwner = req.session.user.role === 'reader' && loan.user_id === req.session.user.id;
+  const isLibrarian = req.session.user.role === 'librarian';
+
+  if (!isOwner && !isLibrarian) {
+    flash(req, 'error', 'Você não pode devolver este empréstimo.');
+    return res.redirect('/');
+  }
+
+  if (loan.returned_at) {
+    flash(req, 'error', 'Este item já foi devolvido.');
+    return res.redirect(isLibrarian ? '/admin/loans' : '/my-loans');
+  }
+
+  db.prepare("UPDATE loans SET returned_at = CURRENT_TIMESTAMP WHERE id = ?").run(loan.id);
+  updateReaderBlocks();
+
+  flash(req, 'success', 'Item devolvido com sucesso.');
+  res.redirect(isLibrarian ? '/admin/loans' : '/my-loans');
+});
+
+app.get('/admin', requireLibrarian, (req, res) => {
+  updateReaderBlocks();
+
+  const stats = {
+    items: db.prepare('SELECT COUNT(*) AS total FROM items').get().total,
+    users: db.prepare("SELECT COUNT(*) AS total FROM users WHERE role = 'reader'").get().total,
+    activeLoans: db.prepare('SELECT COUNT(*) AS total FROM loans WHERE returned_at IS NULL').get().total,
+    overdueLoans: db.prepare("SELECT COUNT(*) AS total FROM loans WHERE returned_at IS NULL AND datetime(due_at) < datetime('now')").get().total
+  };
+
+  const items = db.prepare(`
+    SELECT i.*,
+      i.quantity - (
+        SELECT COUNT(*) FROM loans l WHERE l.item_id = i.id AND l.returned_at IS NULL
+      ) AS available
+    FROM items i
+    ORDER BY i.title
+  `).all();
+
+  res.render('admin/index', { stats, items });
+});
+
+app.get('/admin/items/new', requireLibrarian, (req, res) => {
+  res.render('admin/item-form', { item: null });
+});
+
+app.post('/admin/items', requireLibrarian, (req, res) => {
+  const { title, author, type, description, quantity } = req.body;
+  const qty = Math.max(1, parseInt(quantity || '1', 10));
+
+  if (!title) {
+    flash(req, 'error', 'O título é obrigatório.');
+    return res.redirect('/admin/items/new');
+  }
+
+  db.prepare(`
+    INSERT INTO items (title, author, type, description, quantity)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(title.trim(), (author || '').trim(), (type || 'Livro').trim(), (description || '').trim(), qty);
+
+  flash(req, 'success', 'Item cadastrado.');
+  res.redirect('/admin');
+});
+
+app.get('/admin/items/:id/edit', requireLibrarian, (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) {
+    flash(req, 'error', 'Item não encontrado.');
+    return res.redirect('/admin');
+  }
+
+  res.render('admin/item-form', { item });
+});
+
+app.put('/admin/items/:id', requireLibrarian, (req, res) => {
+  const { title, author, type, description, quantity } = req.body;
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) {
+    flash(req, 'error', 'Item não encontrado.');
+    return res.redirect('/admin');
+  }
+
+  const activeLoans = db.prepare('SELECT COUNT(*) AS total FROM loans WHERE item_id = ? AND returned_at IS NULL').get(item.id).total;
+  const qty = Math.max(activeLoans, parseInt(quantity || '1', 10));
+
+  if (!title) {
+    flash(req, 'error', 'O título é obrigatório.');
+    return res.redirect(`/admin/items/${item.id}/edit`);
+  }
+
+  db.prepare(`
+    UPDATE items
+    SET title = ?, author = ?, type = ?, description = ?, quantity = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(title.trim(), (author || '').trim(), (type || 'Livro').trim(), (description || '').trim(), qty, item.id);
+
+  flash(req, 'success', 'Item atualizado.');
+  res.redirect('/admin');
+});
+
+app.delete('/admin/items/:id', requireLibrarian, (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) {
+    flash(req, 'error', 'Item não encontrado.');
+    return res.redirect('/admin');
+  }
+
+  const activeLoans = db.prepare('SELECT COUNT(*) AS total FROM loans WHERE item_id = ? AND returned_at IS NULL').get(item.id).total;
+  if (activeLoans > 0) {
+    flash(req, 'error', 'Não é possível remover item com empréstimos ativos.');
+    return res.redirect('/admin');
+  }
+
+  db.prepare('DELETE FROM loans WHERE item_id = ?').run(item.id);
+  db.prepare('DELETE FROM items WHERE id = ?').run(item.id);
+
+  flash(req, 'success', 'Item removido.');
+  res.redirect('/admin');
+});
+
+app.get('/admin/loans', requireLibrarian, (req, res) => {
+  updateReaderBlocks();
+
+  const loans = db.prepare(`
+    SELECT l.*, u.name AS user_name, u.email AS user_email, u.blocked,
+           i.title AS item_title, i.author AS item_author
+    FROM loans l
+    JOIN users u ON u.id = l.user_id
+    JOIN items i ON i.id = l.item_id
+    ORDER BY l.borrowed_at DESC
+  `).all().map(l => ({ ...l, overdue: isOverdue(l) }));
+
+  res.render('admin/loans', { loans });
+});
+
+app.get('/admin/readers', requireLibrarian, (req, res) => {
+  updateReaderBlocks();
+
+  const readers = db.prepare(`
+    SELECT u.*,
+      (SELECT COUNT(*) FROM loans l WHERE l.user_id = u.id) AS total_loans,
+      (SELECT COUNT(*) FROM loans l WHERE l.user_id = u.id AND l.returned_at IS NULL) AS active_loans,
+      (SELECT COUNT(*) FROM loans l WHERE l.user_id = u.id AND l.returned_at IS NULL AND datetime(l.due_at) < datetime('now')) AS overdue_loans
+    FROM users u
+    WHERE u.role = 'reader'
+    ORDER BY u.name
+  `).all();
+
+  res.render('admin/readers', { readers });
+});
+
+app.listen(PORT, () => {
+  console.log(`Biblioteca Digital rodando em http://localhost:${PORT}`);
+});
+
+=== public/styles.css ===
+:root {
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --text: #172033;
+  --muted: #667085;
+  --primary: #2854d8;
+  --primary-dark: #1f3fa4;
+  --danger: #c62828;
+  --success: #167a3a;
+  --warning: #9a6700;
+  --border: #d7dce8;
+  --shadow: 0 10px 25px rgba(20, 35, 70, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.nav {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--text);
+}
+
+.nav-links {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.item-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+h1, h2, h3 {
+  margin-top: 0;
+  line-height: 1.2;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #e8edff;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.badge.success {
+  background: #e7f7ed;
+  color: var(--success);
+}
+
+.badge.danger {
+  background: #ffe8e8;
+  color: var(--danger);
+}
+
+.badge.warning {
+  background: #fff5d6;
+  color: var(--warning);
+}
+
+form {
+  margin: 0;
+}
+
+.form {
+  max-width: 560px;
+}
+
+label {
+  display: block;
+  font-weight: bold;
+  margin: 14px 0 6px;
+}
+
+input, textarea, select {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 16px;
+  background: #fff;
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.search {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.search input {
+  flex: 1;
+  min-width: 220px;
+}
+
+button, .button {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 15px;
+  cursor: pointer;
+  font-weight: bold;
+  text-align: center;
+}
+
+button:hover, .button:hover {
+  background: var(--primary-dark);
+  text-decoration: none;
+}
+
+.button.secondary, button.secondary {
+  background: #e9edf7;
+  color: var(--text);
+}
+
+.button.secondary:hover, button.secondary:hover {
+  background: #d9dfed;
+}
+
+.button.danger, button.danger {
+  background: var(--danger);
+}
+
+.button.danger:hover, button.danger:hover {
+  background: #9e1f1f;
+}
+
+.inline-form {
+  display: inline;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.flash {
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 18px;
+  font-weight: bold;
+}
+
+.flash.success {
+  background: #e7f7ed;
+  color: var(--success);
+  border: 1px solid #bde8ca;
+}
+
+.flash.error {
+  background: #ffe8e8;
+  color: var(--danger);
+  border: 1px solid #ffc2c2;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+th, td {
+  padding: 11px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f8f9fd;
+}
+
+.hero {
+  background: linear-gradient(135deg, #244bd0, #587cff);
+  color: #fff;
+  border: 0;
+}
+
+.hero .muted {
+  color: #eef2ff;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  background: #f8f9fd;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.stat strong {
+  display: block;
+  font-size: 28px;
+}
+
+@media (max-width: 640px) {
+  .nav {
+    align-items: flex-start;
+  }
+
+  .nav-links {
+    width: 100%;
+  }
+
+  button, .button {
+    width: 100%;
+  }
+
+  .inline-form {
+    display: block;
+    width: 100%;
+  }
+
+  .actions {
+    width: 100%;
+  }
+}
+
+=== views/partials/header.ejs ===
+<header class="header">
+  <nav class="nav">
+    <a class="brand" href="/catalog">Biblioteca Digital</a>
+
+    <div class="nav-links">
+      <a href="/catalog">Acervo</a>
+
+      <% if (currentUser && currentUser.role === 'reader') { %>
+        <a href="/my-loans">Meus empréstimos</a>
+      <% } %>
+
+      <% if (currentUser && currentUser.role === 'librarian') { %>
+        <a href="/admin">Painel</a>
+        <a href="/admin/loans">Histórico</a>
+        <a href="/admin/readers">Leitores</a>
+      <% } %>
+
+      <% if (currentUser) { %>
+        <span class="muted"><%= currentUser.name %></span>
+        <form class="inline-form" action="/logout" method="post">
+          <button class="secondary" type="submit">Sair</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Entrar</a>
+        <a class="button" href="/register">Criar conta de leitor</a>
+      <% } %>
+    </div>
+  </nav>
+</header>
+
+=== views/partials/flash.ejs ===
+<% if (flash) { %>
+  <div class="flash <%= flash.type %>">
+    <%= flash.message %>
+  </div>
+<% } %>
+
+=== views/login.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card form">
+      <h1>Entrar</h1>
+      <p class="muted">Acesse sua conta de leitor ou bibliotecário.</p>
+
+      <form action="/login" method="post">
+        <label for="email">E-mail</label>
+        <input id="email" name="email" type="email" required autocomplete="email">
+
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password">
+
+        <div class="actions">
+          <button type="submit">Entrar</button>
+          <a class="button secondary" href="/register">Criar conta de leitor</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Conta inicial do bibliotecário</h2>
+      <p><strong>E-mail:</strong> bibliotecario@biblioteca.local</p>
+      <p><strong>Senha:</strong> admin123</p>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/register.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Criar conta - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card form">
+      <h1>Criar conta de leitor</h1>
+      <p class="muted">Use esta conta para pegar itens emprestados e devolver depois.</p>
+
+      <form action="/register" method="post">
+        <label for="name">Nome</label>
+        <input id="name" name="name" required autocomplete="name">
+
+        <label for="email">E-mail</label>
+        <input id="email" name="email" type="email" required autocomplete="email">
+
+        <label for="password">Senha</label>
+        <input id="password" name="password" type="password" minlength="6" required autocomplete="new-password">
+
+        <div class="actions">
+          <button type="submit">Criar conta</button>
+          <a class="button secondary" href="/login">Já tenho conta</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/catalog.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acervo - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card hero">
+      <h1>Acervo da Biblioteca Digital</h1>
+      <p class="muted">Busque itens, consulte disponibilidade e faça empréstimos usando sua conta.</p>
+    </section>
+
+    <section class="card">
+      <form class="search" action="/catalog" method="get">
+        <input name="q" placeholder="Buscar por título, autor, tipo ou descrição" value="<%= q %>">
+        <button type="submit">Buscar</button>
+        <% if (q) { %>
+          <a class="button secondary" href="/catalog">Limpar</a>
+        <% } %>
+      </form>
+    </section>
+
+    <section class="grid">
+      <% if (items.length === 0) { %>
+        <div class="card">
+          <p>Nenhum item encontrado.</p>
+        </div>
+      <% } %>
+
+      <% items.forEach(item => { %>
+        <article class="card item-card">
+          <div>
+            <span class="badge"><%= item.type %></span>
+            <% if (item.available > 0) { %>
+              <span class="badge success"><%= item.available %> disponível(is)</span>
+            <% } else { %>
+              <span class="badge danger">Indisponível</span>
+            <% } %>
+          </div>
+
+          <h2><%= item.title %></h2>
+          <% if (item.author) { %>
+            <p class="muted"><%= item.author %></p>
+          <% } %>
+          <% if (item.description) { %>
+            <p><%= item.description.length > 140 ? item.description.substring(0, 140) + '...' : item.description %></p>
+          <% } %>
+
+          <div class="actions">
+            <a class="button" href="/items/<%= item.id %>">Ver detalhes</a>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/item.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= item.title %> - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card">
+      <span class="badge"><%= item.type %></span>
+      <% if (item.available > 0) { %>
+        <span class="badge success"><%= item.available %> disponível(is)</span>
+      <% } else { %>
+        <span class="badge danger">Indisponível</span>
+      <% } %>
+
+      <h1><%= item.title %></h1>
+
+      <% if (item.author) { %>
+        <p><strong>Autor:</strong> <%= item.author %></p>
+      <% } %>
+
+      <p><strong>Total no acervo:</strong> <%= item.quantity %></p>
+
+      <% if (item.description) { %>
+        <p><%= item.description %></p>
+      <% } %>
+
+      <div class="actions">
+        <% if (currentUser && currentUser.role === 'reader') { %>
+          <form action="/items/<%= item.id %>/borrow" method="post">
+            <button type="submit" <%= item.available <= 0 ? 'disabled' : '' %>>Pegar emprestado</button>
+          </form>
+        <% } else if (!currentUser) { %>
+          <a class="button" href="/login">Entrar para pegar emprestado</a>
+        <% } %>
+
+        <a class="button secondary" href="/catalog">Voltar ao acervo</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/my-loans.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meus empréstimos - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card">
+      <h1>Meus empréstimos</h1>
+      <p class="muted">Veja seus itens emprestados e devolva quando terminar.</p>
+    </section>
+
+    <section class="card table-wrap">
+      <% if (loans.length === 0) { %>
+        <p>Você ainda não pegou nenhum item emprestado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Empréstimo</th>
+              <th>Prazo</th>
+              <th>Status</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% loans.forEach(loan => { %>
+              <tr>
+                <td>
+                  <strong><%= loan.title %></strong><br>
+                  <span class="muted"><%= loan.author || '' %></span>
+                </td>
+                <td><%= loan.borrowed_at %></td>
+                <td><%= loan.due_at %></td>
+                <td>
+                  <% if (loan.returned_at) { %>
+                    <span class="badge success">Devolvido</span><br>
+                    <span class="muted"><%= loan.returned_at %></span>
+                  <% } else if (loan.overdue) { %>
+                    <span class="badge danger">Em atraso</span>
+                  <% } else { %>
+                    <span class="badge warning">Emprestado</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (!loan.returned_at) { %>
+                    <form action="/loans/<%= loan.id %>/return" method="post">
+                      <button type="submit">Devolver</button>
+                    </form>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/admin/index.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel do bibliotecário - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Painel do bibliotecário</h1>
+      <p class="muted">Gerencie o acervo, leitores e empréstimos.</p>
+      <div class="actions">
+        <a class="button" href="/admin/items/new">Cadastrar item</a>
+        <a class="button secondary" href="/admin/loans">Ver histórico</a>
+        <a class="button secondary" href="/admin/readers">Ver leitores</a>
+      </div>
+    </section>
+
+    <section class="stats">
+      <div class="stat"><strong><%= stats.items %></strong> itens</div>
+      <div class="stat"><strong><%= stats.users %></strong> leitores</div>
+      <div class="stat"><strong><%= stats.activeLoans %></strong> empréstimos ativos</div>
+      <div class="stat"><strong><%= stats.overdueLoans %></strong> atrasados</div>
+    </section>
+
+    <section class="card table-wrap">
+      <h2>Acervo</h2>
+
+      <% if (items.length === 0) { %>
+        <p>Nenhum item cadastrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Título</th>
+              <th>Tipo</th>
+              <th>Total</th>
+              <th>Disponíveis</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <tr>
+                <td>
+                  <strong><%= item.title %></strong><br>
+                  <span class="muted"><%= item.author || '' %></span>
+                </td>
+                <td><%= item.type %></td>
+                <td><%= item.quantity %></td>
+                <td><%= item.available %></td>
+                <td>
+                  <div class="actions">
+                    <a class="button secondary" href="/admin/items/<%= item.id %>/edit">Editar</a>
+                    <form action="/admin/items/<%= item.id %>?_method=DELETE" method="post" onsubmit="return confirm('Remover este item?')">
+                      <button class="danger" type="submit">Remover</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/admin/item-form.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= item ? 'Editar item' : 'Cadastrar item' %> - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card form">
+      <h1><%= item ? 'Editar item' : 'Cadastrar item' %></h1>
+
+      <form action="<%= item ? '/admin/items/' + item.id + '?_method=PUT' : '/admin/items' %>" method="post">
+        <label for="title">Título</label>
+        <input id="title" name="title" required value="<%= item ? item.title : '' %>">
+
+        <label for="author">Autor</label>
+        <input id="author" name="author" value="<%= item ? (item.author || '') : '' %>">
+
+        <label for="type">Tipo</label>
+        <select id="type" name="type">
+          <% const currentType = item ? item.type : 'Livro'; %>
+          <% ['Livro', 'E-book', 'Revista', 'Artigo', 'Vídeo', 'Áudio', 'Outro'].forEach(t => { %>
+            <option value="<%= t %>" <%= currentType === t ? 'selected' : '' %>><%= t %></option>
+          <% }) %>
+        </select>
+
+        <label for="quantity">Quantidade de exemplares</label>
+        <input id="quantity" name="quantity" type="number" min="1" required value="<%= item ? item.quantity : 1 %>">
+
+        <label for="description">Descrição</label>
+        <textarea id="description" name="description"><%= item ? (item.description || '') : '' %></textarea>
+
+        <div class="actions">
+          <button type="submit"><%= item ? 'Salvar alterações' : 'Cadastrar' %></button>
+          <a class="button secondary" href="/admin">Cancelar</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/admin/loans.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Histórico de empréstimos - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Histórico de empréstimos</h1>
+      <p class="muted">Todos os empréstimos de todos os leitores.</p>
+    </section>
+
+    <section class="card table-wrap">
+      <% if (loans.length === 0) { %>
+        <p>Nenhum empréstimo registrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Leitor</th>
+              <th>Item</th>
+              <th>Empréstimo</th>
+              <th>Prazo</th>
+              <th>Status</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% loans.forEach(loan => { %>
+              <tr>
+                <td>
+                  <strong><%= loan.user_name %></strong><br>
+                  <span class="muted"><%= loan.user_email %></span><br>
+                  <% if (loan.blocked) { %>
+                    <span class="badge danger">Bloqueado para novos empréstimos</span>
+                  <% } %>
+                </td>
+                <td>
+                  <strong><%= loan.item_title %></strong><br>
+                  <span class="muted"><%= loan.item_author || '' %></span>
+                </td>
+                <td><%= loan.borrowed_at %></td>
+                <td><%= loan.due_at %></td>
+                <td>
+                  <% if (loan.returned_at) { %>
+                    <span class="badge success">Devolvido</span><br>
+                    <span class="muted"><%= loan.returned_at %></span>
+                  <% } else if (loan.overdue) { %>
+                    <span class="badge danger">Em atraso</span>
+                  <% } else { %>
+                    <span class="badge warning">Emprestado</span>
+                  <% } %>
+                </td>
+                <td>
+                  <% if (!loan.returned_at) { %>
+                    <form action="/loans/<%= loan.id %>/return" method="post">
+                      <button type="submit">Registrar devolução</button>
+                    </form>
+                  <% } else { %>
+                    -
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>
+
+=== views/admin/readers.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leitores - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card">
+      <h1>Leitores</h1>
+      <p class="muted">Leitores com empréstimos em atraso ficam automaticamente bloqueados para novos empréstimos.</p>
+    </section>
+
+    <section class="card table-wrap">
+      <% if (readers.length === 0) { %>
+        <p>Nenhum leitor cadastrado.</p>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>Leitor</th>
+              <th>Status</th>
+              <th>Total de empréstimos</th>
+              <th>Ativos</th>
+              <th>Atrasados</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% readers.forEach(reader => { %>
+              <tr>
+                <td>
+                  <strong><%= reader.name %></strong><br>
+                  <span class="muted"><%= reader.email %></span>
+                </td>
+                <td>
+                  <% if (reader.blocked) { %>
+                    <span class="badge danger">Bloqueado</span>
+                  <% } else { %>
+                    <span class="badge success">Liberado</span>
+                  <% } %>
+                </td>
+                <td><%= reader.total_loans %></td>
+                <td><%= reader.active_loans %></td>
+                <td><%= reader.overdue_loans %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      <% } %>
+    </section>
+  </main>
+</body>
+</html>

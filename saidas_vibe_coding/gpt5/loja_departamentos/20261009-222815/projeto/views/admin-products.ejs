@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Produtos</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <div class="row-between">
+        <h1>Produtos</h1>
+        <a class="button" href="/admin/products/new">Novo produto</a>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Categoria</th>
+              <th>Preço</th>
+              <th>Estoque</th>
+              <th>Ativo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% products.forEach(product => { %>
+              <tr>
+                <td><%= product.name %></td>
+                <td><%= product.category %></td>
+                <td><%= money(product.price) %></td>
+                <td><%= product.stock %></td>
+                <td><%= product.active ? 'Sim' : 'Não' %></td>
+                <td class="actions">
+                  <a href="/admin/products/<%= product.id %>/edit">Editar</a>
+
+                  <form action="/admin/products/<%= product.id %>/delete" method="post" onsubmit="return confirm('Remover produto da loja?')">
+                    <button type="submit" class="danger">Remover</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= item.title %> - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <%- include('partials/flash') %>
+
+    <section class="card">
+      <span class="badge"><%= item.type %></span>
+      <% if (item.available > 0) { %>
+        <span class="badge success"><%= item.available %> disponível(is)</span>
+      <% } else { %>
+        <span class="badge danger">Indisponível</span>
+      <% } %>
+
+      <h1><%= item.title %></h1>
+
+      <% if (item.author) { %>
+        <p><strong>Autor:</strong> <%= item.author %></p>
+      <% } %>
+
+      <p><strong>Total no acervo:</strong> <%= item.quantity %></p>
+
+      <% if (item.description) { %>
+        <p><%= item.description %></p>
+      <% } %>
+
+      <div class="actions">
+        <% if (currentUser && currentUser.role === 'reader') { %>
+          <form action="/items/<%= item.id %>/borrow" method="post">
+            <button type="submit" <%= item.available <= 0 ? 'disabled' : '' %>>Pegar emprestado</button>
+          </form>
+        <% } else if (!currentUser) { %>
+          <a class="button" href="/login">Entrar para pegar emprestado</a>
+        <% } %>
+
+        <a class="button secondary" href="/catalog">Voltar ao acervo</a>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Tarefas - Equipe</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+</head>
+<body>
+    <div id="app">
+        <!-- Tela de Login -->
+        <div id="login-screen" class="screen active">
+            <div class="login-container">
+                <div class="login-box">
+                    <h1>📋 Gestão de Tarefas</h1>
+                    <p class="subtitle">Sistema de Gerenciamento de Equipe</p>
+                    
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label for="login-username">Usuário</label>
+                            <input type="text" id="login-username" required autocomplete="username" placeholder="Seu nome de usuário">
+                        </div>
+                        <div class="form-group">
+                            <label for="login-password">Senha</label>
+                            <input type="password" id="login-password" required autocomplete="current-password" placeholder="Sua senha">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+                    </form>
+                    
+                    <div id="login-error" class="error-message hidden"></div>
+                    
+                    <div class="login-help">
+                        <p><strong>Primeiro acesso?</strong></p>
+                        <p>Usuário: <code>admin</code> | Senha: <code>admin123</code></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tela Principal (Dashboard) -->
+        <div id="dashboard-screen" class="screen">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1>📋 Gestão de Tarefas</h1>
+                    </div>
+                    <div class="header-right">
+                        <div class="user-info">
+                            <span id="user-name-display">Carregando...</span>
+                            <span id="user-role-badge" class="badge">...</span>
+                        </div>
+                        <button id="logout-btn" class="btn btn-secondary btn-sm">Sair</button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Navigation Tabs -->
+            <nav class="tabs">
+                <button class="tab-btn active" data-tab="tasks">Minhas Tarefas</button>
+                <button class="tab-btn" data-tab="all-tasks" id="tab-all-tasks" style="display:none;">Todas as Tarefas</button>
+                <button class="tab-btn" data-tab="team" id="tab-team" style="display:none;">Equipe</button>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Aba: Minhas Tarefas -->
+                <div id="tab-tasks" class="tab-content active">
+                    <div class="section-header">
+                        <h2>Minhas Tarefas</h2>
+                        <button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button>
+                    </div>
+
+                    <div class="filters">
+                        <select id="filter-status" onchange="loadTasks()">
+                            <option value="">Todos os Status</option>
+                            <option value="pending">Pendentes</option>
+                            <option value="in_progress">Em Andamento</option>
+                            <option value="completed">Concluídas</option>
+                        </select>
+                        <select id="filter-priority" onchange="loadTasks()">
+                            <option value="">Todas as Prioridades</option>
+                            <option value="high">Alta</option>
+                            <option value="medium">Média</option>
+                            <option value="low">Baixa</option>
+                        </select>
+                    </div>
+
+                    <div id="tasks-list" class="tasks-grid">
+                        <div class="loading">Carregando tarefas...</div>
+                    </div>
+                </div>
+
+                <!-- Aba: Todas as Tarefas (Gerente) -->
+                <div id="tab-all-tasks" class="tab-content">
+                    <div class="section-header">
+                        <h2>Todas as Tarefas da Equipe</h2>
+                        <button class="btn btn-primary" onclick="openTaskModal()">+ Nova Tarefa</button>
+                    </div>
+                    
+                    <div class="filters">
+                        <select id="filter-user" onchange="loadAllTasks()">
+                            <option value="">Todos os Membros</option>
+                        </select>
+                        <select id="filter-status-all" onchange="loadAllTasks()">
+                            <option value="">Todos os Status</option>
+                            <option value="pending">Pendentes</option>
+                            <option value="in_progress">Em Andamento</option>
+                            <option value="completed">Concluídas</option>
+                        </select>
+                    </div>
+
+                    <div id="all-tasks-list" class="tasks-grid">
+                        <div class="loading">Carregando...</div>
+                    </div>
+                </div>
+
+                <!-- Aba: Equipe (Gerente) -->
+                <div id="tab-team" class="tab-content">
+                    <div class="section-header">
+                        <h2>Gerenciar Equipe</h2>
+                        <button class="btn btn-primary" onclick="openUserModal()">+ Novo Membro</button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Usuário</th>
+                                    <th>Função</th>
+                                    <th>Data de Criação</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <tr><td colspan="5" class="loading">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Modal: Criar/Editar Tarefa -->
+        <div id="task-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="task-modal-title">Nova Tarefa</h3>
+                    <button class="close-modal" onclick="closeTaskModal()">&times;</button>
+                </div>
+                <form id="task-form">
+                    <input type="hidden" id="task-id">
+                    
+                    <div class="form-group">
+                        <label for="task-title">Título *</label>
+                        <input type="text" id="task-title" required placeholder="Ex: Revisar relatório mensal">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="task-description">Descrição</label>
+                        <textarea id="task-description" rows="3" placeholder="Detalhes da tarefa..."></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task-priority">Prioridade</label>
+                            <select id="task-priority">
+                                <option value="low">Baixa</option>
+                                <option value="medium" selected>Média</option>
+                                <option value="high">Alta</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="task-due-date">Data de Entrega</label>
+                            <input type="date" id="task-due-date">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="task-assignee-group">
+                        <label for="task-assigned-to">Atribuir para</label>
+                        <select id="task-assigned-to">
+                            <!-- Preenchido via JS -->
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="task-status-group" style="display:none;">
+                        <label for="task-status">Status</label>
+                        <select id="task-status">
+                            <option value="pending">Pendente</option>
+                            <option value="in_progress">Em Andamento</option>
+                            <option value="completed">Concluída</option>
+                        </select>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeTaskModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Tarefa</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal: Criar/Editar Usuário -->
+        <div id="user-modal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="user-modal-title">Novo Membro</h3>
+                    <button class="close-modal" onclick="closeUserModal()">&times;</button>
+                </div>
+                <form id="user-form">
+                    <input type="hidden" id="user-id">
+                    
+                    <div class="form-group">
+                        <label for="user-name">Nome Completo *</label>
+                        <input type="text" id="user-name" required placeholder="Ex: João Silva">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="user-username">Nome de Usuário *</label>
+                        <input type="text" id="user-username" required placeholder="Ex: joao.silva" autocomplete="off">
+                        <small>Usado para fazer login no sistema</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="user-password">Senha <span id="password-hint">*</span></label>
+                        <input type="password" id="user-password" placeholder="Deixe em branco para manter a atual (na edição)">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="user-role">Função *</label>
+                        <select id="user-role">
+                            <option value="member">Membro da Equipe</option>
+                            <option value="manager">Gerente</option>
+                        </select>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeUserModal()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Usuário</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal: Confirmar Exclusão -->
+        <div id="confirm-modal" class="modal">
+            <div class="modal-content modal-sm">
+                <div class="modal-header">
+                    <h3>Confirmar Exclusão</h3>
+                    <button class="close-modal" onclick="closeConfirmModal()">&times;</button>
+                </div>
+                <p id="confirm-message">Tem certeza que deseja excluir este item?</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" onclick="closeConfirmModal()">Cancelar</button>
+                    <button class="btn btn-danger" id="confirm-delete-btn">Excluir</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toast Notifications -->
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

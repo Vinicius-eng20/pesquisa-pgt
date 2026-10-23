@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Biblioteca Digital</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Tela de Login -->
+    <div id="login-screen" class="screen active">
+      <div class="container">
+        <div class="auth-box">
+          <h1>📚 Biblioteca Digital</h1>
+          
+          <div class="tabs">
+            <button class="tab active" onclick="mostrarAba('login')">Entrar</button>
+            <button class="tab" onclick="mostrarAba('registrar')">Criar Conta</button>
+          </div>
+
+          <!-- Formulário de Login -->
+          <form id="login-form" class="auth-form active">
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="login-email" required>
+            </div>
+            <div class="form-group">
+              <label>Senha</label>
+              <input type="password" id="login-senha" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Entrar</button>
+            <div id="login-erro" class="erro-msg"></div>
+          </form>
+
+          <!-- Formulário de Registro -->
+          <form id="registrar-form" class="auth-form">
+            <div class="form-group">
+              <label>Nome</label>
+              <input type="text" id="registrar-nome" required>
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="registrar-email" required>
+            </div>
+            <div class="form-group">
+              <label>Senha</label>
+              <input type="password" id="registrar-senha" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Criar Conta</button>
+            <div id="registrar-erro" class="erro-msg"></div>
+          </form>
+
+          <div class="info-box">
+            <p><strong>Contas de teste:</strong></p>
+            <p>Bibliotecário: admin@biblioteca.com / admin123</p>
+            <p>Leitor: leitor@exemplo.com / leitor123</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tela Principal -->
+    <div id="main-screen" class="screen">
+      <header>
+        <div class="container">
+          <div class="header-content">
+            <h1>📚 Biblioteca Digital</h1>
+            <div class="header-right">
+              <span id="usuario-nome"></span>
+              <button onclick="sair()" class="btn btn-secondary">Sair</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container">
+        <div class="tabs-main">
+          <button class="tab-main active" onclick="mostrarSecao('acervo')">Acervo</button>
+          <button class="tab-main" id="tab-meus-emprestimos" onclick="mostrarSecao('meus-emprestimos')">Meus Empréstimos</button>
+          <button class="tab-main" id="tab-gerenciar" onclick="mostrarSecao('gerenciar-acervo')" style="display: none;">Gerenciar Acervo</button>
+          <button class="tab-main" id="tab-todos-emprestimos" onclick="mostrarSecao('todos-emprestimos')" style="display: none;">Todos os Empréstimos</button>
+          <button class="tab-main" id="tab-usuarios" onclick="mostrarSecao('usuarios')" style="display: none;">Usuários</button>
+        </div>
+
+        <!-- Seção: Acervo -->
+        <div id="secao-acervo" class="secao active">
+          <div class="secao-header">
+            <h2>Acervo</h2>
+            <div class="search-box">
+              <input type="text" id="busca-acervo" placeholder="Buscar por título, autor ou tipo...">
+              <button onclick="buscarAcervo()" class="btn btn-primary">Buscar</button>
+            </div>
+          </div>
+          <div id="alerta-bloqueado" class="alerta alerta-erro" style="display: none;">
+            ⚠️ Sua conta está bloqueada. Não é possível realizar novos empréstimos.
+          </div>
+          <div id="lista-acervo" class="grid"></div>
+        </div>
+
+        <!-- Seção: Meus Empréstimos -->
+        <div id="secao-meus-emprestimos" class="secao">
+          <h2>Meus Empréstimos</h2>
+          <div id="lista-meus-emprestimos"></div>
+        </div>
+
+        <!-- Seção: Gerenciar Acervo (Bibliotecário) -->
+        <div id="secao-gerenciar-acervo" class="secao">
+          <div class="secao-header">
+            <h2>Gerenciar Acervo</h2>
+            <button onclick="mostrarFormNovoItem()" class="btn btn-primary">+ Novo Item</button>
+          </div>
+
+          <div id="form-item" class="form-box" style="display: none;">
+            <h3 id="form-item-titulo">Novo Item</h3>
+            <form id="item-form">
+              <input type="hidden" id="item-id">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Título *</label>
+                  <input type="text" id="item-titulo" required>
+                </div>
+                <div class="form-group">
+                  <label>Autor *</label>
+                  <input type="text" id="item-autor" required>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Tipo *</label>
+                  <select id="item-tipo" required>
+                    <option value="Livro">Livro</option>
+                    <option value="Revista">Revista</option>
+                    <option value="Jornal">Jornal</option>
+                    <option value="DVD">DVD</option>
+                    <option value="CD">CD</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Ano</label>
+                  <input type="number" id="item-ano" min="1000" max="2100">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>ISBN</label>
+                  <input type="text" id="item-isbn">
+                </div>
+                <div class="form-group">
+                  <label>Quantidade *</label>
+                  <input type="number" id="item-quantidade" min="1" required>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Descrição</label>
+                <textarea id="item-descricao" rows="3"></textarea>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" onclick="cancelarFormItem()" class="btn btn-secondary">Cancelar</button>
+              </div>
+              <div id="item-erro" class="erro-msg"></div>
+            </form>
+          </div>
+
+          <div id="lista-gerenciar-acervo" class="grid"></div>
+        </div>
+
+        <!-- Seção: Todos os Empréstimos (Bibliotecário) -->
+        <div id="secao-todos-emprestimos" class="secao">
+          <h2>Todos os Empréstimos</h2>
+          <div id="lista-todos-emprestimos"></div>
+        </div>
+
+        <!-- Seção: Usuários (Bibliotecário) -->
+        <div id="secao-usuarios" class="secao">
+          <h2>Gerenciar Usuários</h2>
+          <div id="lista-usuarios"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

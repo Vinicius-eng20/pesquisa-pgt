@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editar tarefa - Equipe Tarefas</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container narrow">
+    <%- include('partials/messages') %>
+
+    <section class="card">
+      <h1>Editar tarefa</h1>
+
+      <form action="/tarefas/<%= task.id %>/editar" method="post" class="form">
+        <label>
+          Título
+          <input type="text" name="title" required value="<%= task.title %>">
+        </label>
+
+        <label>
+          Responsável
+          <select name="assigned_to" required>
+            <% members.forEach(member => { %>
+              <option value="<%= member.id %>" <%= task.assigned_to === member.id ? 'selected' : '' %>>
+                <%= member.name %> - <%= member.role === 'manager' ? 'Gerente' : 'Membro' %>
+              </option>
+            <% }) %>
+          </select>
+        </label>
+
+        <label>
+          Status
+          <select name="status" required>
+            <option value="pendente" <%= task.status === 'pendente' ? 'selected' : '' %>>Pendente</option>
+            <option value="em andamento" <%= task.status === 'em andamento' ? 'selected' : '' %>>Em andamento</option>
+            <option value="concluída" <%= task.status === 'concluída' ? 'selected' : '' %>>Concluída</option>
+          </select>
+        </label>
+
+        <label>
+          Prazo
+          <input type="date" name="due_date" value="<%= task.due_date %>">
+        </label>
+
+        <label>
+          Descrição
+          <textarea name="description" rows="5"><%= task.description %></textarea>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="button">Salvar alterações</button>
+          <a href="/tarefas" class="button secondary">Cancelar</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

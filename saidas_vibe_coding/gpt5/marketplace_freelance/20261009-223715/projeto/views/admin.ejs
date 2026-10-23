@@ -1,0 +1,115 @@
+<%- include('partials/header') %>
+
+<h1>Painel administrativo</h1>
+<p>Gerencie usuários, serviços e contratos da plataforma.</p>
+
+<section class="panel">
+  <h2>Usuários</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>E-mail</th>
+          <th>Tipo</th>
+          <th>Status</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(item => { %>
+          <tr>
+            <td><%= item.name %></td>
+            <td><%= item.email %></td>
+            <td><%= item.role %></td>
+            <td><%= item.suspended ? 'Suspenso' : 'Ativo' %></td>
+            <td>
+              <% if (item.role !== 'admin') { %>
+                <% if (item.suspended) { %>
+                  <form action="/admin/users/<%= item.id %>/activate" method="POST">
+                    <button class="small-button" type="submit">Reativar</button>
+                  </form>
+                <% } else { %>
+                  <form action="/admin/users/<%= item.id %>/suspend" method="POST">
+                    <button class="small-button danger" type="submit">Suspender</button>
+                  </form>
+                <% } %>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Serviços</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Título</th>
+          <th>Dono</th>
+          <th>Preço</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% services.forEach(service => { %>
+          <tr>
+            <td><%= service.title %></td>
+            <td><%= service.owner_name %> (<%= service.owner_email %>)</td>
+            <td>R$ <%= Number(service.price).toFixed(2).replace('.', ',') %></td>
+            <td><span class="badge <%= service.status %>"><%= service.status %></span></td>
+            <td class="actions">
+              <% if (service.status !== 'approved') { %>
+                <form action="/admin/services/<%= service.id %>/approve" method="POST">
+                  <button class="small-button" type="submit">Aprovar</button>
+                </form>
+              <% } %>
+              <% if (service.status !== 'removed') { %>
+                <form action="/admin/services/<%= service.id %>/remove" method="POST">
+                  <button class="small-button danger" type="submit">Remover</button>
+                </form>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Contratos</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Serviço</th>
+          <th>Prestador</th>
+          <th>Cliente</th>
+          <th>Status</th>
+          <th>Criado em</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% contracts.forEach(contract => { %>
+          <tr>
+            <td><%= contract.service_title %></td>
+            <td><%= contract.provider_name %></td>
+            <td><%= contract.client_name %></td>
+            <td><span class="badge <%= contract.status %>"><%= contract.status %></span></td>
+            <td><%= contract.created_at %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

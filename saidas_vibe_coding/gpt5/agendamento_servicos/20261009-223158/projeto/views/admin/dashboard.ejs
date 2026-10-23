@@ -1,0 +1,178 @@
+<%- include('../partials/header') %>
+
+<section class="card">
+  <h1>Painel do responsável</h1>
+  <p>Cadastre serviços, crie horários disponíveis e gerencie todos os agendamentos.</p>
+</section>
+
+<section class="card">
+  <h2>Cadastrar serviço</h2>
+
+  <form method="post" action="/admin/servicos" class="wide-form">
+    <label>
+      Nome do serviço
+      <input type="text" name="name" required>
+    </label>
+
+    <label>
+      Descrição
+      <textarea name="description"></textarea>
+    </label>
+
+    <label>
+      Preço
+      <input type="number" name="price" min="0" step="0.01" value="0">
+    </label>
+
+    <label>
+      Duração em minutos
+      <input type="number" name="duration_minutes" min="1" required value="60">
+    </label>
+
+    <button class="button" type="submit">Cadastrar serviço</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Serviços cadastrados</h2>
+
+  <% if (services.length === 0) { %>
+    <p>Nenhum serviço cadastrado.</p>
+  <% } else { %>
+    <div class="admin-list">
+      <% services.forEach(service => { %>
+        <form method="post" action="/admin/servicos/<%= service.id %>" class="edit-box">
+          <label>
+            Nome
+            <input type="text" name="name" value="<%= service.name %>" required>
+          </label>
+
+          <label>
+            Descrição
+            <textarea name="description"><%= service.description || '' %></textarea>
+          </label>
+
+          <label>
+            Preço
+            <input type="number" name="price" step="0.01" min="0" value="<%= service.price %>">
+          </label>
+
+          <label>
+            Duração
+            <input type="number" name="duration_minutes" min="1" value="<%= service.duration_minutes %>">
+          </label>
+
+          <label class="checkbox">
+            <input type="checkbox" name="active" <%= service.active ? 'checked' : '' %>>
+            Ativo
+          </label>
+
+          <button class="button small" type="submit">Salvar alterações</button>
+        </form>
+      <% }) %>
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <h2>Cadastrar horário disponível</h2>
+
+  <form method="post" action="/admin/horarios" class="wide-form">
+    <label>
+      Serviço
+      <select name="service_id" required>
+        <option value="">Selecione</option>
+        <% services.filter(s => s.active).forEach(service => { %>
+          <option value="<%= service.id %>"><%= service.name %></option>
+        <% }) %>
+      </select>
+    </label>
+
+    <label>
+      Data e hora
+      <input type="datetime-local" name="start_time" required>
+    </label>
+
+    <button class="button" type="submit">Cadastrar horário</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Últimos horários cadastrados</h2>
+
+  <% if (slots.length === 0) { %>
+    <p>Nenhum horário cadastrado.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Serviço</th>
+            <th>Data e hora</th>
+            <th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% slots.forEach(slot => { %>
+            <tr>
+              <td><%= slot.service_name %></td>
+              <td><%= formatDateTime(slot.start_time) %></td>
+              <td>
+                <form method="post" action="/admin/horarios/<%= slot.id %>/excluir" onsubmit="return confirm('Excluir este horário?')">
+                  <button class="danger small-button" type="submit">Excluir</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <h2>Todos os agendamentos</h2>
+
+  <% if (appointments.length === 0) { %>
+    <p>Nenhum agendamento ainda.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>E-mail</th>
+            <th>Serviço</th>
+            <th>Data e hora</th>
+            <th>Status</th>
+            <th>Alterar</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% appointments.forEach(a => { %>
+            <tr>
+              <td><%= a.user_name %></td>
+              <td><%= a.user_email %></td>
+              <td><%= a.service_name %></td>
+              <td><%= formatDateTime(a.start_time) %></td>
+              <td><span class="status <%= a.status %>"><%= a.status %></span></td>
+              <td>
+                <form method="post" action="/admin/agendamentos/<%= a.id %>/status" class="status-form">
+                  <select name="status">
+                    <option value="pending" <%= a.status === 'pending' ? 'selected' : '' %>>Pendente</option>
+                    <option value="confirmed" <%= a.status === 'confirmed' ? 'selected' : '' %>>Confirmado</option>
+                    <option value="rejected" <%= a.status === 'rejected' ? 'selected' : '' %>>Recusado</option>
+                    <option value="cancelled" <%= a.status === 'cancelled' ? 'selected' : '' %>>Cancelado</option>
+                  </select>
+                  <button class="small-button" type="submit">Salvar</button>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include('../partials/footer') %>

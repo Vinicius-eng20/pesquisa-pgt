@@ -2,6 +2,8 @@
 node_modules/
 
 testes/
+projetos_exportados/
+
 # Arquivos de ambiente e segredos
 .env
 .env.local

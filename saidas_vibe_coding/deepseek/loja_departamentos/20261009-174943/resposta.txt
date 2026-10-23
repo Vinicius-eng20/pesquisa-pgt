@@ -1,0 +1,925 @@
+=== README.md ===
+# Loja Virtual de Departamentos
+
+Uma loja virtual completa com produtos variados, carrinho de compras, pedidos e painel administrativo.
+
+## Como instalar e executar
+
+1. Instale o [Node.js](https://nodejs.org/) (versão 18 ou superior).
+
+2. Abra o terminal na pasta do projeto e rode:
+
+```bash
+npm install
+```
+
+3. Inicie o servidor:
+
+```bash
+npm start
+```
+
+4. Abra o navegador em: http://localhost:3000
+
+## Contas padrão
+
+- **Administrador (dono da loja):**
+  - Email: `admin@loja.com`
+  - Senha: `admin123`
+
+- **Cliente de exemplo:**
+  - Email: `cliente@loja.com`
+  - Senha: `cliente123`
+
+## Para publicar na internet
+
+Você pode hospedar este projeto em serviços como [Render](https://render.com), [Railway](https://railway.app) ou qualquer servidor com Node.js. Basta subir os arquivos e rodar `npm start`.
+
+## Funcionalidades
+
+### Clientes
+- Cadastro e login
+- Ver produtos por departamento
+- Adicionar ao carrinho
+- Finalizar pedido
+- Ver histórico de pedidos
+
+### Administrador
+- Cadastrar, editar e remover produtos
+- Ver todos os pedidos
+- Alterar situação dos pedidos
+
+## Armazenamento
+
+Todos os dados (usuários, produtos, pedidos) são salvos em um banco de dados SQLite no próprio servidor (`loja.db`). Nada depende do navegador — funciona de qualquer dispositivo.
+
+=== package.json ===
+{
+  "name": "loja-virtual",
+  "version": "1.0.0",
+  "description": "Loja virtual de departamentos",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.18.2",
+    "express-session": "^1.18.0"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const Database = require('better-sqlite3');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const db = new Database('loja.db');
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    is_admin INTEGER DEFAULT 0,
+    criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS produtos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    preco REAL NOT NULL,
+    departamento TEXT NOT NULL,
+    estoque INTEGER DEFAULT 0,
+    imagem TEXT,
+    criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS pedidos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id INTEGER NOT NULL,
+    total REAL NOT NULL,
+    status TEXT DEFAULT 'Pendente',
+    criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS itens_pedido (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pedido_id INTEGER NOT NULL,
+    produto_id INTEGER NOT NULL,
+    quantidade INTEGER NOT NULL,
+    preco_unitario REAL NOT NULL,
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (produto_id) REFERENCES produtos(id)
+  );
+`);
+
+const adminExiste = db.prepare('SELECT id FROM usuarios WHERE is_admin = 1').get();
+if (!adminExiste) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO usuarios (nome, email, senha, is_admin) VALUES (?, ?, ?, 1)')
+    .run('Administrador', 'admin@loja.com', hash);
+  console.log('Admin padrão criado: admin@loja.com / admin123');
+}
+
+const clienteExiste = db.prepare('SELECT id FROM usuarios WHERE email = ?').get('cliente@loja.com');
+if (!clienteExiste) {
+  const hash = bcrypt.hashSync('cliente123', 10);
+  db.prepare('INSERT INTO usuarios (nome, email, senha, is_admin) VALUES (?, ?, ?, 0)')
+    .run('Cliente Exemplo', 'cliente@loja.com', hash);
+  console.log('Cliente padrão criado: cliente@loja.com / cliente123');
+}
+
+const totalProdutos = db.prepare('SELECT COUNT(*) as c FROM produtos').get().c;
+if (totalProdutos === 0) {
+  const ins = db.prepare('INSERT INTO produtos (nome, descricao, preco, departamento, estoque, imagem) VALUES (?, ?, ?, ?, ?, ?)');
+  const iniciais = [
+    ['Camiseta Básica', 'Camiseta 100% algodão, confortável para o dia a dia.', 49.90, 'Roupas', 100, '👕'],
+    ['Calça Jeans', 'Calça jeans tradicional, vários tamanhos.', 129.90, 'Roupas', 50, '👖'],
+    ['Tênis Esportivo', 'Tênis leve e resistente para corrida.', 199.90, 'Calçados', 40, '👟'],
+    ['Sandália Verão', 'Sandália confortável para o verão.', 89.90, 'Calçados', 60, '🩴'],
+    ['Smartphone X', 'Smartphone com câmera de alta resolução.', 1499.00, 'Eletrônicos', 20, '📱'],
+    ['Fone Bluetooth', 'Fone sem fio com ótima qualidade de som.', 249.90, 'Eletrônicos', 80, '🎧'],
+    ['Notebook Pro', 'Notebook potente para trabalho e estudo.', 3499.00, 'Eletrônicos', 15, '💻'],
+    ['Liquidificador', 'Liquidificador potente para sua cozinha.', 189.90, 'Casa', 30, '🍹'],
+    ['Jogo de Panelas', 'Conjunto com 5 panelas antiaderentes.', 349.90, 'Casa', 25, '🍳'],
+    ['Arroz 5kg', 'Arroz tipo 1, pacote de 5kg.', 29.90, 'Alimentos', 200, '🍚'],
+    ['Café 500g', 'Café torrado e moído, 500g.', 19.90, 'Alimentos', 300, '☕'],
+    ['Chocolate', 'Barra de chocolate ao leite 90g.', 8.90, 'Alimentos', 500, '🍫'],
+    ['Boneca', 'Boneca de pano educativa.', 79.90, 'Brinquedos', 40, '🧸'],
+    ['Quebra-cabeça', 'Quebra-cabeça 500 peças.', 39.90, 'Brinquedos', 70, '🧩'],
+    ['Livro Romance', 'Best-seller de romance contemporâneo.', 45.90, 'Livros', 100, '📖'],
+    ['Livro Infantil', 'Livro ilustrado para crianças.', 29.90, 'Livros', 120, '📚'],
+  ];
+  for (const p of iniciais) ins.run(...p);
+  console.log('Produtos iniciais cadastrados.');
+}
+
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(cookieParser());
+app.use(session({
+  secret: 'segredo-loja-virtual-2024',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function autenticado(req, res, next) {
+  if (!req.session.usuario) return res.status(401).json({ erro: 'Não autenticado' });
+  next();
+}
+
+function ehAdmin(req, res, next) {
+  if (!req.session.usuario || !req.session.usuario.is_admin) {
+    return res.status(403).json({ erro: 'Acesso negado' });
+  }
+  next();
+}
+
+// ===== AUTH =====
+app.post('/api/auth/cadastro', (req, res) => {
+  const { nome, email, senha } = req.body;
+  if (!nome || !email || !senha) return res.status(400).json({ erro: 'Preencha todos os campos' });
+  const existe = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(email);
+  if (existe) return res.status(400).json({ erro: 'Email já cadastrado' });
+  const hash = bcrypt.hashSync(senha, 10);
+  const r = db.prepare('INSERT INTO usuarios (nome, email, senha, is_admin) VALUES (?, ?, ?, 0)')
+    .run(nome, email, hash);
+  req.session.usuario = { id: r.lastInsertRowid, nome, email, is_admin: 0 };
+  res.json({ ok: true, usuario: req.session.usuario });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, senha } = req.body;
+  const u = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
+  if (!u || !bcrypt.compareSync(senha, u.senha)) {
+    return res.status(400).json({ erro: 'Email ou senha inválidos' });
+  }
+  req.session.usuario = { id: u.id, nome: u.nome, email: u.email, is_admin: u.is_admin };
+  res.json({ ok: true, usuario: req.session.usuario });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/auth/me', (req, res) => {
+  res.json({ usuario: req.session.usuario || null });
+});
+
+// ===== PRODUTOS =====
+app.get('/api/produtos', (req, res) => {
+  const { departamento, busca } = req.query;
+  let sql = 'SELECT * FROM produtos';
+  const cond = [];
+  const params = [];
+  if (departamento) { cond.push('departamento = ?'); params.push(departamento); }
+  if (busca) { cond.push('(nome LIKE ? OR descricao LIKE ?)'); params.push(`%${busca}%`, `%${busca}%`); }
+  if (cond.length) sql += ' WHERE ' + cond.join(' AND ');
+  sql += ' ORDER BY criado_em DESC';
+  res.json(db.prepare(sql).all(...params));
+});
+
+app.get('/api/departamentos', (req, res) => {
+  const rows = db.prepare('SELECT DISTINCT departamento FROM produtos ORDER BY departamento').all();
+  res.json(rows.map(r => r.departamento));
+});
+
+app.get('/api/produtos/:id', (req, res) => {
+  const p = db.prepare('SELECT * FROM produtos WHERE id = ?').get(req.params.id);
+  if (!p) return res.status(404).json({ erro: 'Produto não encontrado' });
+  res.json(p);
+});
+
+app.post('/api/produtos', ehAdmin, (req, res) => {
+  const { nome, descricao, preco, departamento, estoque, imagem } = req.body;
+  if (!nome || !preco || !departamento) return res.status(400).json({ erro: 'Preencha nome, preço e departamento' });
+  const r = db.prepare('INSERT INTO produtos (nome, descricao, preco, departamento, estoque, imagem) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(nome, descricao || '', Number(preco), departamento, Number(estoque) || 0, imagem || '📦');
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.put('/api/produtos/:id', ehAdmin, (req, res) => {
+  const { nome, descricao, preco, departamento, estoque, imagem } = req.body;
+  db.prepare('UPDATE produtos SET nome=?, descricao=?, preco=?, departamento=?, estoque=?, imagem=? WHERE id=?')
+    .run(nome, descricao, Number(preco), departamento, Number(estoque), imagem, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/produtos/:id', ehAdmin, (req, res) => {
+  db.prepare('DELETE FROM produtos WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ===== CARRINHO (sessão) =====
+function getCarrinho(req) {
+  if (!req.session.carrinho) req.session.carrinho = [];
+  return req.session.carrinho;
+}
+
+app.get('/api/carrinho', (req, res) => {
+  const c = getCarrinho(req);
+  const itens = c.map(i => {
+    const p = db.prepare('SELECT * FROM produtos WHERE id = ?').get(i.produto_id);
+    return p ? { ...p, quantidade: i.quantidade } : null;
+  }).filter(Boolean);
+  const total = itens.reduce((s, i) => s + i.preco * i.quantidade, 0);
+  res.json({ itens, total });
+});
+
+app.post('/api/carrinho/adicionar', (req, res) => {
+  const { produto_id, quantidade } = req.body;
+  const p = db.prepare('SELECT * FROM produtos WHERE id = ?').get(produto_id);
+  if (!p) return res.status(404).json({ erro: 'Produto não encontrado' });
+  const c = getCarrinho(req);
+  const item = c.find(i => i.produto_id === Number(produto_id));
+  if (item) item.quantidade += (Number(quantidade) || 1);
+  else c.push({ produto_id: Number(produto_id), quantidade: Number(quantidade) || 1 });
+  res.json({ ok: true });
+});
+
+app.put('/api/carrinho/:produto_id', (req, res) => {
+  const { quantidade } = req.body;
+  const c = getCarrinho(req);
+  const idx = c.findIndex(i => i.produto_id === Number(req.params.produto_id));
+  if (idx >= 0) {
+    if (Number(quantidade) <= 0) c.splice(idx, 1);
+    else c[idx].quantidade = Number(quantidade);
+  }
+  res.json({ ok: true });
+});
+
+app.delete('/api/carrinho/:produto_id', (req, res) => {
+  const c = getCarrinho(req);
+  const idx = c.findIndex(i => i.produto_id === Number(req.params.produto_id));
+  if (idx >= 0) c.splice(idx, 1);
+  res.json({ ok: true });
+});
+
+app.delete('/api/carrinho', (req, res) => {
+  req.session.carrinho = [];
+  res.json({ ok: true });
+});
+
+// ===== PEDIDOS =====
+app.post('/api/pedidos', autenticado, (req, res) => {
+  const c = getCarrinho(req);
+  if (c.length === 0) return res.status(400).json({ erro: 'Carrinho vazio' });
+  const itens = c.map(i => {
+    const p = db.prepare('SELECT * FROM produtos WHERE id = ?').get(i.produto_id);
+    return p ? { produto: p, quantidade: i.quantidade } : null;
+  }).filter(Boolean);
+  const total = itens.reduce((s, i) => s + i.produto.preco * i.quantidade, 0);
+
+  const criar = db.transaction(() => {
+    const r = db.prepare('INSERT INTO pedidos (usuario_id, total, status) VALUES (?, ?, ?)')
+      .run(req.session.usuario.id, total, 'Pendente');
+    const pedidoId = r.lastInsertRowid;
+    const ins = db.prepare('INSERT INTO itens_pedido (pedido_id, produto_id, quantidade, preco_unitario) VALUES (?, ?, ?, ?)');
+    for (const it of itens) ins.run(pedidoId, it.produto.id, it.quantidade, it.produto.preco);
+    return pedidoId;
+  });
+  const pedidoId = criar();
+  req.session.carrinho = [];
+  res.json({ ok: true, pedido_id: pedidoId });
+});
+
+app.get('/api/pedidos/meus', autenticado, (req, res) => {
+  const pedidos = db.prepare('SELECT * FROM pedidos WHERE usuario_id = ? ORDER BY criado_em DESC')
+    .all(req.session.usuario.id);
+  for (const p of pedidos) {
+    p.itens = db.prepare(`
+      SELECT ip.*, pr.nome, pr.imagem
+      FROM itens_pedido ip JOIN produtos pr ON pr.id = ip.produto_id
+      WHERE ip.pedido_id = ?
+    `).all(p.id);
+  }
+  res.json(pedidos);
+});
+
+app.get('/api/pedidos', ehAdmin, (req, res) => {
+  const pedidos = db.prepare(`
+    SELECT p.*, u.nome as cliente_nome, u.email as cliente_email
+    FROM pedidos p JOIN usuarios u ON u.id = p.usuario_id
+    ORDER BY p.criado_em DESC
+  `).all();
+  for (const p of pedidos) {
+    p.itens = db.prepare(`
+      SELECT ip.*, pr.nome, pr.imagem
+      FROM itens_pedido ip JOIN produtos pr ON pr.id = ip.produto_id
+      WHERE ip.pedido_id = ?
+    `).all(p.id);
+  }
+  res.json(pedidos);
+});
+
+app.put('/api/pedidos/:id/status', ehAdmin, (req, res) => {
+  const { status } = req.body;
+  const validos = ['Pendente', 'Em preparo', 'Enviado', 'Entregue', 'Cancelado'];
+  if (!validos.includes(status)) return res.status(400).json({ erro: 'Status inválido' });
+  db.prepare('UPDATE pedidos SET status = ? WHERE id = ?').run(status, req.params.id);
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () => {
+  console.log(`\n🛒 Loja Virtual rodando em http://localhost:${PORT}\n`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopping Virtual</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <a href="#" class="logo" onclick="irPara('home');return false;">🛒 Shopping Virtual</a>
+    <div class="busca">
+      <input id="campoBusca" placeholder="O que você procura?" onkeydown="if(event.key==='Enter') buscar()">
+      <button onclick="buscar()">Buscar</button>
+    </div>
+    <div class="header-acoes">
+      <button class="btn-carrinho" onclick="abrirCarrinho()">🛍️ Carrinho <span id="badgeCarrinho">0</span></button>
+      <div id="areaUsuario"></div>
+    </div>
+  </div>
+  <nav id="navDepartamentos"></nav>
+</header>
+
+<main id="conteudo"></main>
+
+<div id="modal" class="modal oculto"><div class="modal-conteudo" id="modalConteudo"></div></div>
+<div id="toast" class="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #f4f6f9; color: #222; }
+
+header { background: #1a237e; color: #fff; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+.header-inner { max-width: 1200px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.logo { color: #fff; text-decoration: none; font-size: 20px; font-weight: bold; white-space: nowrap; }
+.busca { flex: 1; display: flex; min-width: 200px; }
+.busca input { flex: 1; padding: 10px; border: none; border-radius: 4px 0 0 4px; font-size: 14px; }
+.busca button { padding: 10px 16px; border: none; background: #ff9800; color: #fff; border-radius: 0 4px 4px 0; cursor: pointer; font-weight: bold; }
+.header-acoes { display: flex; align-items: center; gap: 10px; }
+.btn-carrinho { background: #ff9800; border: none; color: #fff; padding: 10px 14px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+#badgeCarrinho { background: #fff; color: #1a237e; border-radius: 10px; padding: 1px 7px; font-size: 12px; margin-left: 4px; }
+#navDepartamentos { max-width: 1200px; margin: 0 auto; padding: 0 16px 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+#navDepartamentos button { background: rgba(255,255,255,.15); color: #fff; border: none; padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 13px; }
+#navDepartamentos button.ativo, #navDepartamentos button:hover { background: #ff9800; }
+
+main { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+
+.grid-produtos { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.produto-card { background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); transition: transform .15s; display: flex; flex-direction: column; }
+.produto-card:hover { transform: translateY(-3px); box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+.produto-img { font-size: 64px; text-align: center; padding: 24px; background: #f9f9f9; }
+.produto-info { padding: 12px; flex: 1; display: flex; flex-direction: column; }
+.produto-dep { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: .5px; }
+.produto-nome { font-size: 16px; font-weight: 600; margin: 6px 0; }
+.produto-desc { font-size: 13px; color: #777; margin-bottom: 10px; flex: 1; }
+.produto-preco { font-size: 20px; font-weight: bold; color: #1a237e; margin-bottom: 10px; }
+.produto-estoque { font-size: 12px; color: #888; margin-bottom: 10px; }
+
+.btn { background: #1a237e; color: #fff; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; }
+.btn:hover { background: #283593; }
+.btn-secundario { background: #eee; color: #333; }
+.btn-secundario:hover { background: #ddd; }
+.btn-perigo { background: #d32f2f; }
+.btn-perigo:hover { background: #b71c1c; }
+.btn-sucesso { background: #2e7d32; }
+.btn-sucesso:hover { background: #1b5e20; }
+.btn-full { width: 100%; }
+
+h1 { font-size: 24px; margin-bottom: 16px; color: #1a237e; }
+h2 { font-size: 20px; margin: 20px 0 12px; color: #1a237e; }
+
+.form { display: flex; flex-direction: column; gap: 12px; max-width: 400px; }
+.form input, .form select, .form textarea { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; font-family: inherit; }
+.form label { font-size: 13px; font-weight: 600; color: #555; }
+
+.card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); margin-bottom: 16px; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px; }
+.modal.oculto { display: none; }
+.modal-conteudo { background: #fff; border-radius: 10px; padding: 24px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; }
+
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 12px 20px; border-radius: 6px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 2000; }
+.toast.visivel { opacity: 1; }
+
+.tabela { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.tabela th, .tabela td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+.tabela th { background: #f5f5f5; font-size: 13px; text-transform: uppercase; color: #555; }
+
+.item-carrinho { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; }
+.item-carrinho .img { font-size: 32px; }
+.item-carrinho .info { flex: 1; }
+.item-carrinho .qtd { display: flex; align-items: center; gap: 6px; }
+.item-carrinho .qtd button { width: 28px; height: 28px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer; font-weight: bold; }
+
+.pedido { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.pedido-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.status-Pendente { background: #fff3cd; color: #856404; }
+.status-Em-preparo { background: #cce5ff; color: #004085; }
+.status-Enviado { background: #d1ecf1; color: #0c5460; }
+.status-Entregue { background: #d4edda; color: #155724; }
+.status-Cancelado { background: #f8d7da; color: #721c24; }
+
+.acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.sem-resultados { text-align: center; color: #888; padding: 40px; }
+.filtro-admin { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.grid-acoes { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+
+@media (max-width: 600px) {
+  .header-inner { padding: 10px; }
+  .busca { order: 3; width: 100%; }
+  .logo { font-size: 17px; }
+}
+</｜DSML｜ parameter>
+</｜DSML｜ invoke>
+
+=== public/app.js ===
+let usuario = null;
+let carrinho = [];
+let departamentoAtual = null;
+
+async function api(url, metodo = 'GET', body = null) {
+  const opts = { method: metodo, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(url, opts);
+  const data = r.headers.get('content-type')?.includes('json') ? await r.json() : {};
+  if (!r.ok) throw new Error(data.erro || 'Erro');
+  return data;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('visivel');
+  setTimeout(() => t.classList.remove('visivel'), 2000);
+}
+
+function modal(html) {
+  const m = document.getElementById('modal');
+  document.getElementById('modalConteudo').innerHTML = html;
+  m.classList.remove('oculto');
+}
+function fecharModal() { document.getElementById('modal').classList.add('oculto'); }
+document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') fecharModal(); });
+
+function money(v) { return 'R$ ' + Number(v).toFixed(2).replace('.', ','); }
+
+// ---------- INICIALIZAÇÃO ----------
+async function init() {
+  try {
+    const r = await api('/api/auth/me');
+    usuario = r.usuario;
+  } catch {}
+  await atualizarCarrinho();
+  await carregarDepartamentos();
+  irPara('home');
+}
+
+async function carregarDepartamentos() {
+  try {
+    const deps = await api('/api/departamentos');
+    const nav = document.getElementById('navDepartamentos');
+    nav.innerHTML = `<button onclick="filtrarDep(null)" class="${departamentoAtual === null ? 'ativo' : ''}">Todos</button>` +
+      deps.map(d => `<button onclick="filtrarDep('${d}')" class="${departamentoAtual === d ? 'ativo' : ''}">${d}</button>`).join('');
+  } catch {}
+}
+
+function filtrarDep(d) { departamentoAtual = d; carregarDepartamentos(); irPara('home'); }
+function buscar() { irPara('home'); }
+
+// ---------- NAVEGAÇÃO ----------
+function irPara(tela, extra) {
+  const c = document.getElementById('conteudo');
+  atualizarAreaUsuario();
+  if (tela === 'home') renderHome(c);
+  else if (tela === 'login') renderLogin(c);
+  else if (tela === 'cadastro') renderCadastro(c);
+  else if (tela === 'pedidos') renderMeusPedidos(c);
+  else if (tela === 'adminProdutos') renderAdminProdutos(c);
+  else if (tela === 'adminPedidos') renderAdminPedidos(c);
+  else if (tela === 'adminNovoProduto') renderFormProduto(c, null);
+  else if (tela === 'adminEditarProduto') renderFormProduto(c, extra);
+}
+
+function atualizarAreaUsuario() {
+  const area = document.getElementById('areaUsuario');
+  if (usuario) {
+    area.innerHTML = `
+      <span class="usuario-nome">Olá, ${usuario.nome.split(' ')[0]}</span>
+      <div style="display:inline-flex;gap:6px;flex-wrap:wrap;">
+        ${usuario.is_admin
+          ? `<button class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="irPara('adminProdutos')">Produtos</button>
+             <button class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="irPara('adminPedidos')">Pedidos</button>`
+          : `<button class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="irPara('pedidos')">Meus Pedidos</button>`}
+        <button class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="logout()">Sair</button>
+      </div>
+    `;
+  } else {
+    area.innerHTML = `
+      <button class="btn" style="padding:8px 12px;font-size:13px" onclick="irPara('login')">Entrar</button>
+      <button class="btn btn-secundario" style="padding:8px 12px;font-size:13px" onclick="irPara('cadastro')">Cadastrar</button>
+    `;
+  }
+}
+
+async function logout() {
+  await api('/api/auth/logout', 'POST');
+  usuario = null;
+  await atualizarCarrinho();
+  toast('Saiu da conta');
+  irPara('home');
+}
+
+// ---------- HOME ----------
+async function renderHome(c) {
+  const busca = document.getElementById('campoBusca').value.trim();
+  let url = '/api/produtos?';
+  if (departamentoAtual) url += `departamento=${encodeURIComponent(departamentoAtual)}&`;
+  if (busca) url += `busca=${encodeURIComponent(busca)}`;
+  c.innerHTML = '<p>Carregando...</p>';
+  try {
+    const produtos = await api(url);
+    if (produtos.length === 0) {
+      c.innerHTML = '<div class="sem-resultados">Nenhum produto encontrado.</div>';
+      return;
+    }
+    c.innerHTML = `<h1>${departamentoAtual || 'Todos os produtos'}</h1>
+      <div class="grid-produtos">${produtos.map(p => `
+        <div class="produto-card">
+          <div class="produto-img">${p.imagem || '📦'}</div>
+          <div class="produto-info">
+            <div class="produto-dep">${p.departamento}</div>
+            <div class="produto-nome">${p.nome}</div>
+            <div class="produto-desc">${p.descricao || ''}</div>
+            <div class="produto-preco">${money(p.preco)}</div>
+            <div class="produto-estoque">${p.estoque > 0 ? p.estoque + ' em estoque' : 'Sem estoque'}</div>
+            <button class="btn btn-full" ${p.estoque <= 0 ? 'disabled' : ''} onclick="addCarrinho(${p.id})">Adicionar ao carrinho</button>
+          </div>
+        </div>
+      `).join('')}</div>`;
+  } catch (e) {
+    c.innerHTML = '<div class="sem-resultados">Erro ao carregar produtos</div>';
+  }
+}
+
+// ---------- AUTH ----------
+function renderLogin(c) {
+  c.innerHTML = `
+    <div class="card" style="max-width:400px;margin:0 auto">
+      <h1>Entrar</h1>
+      <form class="form" onsubmit="fazerLogin(event)">
+        <label>Email</label>
+        <input name="email" type="email" required>
+        <label>Senha</label>
+        <input name="senha" type="password" required>
+        <button class="btn btn-full" type="submit">Entrar</button>
+      </form>
+      <p style="margin-top:12px;text-align:center;font-size:14px">Não tem conta? <a href="#" onclick="irPara('cadastro');return false;">Cadastre-se</a></p>
+      <p style="margin-top:16px;font-size:12px;color:#888;text-align:center">Admin: admin@loja.com / admin123<br>Cliente: cliente@loja.com / cliente123</p>
+    </div>
+  `;
+}
+
+async function fazerLogin(e) {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    const r = await api('/api/auth/login', 'POST', { email: f.email.value, senha: f.senha.value });
+    usuario = r.usuario;
+    toast('Bem-vindo, ' + usuario.nome);
+    irPara('home');
+  } catch (err) { toast(err.message); }
+}
+
+function renderCadastro(c) {
+  c.innerHTML = `
+    <div class="card" style="max-width:400px;margin:0 auto">
+      <h1>Criar conta</h1>
+      <form class="form" onsubmit="fazerCadastro(event)">
+        <label>Nome</label>
+        <input name="nome" required>
+        <label>Email</label>
+        <input name="email" type="email" required>
+        <label>Senha</label>
+        <input name="senha" type="password" minlength="4" required>
+        <button class="btn btn-full" type="submit">Cadastrar</button>
+      </form>
+      <p style="margin-top:12px;text-align:center;font-size:14px">Já tem conta? <a href="#" onclick="irPara('login');return false;">Entrar</a></p>
+    </div>
+  `;
+}
+
+async function fazerCadastro(e) {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    const r = await api('/api/auth/cadastro', 'POST', { nome: f.nome.value, email: f.email.value, senha: f.senha.value });
+    usuario = r.usuario;
+    toast('Conta criada!');
+    irPara('home');
+  } catch (err) { toast(err.message); }
+}
+
+// ---------- CARRINHO ----------
+async function atualizarCarrinho() {
+  try {
+    const r = await api('/api/carrinho');
+    carrinho = r.itens;
+    document.getElementById('badgeCarrinho').textContent = carrinho.reduce((s, i) => s + i.quantidade, 0);
+  } catch {}
+}
+
+async function addCarrinho(id) {
+  try {
+    await api('/api/carrinho/adicionar', 'POST', { produto_id: id, quantidade: 1 });
+    await atualizarCarrinho();
+    toast('Adicionado ao carrinho!');
+  } catch (e) { toast(e.message); }
+}
+
+function abrirCarrinho() {
+  if (carrinho.length === 0) {
+    return modal('<h2>Carrinho vazio</h2><p style="margin:12px 0">Adicione produtos para continuar.</p><button class="btn btn-full" onclick="fecharModal()">Fechar</button>');
+  }
+  const total = carrinho.reduce((s, i) => s + i.preco * i.quantidade, 0);
+  modal(`
+    <h2>Meu Carrinho</h2>
+    <div style="margin:16px 0">
+      ${carrinho.map(i => `
+        <div class="item-carrinho">
+          <div class="img">${i.imagem || '📦'}</div>
+          <div class="info">
+            <div style="font-weight:600">${i.nome}</div>
+            <div style="color:#666;font-size:13px">${money(i.preco)} cada</div>
+          </div>
+          <div class="qtd">
+            <button onclick="alterarQtd(${i.id}, ${i.quantidade - 1})">−</button>
+            <span>${i.quantidade}</span>
+            <button onclick="alterarQtd(${i.id}, ${i.quantidade + 1})">+</button>
+          </div>
+          <button class="btn btn-perigo" style="padding:6px 10px" onclick="removerItem(${i.id})">X</button>
+        </div>
+      `).join('')}
+    </div>
+    <h2 style="text-align:right">Total: ${money(total)}</h2>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-secundario" style="flex:1" onclick="fecharModal()">Continuar</button>
+      <button class="btn btn-sucesso" style="flex:1" onclick="finalizarPedido()">Finalizar Pedido</button>
+    </div>
+  `);
+}
+
+async function alterarQtd(id, qtd) {
+  await api('/api/carrinho/' + id, 'PUT', { quantidade: qtd });
+  await atualizarCarrinho();
+  abrirCarrinho();
+}
+
+async function removerItem(id) {
+  await api('/api/carrinho/' + id, 'DELETE');
+  await atualizarCarrinho();
+  abrirCarrinho();
+  toast('Item removido');
+}
+
+async function finalizarPedido() {
+  if (!usuario) {
+    fecharModal();
+    toast('Faça login para finalizar');
+    irPara('login');
+    return;
+  }
+  try {
+    const r = await api('/api/pedidos', 'POST');
+    await atualizarCarrinho();
+    fecharModal();
+    toast('Pedido realizado!');
+    irPara('pedidos');
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- MEUS PEDIDOS ----------
+async function renderMeusPedidos(c) {
+  c.innerHTML = '<p>Carregando...</p>';
+  try {
+    const pedidos = await api('/api/pedidos/meus');
+    if (pedidos.length === 0) {
+      c.innerHTML = '<h1>Meus Pedidos</h1><div class="sem-resultados">Você ainda não fez nenhum pedido.</div>';
+      return;
+    }
+    c.innerHTML = `<h1>Meus Pedidos</h1>${pedidos.map(p => `
+      <div class="pedido">
+        <div class="pedido-head">
+          <div>
+            <strong>Pedido #${p.id}</strong>
+            <span style="color:#888;font-size:13px;margin-left:8px">${new Date(p.criado_em).toLocaleString('pt-BR')}</span>
+          </div>
+          <span class="status status-${p.status.replace(' ', '-')}">${p.status}</span>
+        </div>
+        ${p.itens.map(i => `<div style="font-size:14px;color:#555">${i.quantidade}x ${i.imagem || '📦'} ${i.nome} — ${money(i.preco_unitario)}</div>`).join('')}
+        <div style="text-align:right;margin-top:8px;font-weight:bold;color:#1a237e">Total: ${money(p.total)}</div>
+      </div>
+    `).join('')}`;
+  } catch (e) {
+    c.innerHTML = '<div class="sem-resultados">Faça login para ver seus pedidos</div>';
+  }
+}
+
+// ---------- ADMIN: PRODUTOS ----------
+async function renderAdminProdutos(c) {
+  c.innerHTML = '<p>Carregando...</p>';
+  try {
+    const produtos = await api('/api/produtos');
+    c.innerHTML = `
+      <div class="grid-acoes">
+        <h1 style="flex:1">Gerenciar Produtos</h1>
+        <button class="btn btn-sucesso" onclick="irPara('adminNovoProduto')">+ Novo Produto</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tabela">
+          <thead><tr><th>Imagem</th><th>Nome</th><th>Departamento</th><th>Preço</th><th>Estoque</th><th>Ações</th></tr></thead>
+          <tbody>
+            ${produtos.map(p => `
+              <tr>
+                <td style="font-size:24px">${p.imagem || '📦'}</td>
+                <td>${p.nome}</td>
+                <td>${p.departamento}</td>
+                <td>${money(p.preco)}</td>
+                <td>${p.estoque}</td>
+                <td>
+                  <button class="btn" style="padding:6px 10px;font-size:12px" onclick="irPara('adminEditarProduto', ${p.id})">Editar</button>
+                  <button class="btn btn-perigo" style="padding:6px 10px;font-size:12px" onclick="excluirProduto(${p.id})">Excluir</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (e) {
+    c.innerHTML = '<div class="sem-resultados">Acesso negado</div>';
+  }
+}
+
+async function renderFormProduto(c, id) {
+  let p = { nome: '', descricao: '', preco: '', departamento: '', estoque: 0, imagem: '📦' };
+  if (id) p = await api('/api/produtos/' + id);
+  c.innerHTML = `
+    <div class="card" style="max-width:500px">
+      <h1>${id ? 'Editar' : 'Novo'} Produto</h1>
+      <form class="form" onsubmit="salvarProduto(event, ${id})">
+        <label>Nome</label>
+        <input name="nome" value="${p.nome}" required>
+        <label>Descrição</label>
+        <textarea name="descricao" rows="3">${p.descricao || ''}</textarea>
+        <label>Preço (R$)</label>
+        <input name="preco" type="number" step="0.01" min="0" value="${p.preco}" required>
+        <label>Departamento</label>
+        <input name="departamento" value="${p.departamento}" required list="deps" placeholder="Ex: Roupas, Eletrônicos, Casa">
+        <label>Estoque</label>
+        <input name="estoque" type="number" min="0" value="${p.estoque}" required>
+        <label>Emoji/Imagem</label>
+        <input name="imagem" value="${p.imagem || '📦'}" maxlength="4">
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-secundario" style="flex:1" onclick="irPara('adminProdutos')">Cancelar</button>
+          <button type="submit" class="btn btn-sucesso" style="flex:1">Salvar</button>
+        </div>
+      </form>
+    </div>
+  `;
+}
+
+async function salvarProduto(e, id) {
+  e.preventDefault();
+  const f = e.target;
+  const dados = {
+    nome: f.nome.value, descricao: f.descricao.value, preco: f.preco.value,
+    departamento: f.departamento.value, estoque: f.estoque.value, imagem: f.imagem.value
+  };
+  try {
+    if (id) await api('/api/produtos/' + id, 'PUT', dados);
+    else await api('/api/produtos', 'POST', dados);
+    toast('Produto salvo!');
+    await carregarDepartamentos();
+    irPara('adminProdutos');
+  } catch (e) { toast(e.message); }
+}
+
+async function excluirProduto(id) {
+  if (!confirm('Excluir este produto?')) return;
+  try {
+    await api('/api/produtos/' + id, 'DELETE');
+    toast('Produto excluído');
+    renderAdminProdutos(document.getElementById('conteudo'));
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- ADMIN: PEDIDOS ----------
+async function renderAdminPedidos(c) {
+  c.innerHTML = '<p>Carregando...</p>';
+  try {
+    const pedidos = await api('/api/pedidos');
+    if (pedidos.length === 0) {
+      c.innerHTML = '<h1>Todos os Pedidos</h1><div class="sem-resultados">Nenhum pedido recebido ainda.</div>';
+      return;
+    }
+    const statusOpcoes = ['Pendente', 'Em preparo', 'Enviado', 'Entregue', 'Cancelado'];
+    c.innerHTML = `<h1>Todos os Pedidos</h1>${pedidos.map(p => `
+      <div class="pedido">
+        <div class="pedido-head">
+          <div>
+            <strong>Pedido #${p.id}</strong> — ${p.cliente_nome} (${p.cliente_email})
+            <div style="color:#888;font-size:13px">${new Date(p.criado_em).toLocaleString('pt-BR')}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="status status-${p.status.replace(' ', '-')}">${p.status}</span>
+            <select onchange="mudarStatus(${p.id}, this.value)" style="padding:6px;border-radius:4px;border:1px solid #ccc">
+              ${statusOpcoes.map(s => `<option ${s === p.status ? 'selected' : ''}>${s}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${p.itens.map(i => `<div style="font-size:14px;color:#555">${i.quantidade}x ${i.imagem || '📦'} ${i.nome} — ${money(i.preco_unitario)}</div>`).join('')}
+        <div style="text-align:right;margin-top:8px;font-weight:bold;color:#1a237e">Total: ${money(p.total)}</div>
+      </div>
+    `).join('')}`;
+  } catch (e) {
+    c.innerHTML = '<div class="sem-resultados">Acesso negado</div>';
+  }
+}
+
+async function mudarStatus(id, status) {
+  try {
+    await api('/api/pedidos/' + id + '/status', 'PUT', { status });
+    toast('Status atualizado');
+  } catch (e) { toast(e.message); }
+}
+
+init();

@@ -1,0 +1,1718 @@
+=== README.md ===
+# Loja Virtual de Departamentos
+
+Projeto completo de uma loja virtual com:
+
+- Cadastro e login de usuários
+- Cliente:
+  - Visualizar produtos
+  - Buscar produtos
+  - Adicionar ao carrinho
+  - Finalizar pedido
+  - Ver pedidos feitos
+- Dono da loja / administrador:
+  - Cadastrar produtos
+  - Editar produtos
+  - Remover produtos
+  - Ver todos os pedidos
+  - Alterar status dos pedidos
+- Dados salvos no servidor em banco SQLite
+- Funciona em computador e celular
+- Não depende de serviços externos
+
+## Requisitos
+
+Instale no computador ou servidor:
+
+- Node.js 18 ou superior
+- npm
+
+## Instalar
+
+```bash
+npm install
+```
+
+## Executar
+
+```bash
+npm start
+```
+
+Depois acesse no navegador:
+
+```text
+http://localhost:3000
+```
+
+## Conta inicial do dono da loja
+
+Ao iniciar o projeto pela primeira vez, uma conta de administrador é criada automaticamente:
+
+```text
+Email: admin@loja.com
+Senha: admin123
+```
+
+Entre com essa conta para cadastrar produtos e gerenciar pedidos.
+
+## Observações importantes
+
+- O banco de dados fica no arquivo `database.sqlite`.
+- Os dados não somem ao fechar o navegador.
+- Para colocar na internet de verdade, hospede este projeto em um servidor Node.js.
+- Não apague o arquivo `database.sqlite` se quiser manter os dados.
+
+=== package.json ===
+{
+  "name": "loja-virtual-departamentos",
+  "version": "1.0.0",
+  "description": "Loja virtual de departamentos com clientes, carrinho, pedidos e painel administrativo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.6.0",
+    "connect-sqlite3": "^0.9.15",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "method-override": "^3.0.0"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const SQLiteStoreFactory = require('connect-sqlite3');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const methodOverride = require('method-override');
+const db = require('./src/db');
+
+const app = express();
+const SQLiteStore = SQLiteStoreFactory(session);
+
+const PORT = process.env.PORT || 3000;
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'views'));
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(methodOverride('_method'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.sqlite',
+    dir: __dirname
+  }),
+  secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 30
+  }
+}));
+
+app.use((req, res, next) => {
+  res.locals.user = req.session.user || null;
+  res.locals.cartCount = 0;
+
+  if (req.session.user) {
+    const count = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) AS total
+      FROM cart_items
+      WHERE user_id = ?
+    `).get(req.session.user.id);
+    res.locals.cartCount = count.total || 0;
+  }
+
+  next();
+});
+
+function requireLogin(req, res, next) {
+  if (!req.session.user) {
+    return res.redirect('/login');
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.user || req.session.user.role !== 'admin') {
+    return res.status(403).render('error', {
+      message: 'Acesso negado.'
+    });
+  }
+  next();
+}
+
+function money(value) {
+  return Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+}
+
+app.locals.money = money;
+
+app.get('/', (req, res) => {
+  const search = (req.query.search || '').trim();
+  const category = (req.query.category || '').trim();
+
+  let sql = 'SELECT * FROM products WHERE active = 1';
+  const params = [];
+
+  if (search) {
+    sql += ' AND (name LIKE ? OR description LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (category) {
+    sql += ' AND category = ?';
+    params.push(category);
+  }
+
+  sql += ' ORDER BY created_at DESC';
+
+  const products = db.prepare(sql).all(...params);
+  const categories = db.prepare(`
+    SELECT DISTINCT category
+    FROM products
+    WHERE active = 1 AND category IS NOT NULL AND category != ''
+    ORDER BY category
+  `).all();
+
+  res.render('home', {
+    products,
+    categories,
+    search,
+    category
+  });
+});
+
+app.get('/register', (req, res) => {
+  res.render('register', {
+    error: null,
+    name: '',
+    email: ''
+  });
+});
+
+app.post('/register', (req, res) => {
+  const name = (req.body.name || '').trim();
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+
+  if (!name || !email || password.length < 6) {
+    return res.render('register', {
+      error: 'Informe nome, email e senha com pelo menos 6 caracteres.',
+      name,
+      email
+    });
+  }
+
+  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (exists) {
+    return res.render('register', {
+      error: 'Este email já está cadastrado.',
+      name,
+      email
+    });
+  }
+
+  const hash = bcrypt.hashSync(password, 10);
+  const result = db.prepare(`
+    INSERT INTO users (name, email, password_hash, role)
+    VALUES (?, ?, ?, 'customer')
+  `).run(name, email, hash);
+
+  req.session.user = {
+    id: result.lastInsertRowid,
+    name,
+    email,
+    role: 'customer'
+  };
+
+  res.redirect('/');
+});
+
+app.get('/login', (req, res) => {
+  res.render('login', {
+    error: null,
+    email: ''
+  });
+});
+
+app.post('/login', (req, res) => {
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = req.body.password || '';
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    return res.render('login', {
+      error: 'Email ou senha inválidos.',
+      email
+    });
+  }
+
+  req.session.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role
+  };
+
+  res.redirect('/');
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/');
+  });
+});
+
+app.post('/cart/add/:id', requireLogin, (req, res) => {
+  const productId = Number(req.params.id);
+  const quantity = Math.max(1, Number(req.body.quantity || 1));
+
+  const product = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(productId);
+  if (!product) {
+    return res.redirect('/');
+  }
+
+  const existing = db.prepare(`
+    SELECT * FROM cart_items
+    WHERE user_id = ? AND product_id = ?
+  `).get(req.session.user.id, productId);
+
+  if (existing) {
+    db.prepare(`
+      UPDATE cart_items
+      SET quantity = quantity + ?
+      WHERE id = ?
+    `).run(quantity, existing.id);
+  } else {
+    db.prepare(`
+      INSERT INTO cart_items (user_id, product_id, quantity)
+      VALUES (?, ?, ?)
+    `).run(req.session.user.id, productId, quantity);
+  }
+
+  res.redirect('/cart');
+});
+
+app.get('/cart', requireLogin, (req, res) => {
+  const items = db.prepare(`
+    SELECT cart_items.*, products.name, products.price, products.image_url, products.stock
+    FROM cart_items
+    JOIN products ON products.id = cart_items.product_id
+    WHERE cart_items.user_id = ?
+    ORDER BY cart_items.id DESC
+  `).all(req.session.user.id);
+
+  let total = 0;
+  items.forEach(item => {
+    item.subtotal = item.quantity * item.price;
+    total += item.subtotal;
+  });
+
+  res.render('cart', { items, total, error: null });
+});
+
+app.post('/cart/update/:id', requireLogin, (req, res) => {
+  const itemId = Number(req.params.id);
+  const quantity = Math.max(1, Number(req.body.quantity || 1));
+
+  db.prepare(`
+    UPDATE cart_items
+    SET quantity = ?
+    WHERE id = ? AND user_id = ?
+  `).run(quantity, itemId, req.session.user.id);
+
+  res.redirect('/cart');
+});
+
+app.post('/cart/remove/:id', requireLogin, (req, res) => {
+  db.prepare(`
+    DELETE FROM cart_items
+    WHERE id = ? AND user_id = ?
+  `).run(Number(req.params.id), req.session.user.id);
+
+  res.redirect('/cart');
+});
+
+app.post('/checkout', requireLogin, (req, res) => {
+  const items = db.prepare(`
+    SELECT cart_items.*, products.name, products.price, products.stock, products.active
+    FROM cart_items
+    JOIN products ON products.id = cart_items.product_id
+    WHERE cart_items.user_id = ?
+  `).all(req.session.user.id);
+
+  if (items.length === 0) {
+    return res.redirect('/cart');
+  }
+
+  for (const item of items) {
+    if (!item.active || item.quantity > item.stock) {
+      let total = 0;
+      items.forEach(i => {
+        i.subtotal = i.quantity * i.price;
+        total += i.subtotal;
+      });
+
+      return res.render('cart', {
+        items,
+        total,
+        error: `Produto "${item.name}" indisponível ou com estoque insuficiente.`
+      });
+    }
+  }
+
+  const transaction = db.transaction(() => {
+    let total = 0;
+    items.forEach(item => {
+      total += item.quantity * item.price;
+    });
+
+    const order = db.prepare(`
+      INSERT INTO orders (user_id, total, status)
+      VALUES (?, ?, 'Recebido')
+    `).run(req.session.user.id, total);
+
+    for (const item of items) {
+      db.prepare(`
+        INSERT INTO order_items (order_id, product_id, product_name, price, quantity)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(order.lastInsertRowid, item.product_id, item.name, item.price, item.quantity);
+
+      db.prepare(`
+        UPDATE products
+        SET stock = stock - ?
+        WHERE id = ?
+      `).run(item.quantity, item.product_id);
+    }
+
+    db.prepare('DELETE FROM cart_items WHERE user_id = ?').run(req.session.user.id);
+
+    return order.lastInsertRowid;
+  });
+
+  const orderId = transaction();
+  res.redirect(`/orders/${orderId}`);
+});
+
+app.get('/orders', requireLogin, (req, res) => {
+  const orders = db.prepare(`
+    SELECT *
+    FROM orders
+    WHERE user_id = ?
+    ORDER BY created_at DESC
+  `).all(req.session.user.id);
+
+  res.render('orders', { orders });
+});
+
+app.get('/orders/:id', requireLogin, (req, res) => {
+  const order = db.prepare(`
+    SELECT orders.*, users.name AS customer_name, users.email AS customer_email
+    FROM orders
+    JOIN users ON users.id = orders.user_id
+    WHERE orders.id = ?
+  `).get(Number(req.params.id));
+
+  if (!order) {
+    return res.status(404).render('error', { message: 'Pedido não encontrado.' });
+  }
+
+  if (req.session.user.role !== 'admin' && order.user_id !== req.session.user.id) {
+    return res.status(403).render('error', { message: 'Acesso negado.' });
+  }
+
+  const items = db.prepare(`
+    SELECT *
+    FROM order_items
+    WHERE order_id = ?
+  `).all(order.id);
+
+  res.render('order-detail', { order, items });
+});
+
+app.get('/admin', requireAdmin, (req, res) => {
+  res.redirect('/admin/products');
+});
+
+app.get('/admin/products', requireAdmin, (req, res) => {
+  const products = db.prepare(`
+    SELECT *
+    FROM products
+    ORDER BY created_at DESC
+  `).all();
+
+  res.render('admin-products', { products });
+});
+
+app.get('/admin/products/new', requireAdmin, (req, res) => {
+  res.render('admin-product-form', {
+    product: null,
+    error: null,
+    action: '/admin/products'
+  });
+});
+
+app.post('/admin/products', requireAdmin, (req, res) => {
+  const product = {
+    name: (req.body.name || '').trim(),
+    description: (req.body.description || '').trim(),
+    category: (req.body.category || '').trim(),
+    price: Number(req.body.price || 0),
+    stock: Number(req.body.stock || 0),
+    image_url: (req.body.image_url || '').trim()
+  };
+
+  if (!product.name || product.price < 0 || product.stock < 0) {
+    return res.render('admin-product-form', {
+      product,
+      error: 'Informe nome, preço e estoque válidos.',
+      action: '/admin/products'
+    });
+  }
+
+  db.prepare(`
+    INSERT INTO products (name, description, category, price, stock, image_url, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+  `).run(product.name, product.description, product.category, product.price, product.stock, product.image_url);
+
+  res.redirect('/admin/products');
+});
+
+app.get('/admin/products/:id/edit', requireAdmin, (req, res) => {
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(req.params.id));
+
+  if (!product) {
+    return res.status(404).render('error', { message: 'Produto não encontrado.' });
+  }
+
+  res.render('admin-product-form', {
+    product,
+    error: null,
+    action: `/admin/products/${product.id}`
+  });
+});
+
+app.post('/admin/products/:id', requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+
+  const product = {
+    id,
+    name: (req.body.name || '').trim(),
+    description: (req.body.description || '').trim(),
+    category: (req.body.category || '').trim(),
+    price: Number(req.body.price || 0),
+    stock: Number(req.body.stock || 0),
+    image_url: (req.body.image_url || '').trim(),
+    active: req.body.active ? 1 : 0
+  };
+
+  if (!product.name || product.price < 0 || product.stock < 0) {
+    return res.render('admin-product-form', {
+      product,
+      error: 'Informe nome, preço e estoque válidos.',
+      action: `/admin/products/${id}`
+    });
+  }
+
+  db.prepare(`
+    UPDATE products
+    SET name = ?, description = ?, category = ?, price = ?, stock = ?, image_url = ?, active = ?
+    WHERE id = ?
+  `).run(
+    product.name,
+    product.description,
+    product.category,
+    product.price,
+    product.stock,
+    product.image_url,
+    product.active,
+    id
+  );
+
+  res.redirect('/admin/products');
+});
+
+app.post('/admin/products/:id/delete', requireAdmin, (req, res) => {
+  db.prepare(`
+    UPDATE products
+    SET active = 0
+    WHERE id = ?
+  `).run(Number(req.params.id));
+
+  res.redirect('/admin/products');
+});
+
+app.get('/admin/orders', requireAdmin, (req, res) => {
+  const orders = db.prepare(`
+    SELECT orders.*, users.name AS customer_name, users.email AS customer_email
+    FROM orders
+    JOIN users ON users.id = orders.user_id
+    ORDER BY orders.created_at DESC
+  `).all();
+
+  res.render('admin-orders', { orders });
+});
+
+app.post('/admin/orders/:id/status', requireAdmin, (req, res) => {
+  const status = req.body.status || 'Recebido';
+
+  const allowed = [
+    'Recebido',
+    'Em separação',
+    'Enviado',
+    'Entregue',
+    'Cancelado'
+  ];
+
+  if (allowed.includes(status)) {
+    db.prepare(`
+      UPDATE orders
+      SET status = ?
+      WHERE id = ?
+    `).run(status, Number(req.params.id));
+  }
+
+  res.redirect('/admin/orders');
+});
+
+app.use((req, res) => {
+  res.status(404).render('error', {
+    message: 'Página não encontrada.'
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`Loja rodando em http://localhost:${PORT}`);
+});
+
+=== src/db.js ===
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+
+const db = new Database('database.sqlite');
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'customer',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    category TEXT,
+    price REAL NOT NULL DEFAULT 0,
+    stock INTEGER NOT NULL DEFAULT 0,
+    image_url TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS cart_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, product_id),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(product_id) REFERENCES products(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    total REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'Recebido',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS order_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    product_id INTEGER,
+    product_name TEXT NOT NULL,
+    price REAL NOT NULL,
+    quantity INTEGER NOT NULL,
+    FOREIGN KEY(order_id) REFERENCES orders(id)
+  );
+`);
+
+const admin = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@loja.com');
+
+if (!admin) {
+  const hash = bcrypt.hashSync('admin123', 10);
+  db.prepare(`
+    INSERT INTO users (name, email, password_hash, role)
+    VALUES (?, ?, ?, ?)
+  `).run('Dono da Loja', 'admin@loja.com', hash, 'admin');
+}
+
+const productCount = db.prepare('SELECT COUNT(*) AS total FROM products').get().total;
+
+if (productCount === 0) {
+  const insert = db.prepare(`
+    INSERT INTO products (name, description, category, price, stock, image_url, active)
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+  `);
+
+  insert.run(
+    'Smartphone Max 128GB',
+    'Celular moderno com boa câmera, tela grande e ótimo desempenho.',
+    'Eletrônicos',
+    1499.90,
+    20,
+    'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=800'
+  );
+
+  insert.run(
+    'Notebook Home Office',
+    'Notebook ideal para estudos, trabalho e navegação na internet.',
+    'Informática',
+    2899.00,
+    10,
+    'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=800'
+  );
+
+  insert.run(
+    'Cafeteira Elétrica',
+    'Cafeteira prática para preparar café fresco todos os dias.',
+    'Casa',
+    189.90,
+    30,
+    'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800'
+  );
+
+  insert.run(
+    'Tênis Esportivo',
+    'Tênis confortável para caminhada, academia e uso diário.',
+    'Moda',
+    249.90,
+    25,
+    'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800'
+  );
+
+  insert.run(
+    'Livro de Receitas',
+    'Livro com receitas simples para almoço, jantar e sobremesas.',
+    'Livros',
+    59.90,
+    40,
+    'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=800'
+  );
+
+  insert.run(
+    'Fone Bluetooth',
+    'Fone sem fio com boa bateria e som de qualidade.',
+    'Eletrônicos',
+    129.90,
+    35,
+    'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800'
+  );
+}
+
+module.exports = db;
+
+=== views/partials/header.ejs ===
+<header class="topbar">
+  <a class="brand" href="/">Shopping Online</a>
+
+  <nav class="nav">
+    <a href="/">Produtos</a>
+
+    <% if (user) { %>
+      <a href="/cart">Carrinho (<%= cartCount %>)</a>
+      <a href="/orders">Meus pedidos</a>
+
+      <% if (user.role === 'admin') { %>
+        <a href="/admin/products">Admin produtos</a>
+        <a href="/admin/orders">Admin pedidos</a>
+      <% } %>
+
+      <span class="hello">Olá, <%= user.name %></span>
+
+      <form action="/logout" method="post" class="inline">
+        <button type="submit" class="link-button">Sair</button>
+      </form>
+    <% } else { %>
+      <a href="/login">Entrar</a>
+      <a href="/register">Criar conta</a>
+    <% } %>
+  </nav>
+</header>
+
+=== views/partials/footer.ejs ===
+<footer class="footer">
+  <p>Shopping Online - Loja virtual de departamentos</p>
+</footer>
+
+=== views/home.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping Online</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <h1>Loja virtual de departamentos</h1>
+        <p>Produtos para casa, eletrônicos, moda, informática, livros e muito mais.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <form class="filters" action="/" method="get">
+        <input type="text" name="search" placeholder="Buscar produtos..." value="<%= search %>">
+
+        <select name="category">
+          <option value="">Todas as categorias</option>
+          <% categories.forEach(cat => { %>
+            <option value="<%= cat.category %>" <%= category === cat.category ? 'selected' : '' %>>
+              <%= cat.category %>
+            </option>
+          <% }) %>
+        </select>
+
+        <button type="submit">Buscar</button>
+      </form>
+    </section>
+
+    <section class="grid">
+      <% if (products.length === 0) { %>
+        <div class="card">
+          <p>Nenhum produto encontrado.</p>
+        </div>
+      <% } %>
+
+      <% products.forEach(product => { %>
+        <article class="product">
+          <img src="<%= product.image_url || '/img/no-image.svg' %>" alt="<%= product.name %>">
+          <div class="product-body">
+            <span class="tag"><%= product.category || 'Geral' %></span>
+            <h2><%= product.name %></h2>
+            <p><%= product.description %></p>
+            <strong class="price"><%= money(product.price) %></strong>
+            <small>Estoque: <%= product.stock %></small>
+
+            <% if (product.stock > 0) { %>
+              <form action="/cart/add/<%= product.id %>" method="post" class="buy-form">
+                <input type="number" name="quantity" min="1" max="<%= product.stock %>" value="1">
+                <button type="submit">Adicionar ao carrinho</button>
+              </form>
+            <% } else { %>
+              <button disabled>Esgotado</button>
+            <% } %>
+          </div>
+        </article>
+      <% }) %>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/register.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Criar conta</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1>Criar conta</h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <form action="/register" method="post" class="form">
+        <label>
+          Nome
+          <input type="text" name="name" value="<%= name %>" required>
+        </label>
+
+        <label>
+          Email
+          <input type="email" name="email" value="<%= email %>" required>
+        </label>
+
+        <label>
+          Senha
+          <input type="password" name="password" minlength="6" required>
+        </label>
+
+        <button type="submit">Criar conta</button>
+      </form>
+
+      <p>Já tem conta? <a href="/login">Entrar</a></p>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/login.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entrar</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1>Entrar</h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <form action="/login" method="post" class="form">
+        <label>
+          Email
+          <input type="email" name="email" value="<%= email %>" required>
+        </label>
+
+        <label>
+          Senha
+          <input type="password" name="password" required>
+        </label>
+
+        <button type="submit">Entrar</button>
+      </form>
+
+      <p>Não tem conta? <a href="/register">Criar conta</a></p>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/cart.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carrinho</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <h1>Carrinho</h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <% if (items.length === 0) { %>
+        <p>Seu carrinho está vazio.</p>
+        <a class="button" href="/">Ver produtos</a>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th>Preço</th>
+                <th>Quantidade</th>
+                <th>Subtotal</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% items.forEach(item => { %>
+                <tr>
+                  <td>
+                    <div class="cart-product">
+                      <img src="<%= item.image_url || '/img/no-image.svg' %>" alt="<%= item.name %>">
+                      <span><%= item.name %></span>
+                    </div>
+                  </td>
+                  <td><%= money(item.price) %></td>
+                  <td>
+                    <form action="/cart/update/<%= item.id %>" method="post" class="qty-form">
+                      <input type="number" name="quantity" min="1" max="<%= item.stock %>" value="<%= item.quantity %>">
+                      <button type="submit">Atualizar</button>
+                    </form>
+                  </td>
+                  <td><%= money(item.subtotal) %></td>
+                  <td>
+                    <form action="/cart/remove/<%= item.id %>" method="post">
+                      <button type="submit" class="danger">Remover</button>
+                    </form>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="checkout">
+          <h2>Total: <%= money(total) %></h2>
+          <form action="/checkout" method="post">
+            <button type="submit">Finalizar pedido</button>
+          </form>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/orders.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meus pedidos</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <h1>Meus pedidos</h1>
+
+      <% if (orders.length === 0) { %>
+        <p>Você ainda não fez pedidos.</p>
+        <a class="button" href="/">Comprar agora</a>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Data</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% orders.forEach(order => { %>
+                <tr>
+                  <td>#<%= order.id %></td>
+                  <td><%= order.created_at %></td>
+                  <td><span class="status"><%= order.status %></span></td>
+                  <td><%= money(order.total) %></td>
+                  <td><a href="/orders/<%= order.id %>">Ver detalhes</a></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/order-detail.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pedido #<%= order.id %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <h1>Pedido #<%= order.id %></h1>
+
+      <p><strong>Cliente:</strong> <%= order.customer_name %> - <%= order.customer_email %></p>
+      <p><strong>Data:</strong> <%= order.created_at %></p>
+      <p><strong>Status:</strong> <span class="status"><%= order.status %></span></p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Preço</th>
+              <th>Quantidade</th>
+              <th>Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% items.forEach(item => { %>
+              <tr>
+                <td><%= item.product_name %></td>
+                <td><%= money(item.price) %></td>
+                <td><%= item.quantity %></td>
+                <td><%= money(item.price * item.quantity) %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Total: <%= money(order.total) %></h2>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/admin-products.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Produtos</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <div class="row-between">
+        <h1>Produtos</h1>
+        <a class="button" href="/admin/products/new">Novo produto</a>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Categoria</th>
+              <th>Preço</th>
+              <th>Estoque</th>
+              <th>Ativo</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% products.forEach(product => { %>
+              <tr>
+                <td><%= product.name %></td>
+                <td><%= product.category %></td>
+                <td><%= money(product.price) %></td>
+                <td><%= product.stock %></td>
+                <td><%= product.active ? 'Sim' : 'Não' %></td>
+                <td class="actions">
+                  <a href="/admin/products/<%= product.id %>/edit">Editar</a>
+
+                  <form action="/admin/products/<%= product.id %>/delete" method="post" onsubmit="return confirm('Remover produto da loja?')">
+                    <button type="submit" class="danger">Remover</button>
+                  </form>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/admin-product-form.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= product ? 'Editar produto' : 'Novo produto' %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1><%= product ? 'Editar produto' : 'Novo produto' %></h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <form action="<%= action %>" method="post" class="form">
+        <label>
+          Nome
+          <input type="text" name="name" value="<%= product ? product.name : '' %>" required>
+        </label>
+
+        <label>
+          Descrição
+          <textarea name="description" rows="4"><%= product ? product.description : '' %></textarea>
+        </label>
+
+        <label>
+          Categoria
+          <input type="text" name="category" value="<%= product ? product.category : '' %>" placeholder="Ex: Eletrônicos">
+        </label>
+
+        <label>
+          Preço
+          <input type="number" name="price" min="0" step="0.01" value="<%= product ? product.price : 0 %>" required>
+        </label>
+
+        <label>
+          Estoque
+          <input type="number" name="stock" min="0" step="1" value="<%= product ? product.stock : 0 %>" required>
+        </label>
+
+        <label>
+          URL da imagem
+          <input type="url" name="image_url" value="<%= product ? product.image_url : '' %>" placeholder="https://...">
+        </label>
+
+        <% if (product) { %>
+          <label class="check">
+            <input type="checkbox" name="active" value="1" <%= product.active ? 'checked' : '' %>>
+            Produto ativo na loja
+          </label>
+        <% } %>
+
+        <button type="submit">Salvar</button>
+      </form>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/admin-orders.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Pedidos</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container">
+    <section class="card">
+      <h1>Todos os pedidos</h1>
+
+      <% if (orders.length === 0) { %>
+        <p>Nenhum pedido feito ainda.</p>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Cliente</th>
+                <th>Data</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% orders.forEach(order => { %>
+                <tr>
+                  <td>#<%= order.id %></td>
+                  <td>
+                    <%= order.customer_name %><br>
+                    <small><%= order.customer_email %></small>
+                  </td>
+                  <td><%= order.created_at %></td>
+                  <td>
+                    <form action="/admin/orders/<%= order.id %>/status" method="post" class="status-form">
+                      <select name="status">
+                        <% ['Recebido', 'Em separação', 'Enviado', 'Entregue', 'Cancelado'].forEach(status => { %>
+                          <option value="<%= status %>" <%= order.status === status ? 'selected' : '' %>>
+                            <%= status %>
+                          </option>
+                        <% }) %>
+                      </select>
+                      <button type="submit">Salvar</button>
+                    </form>
+                  </td>
+                  <td><%= money(order.total) %></td>
+                  <td><a href="/orders/<%= order.id %>">Detalhes</a></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== views/error.ejs ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1>Ops!</h1>
+      <p><%= message %></p>
+      <a class="button" href="/">Voltar para a loja</a>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>
+
+=== public/css/style.css ===
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f4f6f8;
+  color: #1f2937;
+}
+
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.topbar {
+  background: #111827;
+  color: white;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  color: white;
+  font-weight: bold;
+  font-size: 22px;
+}
+
+.brand:hover {
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.nav a,
+.nav .hello {
+  color: white;
+  font-size: 14px;
+}
+
+.inline {
+  display: inline;
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+}
+
+.container {
+  width: min(1180px, calc(100% - 32px));
+  margin: 24px auto;
+}
+
+.container.small {
+  width: min(480px, calc(100% - 32px));
+}
+
+.hero {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+  border-radius: 18px;
+  padding: 36px;
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 5vw, 46px);
+}
+
+.hero p {
+  margin: 0;
+  font-size: 18px;
+}
+
+.card {
+  background: white;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  margin-bottom: 20px;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 220px auto;
+  gap: 12px;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 11px 12px;
+  background: white;
+}
+
+button,
+.button {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 14px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+button:hover,
+.button:hover {
+  background: #1d4ed8;
+  text-decoration: none;
+}
+
+button:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+button.danger {
+  background: #dc2626;
+}
+
+button.danger:hover {
+  background: #b91c1c;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.product {
+  background: white;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.product img {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+.product-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  flex: 1;
+}
+
+.product h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.product p {
+  margin: 0;
+  color: #4b5563;
+  flex: 1;
+}
+
+.tag {
+  background: #e0ecff;
+  color: #1d4ed8;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  width: fit-content;
+  font-weight: bold;
+}
+
+.price {
+  font-size: 22px;
+  color: #111827;
+}
+
+.buy-form {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  font-weight: bold;
+}
+
+.form .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+}
+
+.form .check input {
+  width: auto;
+}
+
+.alert {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+th {
+  color: #374151;
+  background: #f8fafc;
+}
+
+.cart-product {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cart-product img {
+  width: 58px;
+  height: 58px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.qty-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.qty-form input {
+  width: 90px;
+}
+
+.checkout {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.status {
+  background: #dcfce7;
+  color: #166534;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-weight: bold;
+  font-size: 13px;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.status-form {
+  display: flex;
+  gap: 8px;
+}
+
+.footer {
+  text-align: center;
+  color: #6b7280;
+  padding: 30px 16px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    align-items: flex-start;
+  }
+
+  .nav {
+    width: 100%;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 26px;
+  }
+
+  .buy-form {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout {
+    justify-content: flex-start;
+  }
+
+  .status-form,
+  .qty-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+=== public/img/no-image.svg ===
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect width="800" height="600" fill="#e5e7eb"/>
+  <circle cx="400" cy="260" r="72" fill="#cbd5e1"/>
+  <rect x="180" y="360" width="440" height="44" rx="22" fill="#cbd5e1"/>
+  <text x="400" y="470" text-anchor="middle" font-family="Arial, sans-serif" font-size="32" fill="#64748b">Sem imagem</text>
+</svg>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= item ? 'Editar item' : 'Cadastrar item' %> - Biblioteca Digital</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <%- include('../partials/header') %>
+
+  <main class="container">
+    <%- include('../partials/flash') %>
+
+    <section class="card form">
+      <h1><%= item ? 'Editar item' : 'Cadastrar item' %></h1>
+
+      <form action="<%= item ? '/admin/items/' + item.id + '?_method=PUT' : '/admin/items' %>" method="post">
+        <label for="title">Título</label>
+        <input id="title" name="title" required value="<%= item ? item.title : '' %>">
+
+        <label for="author">Autor</label>
+        <input id="author" name="author" value="<%= item ? (item.author || '') : '' %>">
+
+        <label for="type">Tipo</label>
+        <select id="type" name="type">
+          <% const currentType = item ? item.type : 'Livro'; %>
+          <% ['Livro', 'E-book', 'Revista', 'Artigo', 'Vídeo', 'Áudio', 'Outro'].forEach(t => { %>
+            <option value="<%= t %>" <%= currentType === t ? 'selected' : '' %>><%= t %></option>
+          <% }) %>
+        </select>
+
+        <label for="quantity">Quantidade de exemplares</label>
+        <input id="quantity" name="quantity" type="number" min="1" required value="<%= item ? item.quantity : 1 %>">
+
+        <label for="description">Descrição</label>
+        <textarea id="description" name="description"><%= item ? (item.description || '') : '' %></textarea>
+
+        <div class="actions">
+          <button type="submit"><%= item ? 'Salvar alterações' : 'Cadastrar' %></button>
+          <a class="button secondary" href="/admin">Cancelar</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<%- include('../partials/header') %>
+
+<div class="page-title">
+  <div>
+    <h1>Gerenciar cursos</h1>
+    <p>Cadastre, edite ou remova cursos da plataforma.</p>
+  </div>
+  <a class="button" href="/admin/courses/new">Novo curso</a>
+</div>
+
+<% if (courses.length === 0) { %>
+  <div class="empty">Nenhum curso cadastrado.</div>
+<% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Curso</th>
+          <th>Professor</th>
+          <th>Carga</th>
+          <th>Status</th>
+          <th>Matrículas</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% courses.forEach(course => { %>
+          <tr>
+            <td>
+              <strong><%= course.title %></strong><br>
+              <span class="muted"><%= course.description %></span>
+            </td>
+            <td><%= course.teacher %></td>
+            <td><%= course.workload %></td>
+            <td>
+              <% if (course.active) { %>
+                <span class="badge success">Publicado</span>
+              <% } else { %>
+                <span class="badge warning">Oculto</span>
+              <% } %>
+            </td>
+            <td>
+              <%= course.active_enrollment_count || 0 %> ativas<br>
+              <span class="muted"><%= course.enrollment_count || 0 %> total</span>
+            </td>
+            <td class="actions-cell">
+              <a class="button small secondary" href="/admin/courses/<%= course.id %>/edit">Editar</a>
+              <form action="/admin/courses/<%= course.id %>/delete" method="post" data-confirm="Remover este curso? As matrículas dele também serão removidas.">
+                <button class="button small danger" type="submit">Remover</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('../partials/footer') %>

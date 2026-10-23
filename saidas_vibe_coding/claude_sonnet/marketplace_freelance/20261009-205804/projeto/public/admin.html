@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Admin - Marketplace</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <h1 class="nav-logo">🎯 Admin - Marketplace</h1>
+      <div class="nav-user">
+        <span id="userName"></span>
+        <button onclick="goToDashboard()" class="btn btn-secondary">Dashboard</button>
+        <button onclick="logout()" class="btn btn-secondary">Sair</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div class="tabs">
+      <button class="tab-button active" onclick="showTab('pendingServices')">Serviços Pendentes</button>
+      <button class="tab-button" onclick="showTab('allServices')">Todos os Serviços</button>
+      <button class="tab-button" onclick="showTab('users')">Usuários</button>
+      <button class="tab-button" onclick="showTab('allContracts')">Todos os Contratos</button>
+    </div>
+
+    <div id="pendingServicesTab" class="tab-content active">
+      <h2>Serviços Aguardando Aprovação</h2>
+      <div id="pendingServicesList" class="services-grid"></div>
+    </div>
+
+    <div id="allServicesTab" class="tab-content">
+      <h2>Todos os Serviços</h2>
+      <div class="filter-bar">
+        <select id="statusFilter" onchange="loadAllServices()">
+          <option value="">Todos os status</option>
+          <option value="pending">Pendente</option>
+          <option value="approved">Aprovado</option>
+        </select>
+      </div>
+      <div id="allServicesList" class="services-grid"></div>
+    </div>
+
+    <div id="usersTab" class="tab-content">
+      <h2>Gerenciar Usuários</h2>
+      <div id="usersList" class="users-list"></div>
+    </div>
+
+    <div id="allContractsTab" class="tab-content">
+      <h2>Todos os Contratos do Sistema</h2>
+      <div id="allContractsList" class="contracts-list"></div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <span class="modal-close" onclick="closeModal()">&times;</span>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+</body>
+</html>

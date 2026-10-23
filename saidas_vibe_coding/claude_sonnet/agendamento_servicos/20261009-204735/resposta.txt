@@ -1,0 +1,1981 @@
+# Sistema de Agendamento de Serviços
+
+Vou criar um sistema completo de agendamento de serviços com autenticação, banco de dados integrado e interface responsiva.
+
+=== package.json ===
+{
+  "name": "sistema-agendamento",
+  "version": "1.0.0",
+  "description": "Sistema de agendamento de serviços",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.2.2",
+    "bcryptjs": "^2.4.3",
+    "express-session": "^1.17.3"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('better-sqlite3');
+const path = require('path');
+
+const app = express();
+const db = new Database('agendamento.db');
+
+// Configuração do banco de dados
+db.exec(`
+  CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    tipo TEXT NOT NULL CHECK(tipo IN ('cliente', 'admin')),
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS servicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    duracao INTEGER NOT NULL,
+    preco REAL NOT NULL,
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS horarios_disponiveis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dia_semana INTEGER NOT NULL CHECK(dia_semana >= 0 AND dia_semana <= 6),
+    hora_inicio TEXT NOT NULL,
+    hora_fim TEXT NOT NULL,
+    ativo INTEGER DEFAULT 1,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS agendamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cliente_id INTEGER NOT NULL,
+    servico_id INTEGER NOT NULL,
+    data DATE NOT NULL,
+    hora TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pendente' CHECK(status IN ('pendente', 'confirmado', 'recusado', 'cancelado')),
+    observacoes TEXT,
+    criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cliente_id) REFERENCES usuarios(id),
+    FOREIGN KEY (servico_id) REFERENCES servicos(id)
+  );
+`);
+
+// Criar usuário admin padrão se não existir
+const adminExiste = db.prepare('SELECT id FROM usuarios WHERE tipo = ?').get('admin');
+if (!adminExiste) {
+  const senhaHash = bcrypt.hashSync('admin123', 10);
+  db.prepare('INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)').run(
+    'Administrador',
+    'admin@sistema.com',
+    senhaHash,
+    'admin'
+  );
+  console.log('Usuário admin criado: admin@sistema.com / admin123');
+}
+
+// Middlewares
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+app.use(session({
+  secret: 'segredo-super-secreto-' + Math.random(),
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 24 * 60 * 60 * 1000 }
+}));
+
+// Middleware de autenticação
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ erro: 'Não autenticado' });
+  }
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (!req.session.userId || req.session.userTipo !== 'admin') {
+    return res.status(403).json({ erro: 'Acesso negado' });
+  }
+  next();
+}
+
+// Rotas de autenticação
+app.post('/api/registrar', (req, res) => {
+  try {
+    const { nome, email, senha } = req.body;
+    
+    if (!nome || !email || !senha) {
+      return res.status(400).json({ erro: 'Todos os campos são obrigatórios' });
+    }
+
+    const usuarioExiste = db.prepare('SELECT id FROM usuarios WHERE email = ?').get(email);
+    if (usuarioExiste) {
+      return res.status(400).json({ erro: 'Email já cadastrado' });
+    }
+
+    const senhaHash = bcrypt.hashSync(senha, 10);
+    const resultado = db.prepare('INSERT INTO usuarios (nome, email, senha, tipo) VALUES (?, ?, ?, ?)').run(
+      nome,
+      email,
+      senhaHash,
+      'cliente'
+    );
+
+    req.session.userId = resultado.lastInsertRowid;
+    req.session.userNome = nome;
+    req.session.userTipo = 'cliente';
+
+    res.json({ sucesso: true, usuario: { id: resultado.lastInsertRowid, nome, tipo: 'cliente' } });
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao registrar usuário' });
+  }
+});
+
+app.post('/api/login', (req, res) => {
+  try {
+    const { email, senha } = req.body;
+    
+    const usuario = db.prepare('SELECT * FROM usuarios WHERE email = ?').get(email);
+    
+    if (!usuario || !bcrypt.compareSync(senha, usuario.senha)) {
+      return res.status(401).json({ erro: 'Email ou senha inválidos' });
+    }
+
+    req.session.userId = usuario.id;
+    req.session.userNome = usuario.nome;
+    req.session.userTipo = usuario.tipo;
+
+    res.json({ 
+      sucesso: true, 
+      usuario: { 
+        id: usuario.id, 
+        nome: usuario.nome, 
+        tipo: usuario.tipo 
+      } 
+    });
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao fazer login' });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ sucesso: true });
+});
+
+app.get('/api/usuario-atual', (req, res) => {
+  if (!req.session.userId) {
+    return res.json({ autenticado: false });
+  }
+
+  res.json({
+    autenticado: true,
+    usuario: {
+      id: req.session.userId,
+      nome: req.session.userNome,
+      tipo: req.session.userTipo
+    }
+  });
+});
+
+// Rotas de serviços
+app.get('/api/servicos', (req, res) => {
+  try {
+    const servicos = db.prepare('SELECT * FROM servicos WHERE ativo = 1 ORDER BY nome').all();
+    res.json(servicos);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao buscar serviços' });
+  }
+});
+
+app.post('/api/servicos', requireAdmin, (req, res) => {
+  try {
+    const { nome, descricao, duracao, preco } = req.body;
+    
+    if (!nome || !duracao || !preco) {
+      return res.status(400).json({ erro: 'Nome, duração e preço são obrigatórios' });
+    }
+
+    const resultado = db.prepare('INSERT INTO servicos (nome, descricao, duracao, preco) VALUES (?, ?, ?, ?)').run(
+      nome,
+      descricao || '',
+      parseInt(duracao),
+      parseFloat(preco)
+    );
+
+    const servico = db.prepare('SELECT * FROM servicos WHERE id = ?').get(resultado.lastInsertRowid);
+    res.json(servico);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao criar serviço' });
+  }
+});
+
+app.put('/api/servicos/:id', requireAdmin, (req, res) => {
+  try {
+    const { nome, descricao, duracao, preco, ativo } = req.body;
+    
+    db.prepare('UPDATE servicos SET nome = ?, descricao = ?, duracao = ?, preco = ?, ativo = ? WHERE id = ?').run(
+      nome,
+      descricao || '',
+      parseInt(duracao),
+      parseFloat(preco),
+      ativo ? 1 : 0,
+      req.params.id
+    );
+
+    const servico = db.prepare('SELECT * FROM servicos WHERE id = ?').get(req.params.id);
+    res.json(servico);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao atualizar serviço' });
+  }
+});
+
+app.delete('/api/servicos/:id', requireAdmin, (req, res) => {
+  try {
+    db.prepare('UPDATE servicos SET ativo = 0 WHERE id = ?').run(req.params.id);
+    res.json({ sucesso: true });
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao deletar serviço' });
+  }
+});
+
+// Rotas de horários disponíveis
+app.get('/api/horarios-disponiveis', (req, res) => {
+  try {
+    const horarios = db.prepare('SELECT * FROM horarios_disponiveis WHERE ativo = 1 ORDER BY dia_semana, hora_inicio').all();
+    res.json(horarios);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao buscar horários' });
+  }
+});
+
+app.post('/api/horarios-disponiveis', requireAdmin, (req, res) => {
+  try {
+    const { dia_semana, hora_inicio, hora_fim } = req.body;
+    
+    if (dia_semana === undefined || !hora_inicio || !hora_fim) {
+      return res.status(400).json({ erro: 'Todos os campos são obrigatórios' });
+    }
+
+    const resultado = db.prepare('INSERT INTO horarios_disponiveis (dia_semana, hora_inicio, hora_fim) VALUES (?, ?, ?)').run(
+      parseInt(dia_semana),
+      hora_inicio,
+      hora_fim
+    );
+
+    const horario = db.prepare('SELECT * FROM horarios_disponiveis WHERE id = ?').get(resultado.lastInsertRowid);
+    res.json(horario);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao criar horário' });
+  }
+});
+
+app.delete('/api/horarios-disponiveis/:id', requireAdmin, (req, res) => {
+  try {
+    db.prepare('UPDATE horarios_disponiveis SET ativo = 0 WHERE id = ?').run(req.params.id);
+    res.json({ sucesso: true });
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao deletar horário' });
+  }
+});
+
+// Rotas de agendamentos
+app.get('/api/agendamentos', requireAuth, (req, res) => {
+  try {
+    let agendamentos;
+    
+    if (req.session.userTipo === 'admin') {
+      agendamentos = db.prepare(`
+        SELECT a.*, s.nome as servico_nome, u.nome as cliente_nome, u.email as cliente_email
+        FROM agendamentos a
+        JOIN servicos s ON a.servico_id = s.id
+        JOIN usuarios u ON a.cliente_id = u.id
+        ORDER BY a.data DESC, a.hora DESC
+      `).all();
+    } else {
+      agendamentos = db.prepare(`
+        SELECT a.*, s.nome as servico_nome, s.preco as servico_preco
+        FROM agendamentos a
+        JOIN servicos s ON a.servico_id = s.id
+        WHERE a.cliente_id = ?
+        ORDER BY a.data DESC, a.hora DESC
+      `).all(req.session.userId);
+    }
+
+    res.json(agendamentos);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao buscar agendamentos' });
+  }
+});
+
+app.get('/api/horarios-livres/:data/:servico_id', requireAuth, (req, res) => {
+  try {
+    const { data, servico_id } = req.params;
+    const dataObj = new Date(data + 'T00:00:00');
+    const diaSemana = dataObj.getDay();
+
+    // Buscar horários disponíveis para o dia da semana
+    const horariosDisponiveis = db.prepare(
+      'SELECT * FROM horarios_disponiveis WHERE dia_semana = ? AND ativo = 1'
+    ).all(diaSemana);
+
+    if (horariosDisponiveis.length === 0) {
+      return res.json([]);
+    }
+
+    // Buscar serviço para saber a duração
+    const servico = db.prepare('SELECT duracao FROM servicos WHERE id = ?').get(servico_id);
+    if (!servico) {
+      return res.status(404).json({ erro: 'Serviço não encontrado' });
+    }
+
+    // Buscar agendamentos já feitos para esta data
+    const agendamentosExistentes = db.prepare(
+      'SELECT hora FROM agendamentos WHERE data = ? AND status IN ("pendente", "confirmado")'
+    ).all(data);
+
+    const horariosOcupados = new Set(agendamentosExistentes.map(a => a.hora));
+
+    // Gerar slots de horários
+    const horariosLivres = [];
+    
+    for (const horarioDisp of horariosDisponiveis) {
+      const [horaInicio, minInicio] = horarioDisp.hora_inicio.split(':').map(Number);
+      const [horaFim, minFim] = horarioDisp.hora_fim.split(':').map(Number);
+      
+      let horaAtual = horaInicio * 60 + minInicio;
+      const horaFimMin = horaFim * 60 + minFim;
+      
+      while (horaAtual + servico.duracao <= horaFimMin) {
+        const h = Math.floor(horaAtual / 60).toString().padStart(2, '0');
+        const m = (horaAtual % 60).toString().padStart(2, '0');
+        const horarioStr = `${h}:${m}`;
+        
+        if (!horariosOcupados.has(horarioStr)) {
+          horariosLivres.push(horarioStr);
+        }
+        
+        horaAtual += 30; // Intervalos de 30 minutos
+      }
+    }
+
+    res.json(horariosLivres);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao buscar horários livres' });
+  }
+});
+
+app.post('/api/agendamentos', requireAuth, (req, res) => {
+  try {
+    const { servico_id, data, hora, observacoes } = req.body;
+    
+    if (!servico_id || !data || !hora) {
+      return res.status(400).json({ erro: 'Serviço, data e hora são obrigatórios' });
+    }
+
+    // Verificar se o horário ainda está disponível
+    const agendamentoExistente = db.prepare(
+      'SELECT id FROM agendamentos WHERE data = ? AND hora = ? AND status IN ("pendente", "confirmado")'
+    ).get(data, hora);
+
+    if (agendamentoExistente) {
+      return res.status(400).json({ erro: 'Este horário já foi agendado' });
+    }
+
+    const resultado = db.prepare(
+      'INSERT INTO agendamentos (cliente_id, servico_id, data, hora, observacoes) VALUES (?, ?, ?, ?, ?)'
+    ).run(
+      req.session.userId,
+      servico_id,
+      data,
+      hora,
+      observacoes || ''
+    );
+
+    const agendamento = db.prepare(`
+      SELECT a.*, s.nome as servico_nome, s.preco as servico_preco
+      FROM agendamentos a
+      JOIN servicos s ON a.servico_id = s.id
+      WHERE a.id = ?
+    `).get(resultado.lastInsertRowid);
+
+    res.json(agendamento);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao criar agendamento' });
+  }
+});
+
+app.put('/api/agendamentos/:id/status', requireAuth, (req, res) => {
+  try {
+    const { status } = req.body;
+    const agendamentoId = req.params.id;
+
+    // Buscar agendamento
+    const agendamento = db.prepare('SELECT * FROM agendamentos WHERE id = ?').get(agendamentoId);
+    
+    if (!agendamento) {
+      return res.status(404).json({ erro: 'Agendamento não encontrado' });
+    }
+
+    // Verificar permissões
+    if (status === 'cancelado' && agendamento.cliente_id !== req.session.userId) {
+      return res.status(403).json({ erro: 'Você só pode cancelar seus próprios agendamentos' });
+    }
+
+    if ((status === 'confirmado' || status === 'recusado') && req.session.userTipo !== 'admin') {
+      return res.status(403).json({ erro: 'Apenas administradores podem confirmar ou recusar agendamentos' });
+    }
+
+    db.prepare('UPDATE agendamentos SET status = ? WHERE id = ?').run(status, agendamentoId);
+
+    const agendamentoAtualizado = db.prepare(`
+      SELECT a.*, s.nome as servico_nome, u.nome as cliente_nome
+      FROM agendamentos a
+      JOIN servicos s ON a.servico_id = s.id
+      JOIN usuarios u ON a.cliente_id = u.id
+      WHERE a.id = ?
+    `).get(agendamentoId);
+
+    res.json(agendamentoAtualizado);
+  } catch (erro) {
+    res.status(500).json({ erro: 'Erro ao atualizar agendamento' });
+  }
+});
+
+// Servir frontend
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`Acesse: http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Agendamento</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Tela de login/registro -->
+    <div id="auth-screen" class="screen">
+      <div class="auth-container">
+        <h1>Sistema de Agendamento</h1>
+        
+        <div class="tabs">
+          <button class="tab active" data-tab="login">Entrar</button>
+          <button class="tab" data-tab="registro">Registrar</button>
+        </div>
+
+        <form id="login-form" class="auth-form">
+          <h2>Entrar</h2>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" name="senha" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Entrar</button>
+          <div class="info-admin">
+            <small>Administrador padrão: admin@sistema.com / admin123</small>
+          </div>
+        </form>
+
+        <form id="registro-form" class="auth-form" style="display: none;">
+          <h2>Criar Conta</h2>
+          <div class="form-group">
+            <label>Nome</label>
+            <input type="text" name="nome" required>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label>Senha</label>
+            <input type="password" name="senha" required minlength="6">
+          </div>
+          <button type="submit" class="btn btn-primary">Registrar</button>
+        </form>
+
+        <div id="auth-erro" class="erro-msg"></div>
+      </div>
+    </div>
+
+    <!-- Tela principal do cliente -->
+    <div id="cliente-screen" class="screen" style="display: none;">
+      <header class="header">
+        <h1>Meus Agendamentos</h1>
+        <div class="user-info">
+          <span id="user-nome"></span>
+          <button id="logout-btn" class="btn btn-secondary">Sair</button>
+        </div>
+      </header>
+
+      <div class="container">
+        <div class="tabs">
+          <button class="tab active" data-tab="novo-agendamento">Novo Agendamento</button>
+          <button class="tab" data-tab="meus-agendamentos">Meus Agendamentos</button>
+        </div>
+
+        <!-- Novo agendamento -->
+        <div id="novo-agendamento" class="tab-content">
+          <form id="form-novo-agendamento">
+            <div class="form-group">
+              <label>Serviço</label>
+              <select name="servico_id" id="select-servico" required>
+                <option value="">Selecione um serviço</option>
+              </select>
+              <div id="info-servico" class="info-box"></div>
+            </div>
+
+            <div class="form-group">
+              <label>Data</label>
+              <input type="date" name="data" id="input-data" required>
+            </div>
+
+            <div class="form-group">
+              <label>Horário</label>
+              <select name="hora" id="select-horario" required>
+                <option value="">Selecione uma data primeiro</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Observações (opcional)</label>
+              <textarea name="observacoes" rows="3"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Agendar</button>
+          </form>
+        </div>
+
+        <!-- Meus agendamentos -->
+        <div id="meus-agendamentos" class="tab-content" style="display: none;">
+          <div id="lista-agendamentos-cliente"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tela principal do admin -->
+    <div id="admin-screen" class="screen" style="display: none;">
+      <header class="header">
+        <h1>Painel Administrativo</h1>
+        <div class="user-info">
+          <span id="admin-nome"></span>
+          <button id="admin-logout-btn" class="btn btn-secondary">Sair</button>
+        </div>
+      </header>
+
+      <div class="container">
+        <div class="tabs">
+          <button class="tab active" data-tab="admin-agendamentos">Agendamentos</button>
+          <button class="tab" data-tab="admin-servicos">Serviços</button>
+          <button class="tab" data-tab="admin-horarios">Horários</button>
+        </div>
+
+        <!-- Agendamentos -->
+        <div id="admin-agendamentos" class="tab-content">
+          <h2>Todos os Agendamentos</h2>
+          <div id="lista-agendamentos-admin"></div>
+        </div>
+
+        <!-- Serviços -->
+        <div id="admin-servicos" class="tab-content" style="display: none;">
+          <div class="section-header">
+            <h2>Serviços</h2>
+            <button id="btn-novo-servico" class="btn btn-primary">Novo Serviço</button>
+          </div>
+
+          <div id="form-servico-container" style="display: none;">
+            <form id="form-servico">
+              <input type="hidden" name="id">
+              <div class="form-group">
+                <label>Nome</label>
+                <input type="text" name="nome" required>
+              </div>
+              <div class="form-group">
+                <label>Descrição</label>
+                <textarea name="descricao" rows="3"></textarea>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Duração (minutos)</label>
+                  <input type="number" name="duracao" required min="15" step="15">
+                </div>
+                <div class="form-group">
+                  <label>Preço (R$)</label>
+                  <input type="number" name="preco" required min="0" step="0.01">
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" id="btn-cancelar-servico" class="btn btn-secondary">Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="lista-servicos"></div>
+        </div>
+
+        <!-- Horários -->
+        <div id="admin-horarios" class="tab-content" style="display: none;">
+          <div class="section-header">
+            <h2>Horários Disponíveis</h2>
+            <button id="btn-novo-horario" class="btn btn-primary">Novo Horário</button>
+          </div>
+
+          <div id="form-horario-container" style="display: none;">
+            <form id="form-horario">
+              <div class="form-group">
+                <label>Dia da Semana</label>
+                <select name="dia_semana" required>
+                  <option value="0">Domingo</option>
+                  <option value="1">Segunda-feira</option>
+                  <option value="2">Terça-feira</option>
+                  <option value="3">Quarta-feira</option>
+                  <option value="4">Quinta-feira</option>
+                  <option value="5">Sexta-feira</option>
+                  <option value="6">Sábado</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Hora Início</label>
+                  <input type="time" name="hora_inicio" required>
+                </div>
+                <div class="form-group">
+                  <label>Hora Fim</label>
+                  <input type="time" name="hora_fim" required>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Salvar</button>
+                <button type="button" id="btn-cancelar-horario" class="btn btn-secondary">Cancelar</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="lista-horarios"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal" class="modal">
+    <div class="modal-content">
+      <p id="modal-message"></p>
+      <button id="modal-ok" class="btn btn-primary">OK</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/styles.css ===
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  line-height: 1.6;
+  color: #333;
+  background: #f5f5f5;
+}
+
+.screen {
+  min-height: 100vh;
+}
+
+/* Header */
+.header {
+  background: #2c3e50;
+  color: white;
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+  font-size: 1.5rem;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Auth */
+.auth-container {
+  max-width: 400px;
+  margin: 4rem auto;
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.auth-container h1 {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #2c3e50;
+}
+
+.auth-form h2 {
+  margin-bottom: 1.5rem;
+  color: #2c3e50;
+}
+
+.info-admin {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #e8f4f8;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.info-admin small {
+  color: #2c3e50;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #ddd;
+}
+
+.tab {
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  color: #666;
+  transition: all 0.3s;
+}
+
+.tab:hover {
+  color: #2c3e50;
+}
+
+.tab.active {
+  color: #3498db;
+  border-bottom-color: #3498db;
+}
+
+.tab-content {
+  animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #3498db;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+/* Buttons */
+.btn {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s;
+}
+
+.btn-primary {
+  background: #3498db;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2980b9;
+}
+
+.btn-secondary {
+  background: #95a5a6;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #7f8c8d;
+}
+
+.btn-success {
+  background: #27ae60;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #229954;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+}
+
+.btn-warning {
+  background: #f39c12;
+  color: white;
+}
+
+.btn-warning:hover {
+  background: #d68910;
+}
+
+.btn-small {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+/* Cards */
+.card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.card-body {
+  margin-bottom: 1rem;
+}
+
+.card-info {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.card-info-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.card-info-label {
+  font-weight: 500;
+  color: #666;
+  min-width: 100px;
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Status badges */
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.status-pendente {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-confirmado {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-recusado {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.status-cancelado {
+  background: #e2e3e5;
+  color: #383d41;
+}
+
+/* Info box */
+.info-box {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #3498db;
+}
+
+/* Section header */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.section-header h2 {
+  color: #2c3e50;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #666;
+}
+
+.empty-state-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+/* Error message */
+.erro-msg {
+  padding: 1rem;
+  margin-top: 1rem;
+  background: #f8d7da;
+  color: #721c24;
+  border-radius: 4px;
+  display: none;
+}
+
+.erro-msg.show {
+  display: block;
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  align-items: center;
+  justify-content: center;
+}
+
+.modal.show {
+  display: flex;
+}
+
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+  text-align: center;
+}
+
+.modal-content p {
+  margin-bottom: 1.5rem;
+  font-size: 1.1rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    padding: 1rem;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .header h1 {
+    font-size: 1.25rem;
+  }
+
+  .container {
+    padding: 1rem;
+  }
+
+  .auth-container {
+    margin: 2rem 1rem;
+    padding: 1.5rem;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab {
+    white-space: nowrap;
+    padding: 0.75rem 1rem;
+  }
+
+  .card-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .card-actions {
+    width: 100%;
+  }
+
+  .card-actions .btn {
+    flex: 1;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: start;
+    gap: 1rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .form-actions .btn {
+    width: 100%;
+  }
+}
+
+=== public/app.js ===
+// Estado da aplicação
+let usuarioAtual = null;
+let servicos = [];
+let horarios = [];
+let agendamentos = [];
+
+// Utilitários
+function mostrarErro(mensagem, elementoId = 'auth-erro') {
+  const elemento = document.getElementById(elementoId);
+  if (elemento) {
+    elemento.textContent = mensagem;
+    elemento.classList.add('show');
+    setTimeout(() => elemento.classList.remove('show'), 5000);
+  }
+}
+
+function mostrarModal(mensagem) {
+  const modal = document.getElementById('modal');
+  const modalMessage = document.getElementById('modal-message');
+  modalMessage.textContent = mensagem;
+  modal.classList.add('show');
+}
+
+function fecharModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+function formatarData(data) {
+  const d = new Date(data + 'T00:00:00');
+  return d.toLocaleDateString('pt-BR');
+}
+
+function formatarPreco(preco) {
+  return parseFloat(preco).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function getDiaSemanaTexto(dia) {
+  const dias = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+  return dias[dia];
+}
+
+// API calls
+async function fazerRequisicao(url, opcoes = {}) {
+  try {
+    const resposta = await fetch(url, {
+      ...opcoes,
+      headers: {
+        'Content-Type': 'application/json',
+        ...opcoes.headers,
+      },
+    });
+
+    const dados = await resposta.json();
+
+    if (!resposta.ok) {
+      throw new Error(dados.erro || 'Erro na requisição');
+    }
+
+    return dados;
+  } catch (erro) {
+    console.error('Erro:', erro);
+    throw erro;
+  }
+}
+
+// Autenticação
+async function verificarAutenticacao() {
+  try {
+    const dados = await fazerRequisicao('/api/usuario-atual');
+    
+    if (dados.autenticado) {
+      usuarioAtual = dados.usuario;
+      mostrarTelaCorreta();
+    } else {
+      mostrarTela('auth-screen');
+    }
+  } catch (erro) {
+    mostrarTela('auth-screen');
+  }
+}
+
+function mostrarTela(telaId) {
+  document.querySelectorAll('.screen').forEach(tela => {
+    tela.style.display = 'none';
+  });
+  document.getElementById(telaId).style.display = 'block';
+}
+
+function mostrarTelaCorreta() {
+  if (!usuarioAtual) {
+    mostrarTela('auth-screen');
+    return;
+  }
+
+  if (usuarioAtual.tipo === 'admin') {
+    document.getElementById('admin-nome').textContent = usuarioAtual.nome;
+    mostrarTela('admin-screen');
+    carregarDadosAdmin();
+  } else {
+    document.getElementById('user-nome').textContent = usuarioAtual.nome;
+    mostrarTela('cliente-screen');
+    carregarDadosCliente();
+  }
+}
+
+// Eventos de autenticação
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const dados = Object.fromEntries(formData);
+
+  try {
+    const resposta = await fazerRequisicao('/api/login', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+
+    usuarioAtual = resposta.usuario;
+    mostrarTelaCorreta();
+  } catch (erro) {
+    mostrarErro(erro.message);
+  }
+});
+
+document.getElementById('registro-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const dados = Object.fromEntries(formData);
+
+  try {
+    const resposta = await fazerRequisicao('/api/registrar', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+
+    usuarioAtual = resposta.usuario;
+    mostrarTelaCorreta();
+  } catch (erro) {
+    mostrarErro(erro.message);
+  }
+});
+
+// Tabs de autenticação
+document.querySelectorAll('.auth-container .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const tabName = tab.dataset.tab;
+    
+    document.querySelectorAll('.auth-container .tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    document.getElementById('login-form').style.display = tabName === 'login' ? 'block' : 'none';
+    document.getElementById('registro-form').style.display = tabName === 'registro' ? 'block' : 'none';
+  });
+});
+
+// Logout
+document.getElementById('logout-btn').addEventListener('click', logout);
+document.getElementById('admin-logout-btn').addEventListener('click', logout);
+
+async function logout() {
+  try {
+    await fazerRequisicao('/api/logout', { method: 'POST' });
+    usuarioAtual = null;
+    mostrarTela('auth-screen');
+  } catch (erro) {
+    console.error('Erro ao fazer logout:', erro);
+  }
+}
+
+// Tabs gerais
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('tab')) {
+    const container = e.target.closest('.container') || e.target.closest('.auth-container');
+    if (!container) return;
+
+    const tabName = e.target.dataset.tab;
+    
+    container.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+
+    container.querySelectorAll('.tab-content').forEach(content => {
+      content.style.display = 'none';
+    });
+
+    const targetContent = document.getElementById(tabName);
+    if (targetContent) {
+      targetContent.style.display = 'block';
+    }
+  }
+});
+
+// Modal
+document.getElementById('modal-ok').addEventListener('click', fecharModal);
+
+// === CLIENTE ===
+
+async function carregarDadosCliente() {
+  await carregarServicos();
+  await carregarAgendamentosCliente();
+  configurarDataMinima();
+}
+
+function configurarDataMinima() {
+  const inputData = document.getElementById('input-data');
+  const hoje = new Date();
+  const amanha = new Date(hoje);
+  amanha.setDate(amanha.getDate() + 1);
+  inputData.min = amanha.toISOString().split('T')[0];
+}
+
+async function carregarServicos() {
+  try {
+    servicos = await fazerRequisicao('/api/servicos');
+    renderizarServicos();
+  } catch (erro) {
+    console.error('Erro ao carregar serviços:', erro);
+  }
+}
+
+function renderizarServicos() {
+  const select = document.getElementById('select-servico');
+  select.innerHTML = '<option value="">Selecione um serviço</option>';
+  
+  servicos.forEach(servico => {
+    const option = document.createElement('option');
+    option.value = servico.id;
+    option.textContent = `${servico.nome} - ${formatarPreco(servico.preco)}`;
+    select.appendChild(option);
+  });
+}
+
+document.getElementById('select-servico').addEventListener('change', (e) => {
+  const servicoId = e.target.value;
+  const infoServico = document.getElementById('info-servico');
+  
+  if (!servicoId) {
+    infoServico.innerHTML = '';
+    return;
+  }
+
+  const servico = servicos.find(s => s.id == servicoId);
+  if (servico) {
+    infoServico.innerHTML = `
+      <strong>${servico.nome}</strong><br>
+      ${servico.descricao ? servico.descricao + '<br>' : ''}
+      Duração: ${servico.duracao} minutos<br>
+      Valor: ${formatarPreco(servico.preco)}
+    `;
+  }
+});
+
+document.getElementById('input-data').addEventListener('change', async (e) => {
+  const data = e.target.value;
+  const servicoId = document.getElementById('select-servico').value;
+  const selectHorario = document.getElementById('select-horario');
+
+  if (!data || !servicoId) {
+    selectHorario.innerHTML = '<option value="">Selecione um serviço e uma data</option>';
+    return;
+  }
+
+  try {
+    const horariosLivres = await fazerRequisicao(`/api/horarios-livres/${data}/${servicoId}`);
+    
+    selectHorario.innerHTML = '<option value="">Selecione um horário</option>';
+    
+    if (horariosLivres.length === 0) {
+      selectHorario.innerHTML = '<option value="">Nenhum horário disponível</option>';
+      return;
+    }
+
+    horariosLivres.forEach(horario => {
+      const option = document.createElement('option');
+      option.value = horario;
+      option.textContent = horario;
+      selectHorario.appendChild(option);
+    });
+  } catch (erro) {
+    console.error('Erro ao carregar horários:', erro);
+    selectHorario.innerHTML = '<option value="">Erro ao carregar horários</option>';
+  }
+});
+
+document.getElementById('form-novo-agendamento').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const dados = Object.fromEntries(formData);
+
+  try {
+    await fazerRequisicao('/api/agendamentos', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+
+    mostrarModal('Agendamento realizado com sucesso!');
+    e.target.reset();
+    document.getElementById('info-servico').innerHTML = '';
+    await carregarAgendamentosCliente();
+  } catch (erro) {
+    mostrarModal('Erro ao realizar agendamento: ' + erro.message);
+  }
+});
+
+async function carregarAgendamentosCliente() {
+  try {
+    agendamentos = await fazerRequisicao('/api/agendamentos');
+    renderizarAgendamentosCliente();
+  } catch (erro) {
+    console.error('Erro ao carregar agendamentos:', erro);
+  }
+}
+
+function renderizarAgendamentosCliente() {
+  const container = document.getElementById('lista-agendamentos-cliente');
+  
+  if (agendamentos.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><p>Você ainda não tem agendamentos</p></div>';
+    return;
+  }
+
+  container.innerHTML = agendamentos.map(agendamento => `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">${agendamento.servico_nome}</div>
+        <span class="status-badge status-${agendamento.status}">${agendamento.status.toUpperCase()}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-info">
+          <div class="card-info-row">
+            <span class="card-info-label">Data:</span>
+            <span>${formatarData(agendamento.data)}</span>
+          </div>
+          <div class="card-info-row">
+            <span class="card-info-label">Horário:</span>
+            <span>${agendamento.hora}</span>
+          </div>
+          <div class="card-info-row">
+            <span class="card-info-label">Valor:</span>
+            <span>${formatarPreco(agendamento.servico_preco)}</span>
+          </div>
+          ${agendamento.observacoes ? `
+            <div class="card-info-row">
+              <span class="card-info-label">Observações:</span>
+              <span>${agendamento.observacoes}</span>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      ${agendamento.status === 'pendente' || agendamento.status === 'confirmado' ? `
+        <div class="card-actions">
+          <button class="btn btn-danger btn-small" onclick="cancelarAgendamento(${agendamento.id})">
+            Cancelar Agendamento
+          </button>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+async function cancelarAgendamento(id) {
+  if (!confirm('Tem certeza que deseja cancelar este agendamento?')) {
+    return;
+  }
+
+  try {
+    await fazerRequisicao(`/api/agendamentos/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'cancelado' }),
+    });
+
+    mostrarModal('Agendamento cancelado com sucesso');
+    await carregarAgendamentosCliente();
+  } catch (erro) {
+    mostrarModal('Erro ao cancelar agendamento: ' + erro.message);
+  }
+}
+
+// === ADMIN ===
+
+async function carregarDadosAdmin() {
+  await carregarServicosAdmin();
+  await carregarHorariosAdmin();
+  await carregarAgendamentosAdmin();
+}
+
+// Serviços Admin
+async function carregarServicosAdmin() {
+  try {
+    servicos = await fazerRequisicao('/api/servicos');
+    renderizarServicosAdmin();
+  } catch (erro) {
+    console.error('Erro ao carregar serviços:', erro);
+  }
+}
+
+function renderizarServicosAdmin() {
+  const container = document.getElementById('lista-servicos');
+  
+  if (servicos.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>Nenhum serviço cadastrado</p></div>';
+    return;
+  }
+
+  container.innerHTML = servicos.map(servico => `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">${servico.nome}</div>
+        <span class="status-badge ${servico.ativo ? 'status-confirmado' : 'status-cancelado'}">
+          ${servico.ativo ? 'ATIVO' : 'INATIVO'}
+        </span>
+      </div>
+      <div class="card-body">
+        ${servico.descricao ? `<p>${servico.descricao}</p>` : ''}
+        <div class="card-info">
+          <div class="card-info-row">
+            <span class="card-info-label">Duração:</span>
+            <span>${servico.duracao} minutos</span>
+          </div>
+          <div class="card-info-row">
+            <span class="card-info-label">Preço:</span>
+            <span>${formatarPreco(servico.preco)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-small" onclick="editarServico(${servico.id})">
+          Editar
+        </button>
+        ${servico.ativo ? `
+          <button class="btn btn-danger btn-small" onclick="deletarServico(${servico.id})">
+            Desativar
+          </button>
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('btn-novo-servico').addEventListener('click', () => {
+  document.getElementById('form-servico').reset();
+  document.getElementById('form-servico-container').style.display = 'block';
+});
+
+document.getElementById('btn-cancelar-servico').addEventListener('click', () => {
+  document.getElementById('form-servico-container').style.display = 'none';
+  document.getElementById('form-servico').reset();
+});
+
+document.getElementById('form-servico').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const dados = Object.fromEntries(formData);
+  
+  const id = dados.id;
+  delete dados.id;
+
+  try {
+    if (id) {
+      dados.ativo = 1;
+      await fazerRequisicao(`/api/servicos/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(dados),
+      });
+      mostrarModal('Serviço atualizado com sucesso');
+    } else {
+      await fazerRequisicao('/api/servicos', {
+        method: 'POST',
+        body: JSON.stringify(dados),
+      });
+      mostrarModal('Serviço criado com sucesso');
+    }
+
+    document.getElementById('form-servico-container').style.display = 'none';
+    e.target.reset();
+    await carregarServicosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao salvar serviço: ' + erro.message);
+  }
+});
+
+function editarServico(id) {
+  const servico = servicos.find(s => s.id === id);
+  if (!servico) return;
+
+  const form = document.getElementById('form-servico');
+  form.elements['id'].value = servico.id;
+  form.elements['nome'].value = servico.nome;
+  form.elements['descricao'].value = servico.descricao;
+  form.elements['duracao'].value = servico.duracao;
+  form.elements['preco'].value = servico.preco;
+
+  document.getElementById('form-servico-container').style.display = 'block';
+  form.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function deletarServico(id) {
+  if (!confirm('Tem certeza que deseja desativar este serviço?')) {
+    return;
+  }
+
+  try {
+    await fazerRequisicao(`/api/servicos/${id}`, {
+      method: 'DELETE',
+    });
+    mostrarModal('Serviço desativado com sucesso');
+    await carregarServicosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao desativar serviço: ' + erro.message);
+  }
+}
+
+// Horários Admin
+async function carregarHorariosAdmin() {
+  try {
+    horarios = await fazerRequisicao('/api/horarios-disponiveis');
+    renderizarHorariosAdmin();
+  } catch (erro) {
+    console.error('Erro ao carregar horários:', erro);
+  }
+}
+
+function renderizarHorariosAdmin() {
+  const container = document.getElementById('lista-horarios');
+  
+  if (horarios.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>Nenhum horário cadastrado</p></div>';
+    return;
+  }
+
+  container.innerHTML = horarios.map(horario => `
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">${getDiaSemanaTexto(horario.dia_semana)}</div>
+      </div>
+      <div class="card-body">
+        <div class="card-info">
+          <div class="card-info-row">
+            <span class="card-info-label">Horário:</span>
+            <span>${horario.hora_inicio} às ${horario.hora_fim}</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-actions">
+        <button class="btn btn-danger btn-small" onclick="deletarHorario(${horario.id})">
+          Remover
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('btn-novo-horario').addEventListener('click', () => {
+  document.getElementById('form-horario').reset();
+  document.getElementById('form-horario-container').style.display = 'block';
+});
+
+document.getElementById('btn-cancelar-horario').addEventListener('click', () => {
+  document.getElementById('form-horario-container').style.display = 'none';
+  document.getElementById('form-horario').reset();
+});
+
+document.getElementById('form-horario').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const dados = Object.fromEntries(formData);
+
+  try {
+    await fazerRequisicao('/api/horarios-disponiveis', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+
+    mostrarModal('Horário criado com sucesso');
+    document.getElementById('form-horario-container').style.display = 'none';
+    e.target.reset();
+    await carregarHorariosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao criar horário: ' + erro.message);
+  }
+});
+
+async function deletarHorario(id) {
+  if (!confirm('Tem certeza que deseja remover este horário?')) {
+    return;
+  }
+
+  try {
+    await fazerRequisicao(`/api/horarios-disponiveis/${id}`, {
+      method: 'DELETE',
+    });
+    mostrarModal('Horário removido com sucesso');
+    await carregarHorariosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao remover horário: ' + erro.message);
+  }
+}
+
+// Agendamentos Admin
+async function carregarAgendamentosAdmin() {
+  try {
+    agendamentos = await fazerRequisicao('/api/agendamentos');
+    renderizarAgendamentosAdmin();
+  } catch (erro) {
+    console.error('Erro ao carregar agendamentos:', erro);
+  }
+}
+
+function renderizarAgendamentosAdmin() {
+  const container = document.getElementById('lista-agendamentos-admin');
+  
+  if (agendamentos.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>Nenhum agendamento registrado</p></div>';
+    return;
+  }
+
+  container.innerHTML = agendamentos.map(agendamento => `
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${agendamento.servico_nome}</div>
+          <small>${agendamento.cliente_nome} (${agendamento.cliente_email})</small>
+        </div>
+        <span class="status-badge status-${agendamento.status}">${agendamento.status.toUpperCase()}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-info">
+          <div class="card-info-row">
+            <span class="card-info-label">Data:</span>
+            <span>${formatarData(agendamento.data)}</span>
+          </div>
+          <div class="card-info-row">
+            <span class="card-info-label">Horário:</span>
+            <span>${agendamento.hora}</span>
+          </div>
+          ${agendamento.observacoes ? `
+            <div class="card-info-row">
+              <span class="card-info-label">Observações:</span>
+              <span>${agendamento.observacoes}</span>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      ${agendamento.status === 'pendente' ? `
+        <div class="card-actions">
+          <button class="btn btn-success btn-small" onclick="confirmarAgendamento(${agendamento.id})">
+            Confirmar
+          </button>
+          <button class="btn btn-danger btn-small" onclick="recusarAgendamento(${agendamento.id})">
+            Recusar
+          </button>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+async function confirmarAgendamento(id) {
+  try {
+    await fazerRequisicao(`/api/agendamentos/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'confirmado' }),
+    });
+
+    mostrarModal('Agendamento confirmado com sucesso');
+    await carregarAgendamentosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao confirmar agendamento: ' + erro.message);
+  }
+}
+
+async function recusarAgendamento(id) {
+  if (!confirm('Tem certeza que deseja recusar este agendamento?')) {
+    return;
+  }
+
+  try {
+    await fazerRequisicao(`/api/agendamentos/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'recusado' }),
+    });
+
+    mostrarModal('Agendamento recusado');
+    await carregarAgendamentosAdmin();
+  } catch (erro) {
+    mostrarModal('Erro ao recusar agendamento: ' + erro.message);
+  }
+}
+
+// Inicialização
+verificarAutenticacao();
+
+=== README.md ===
+# Sistema de Agendamento de Serviços
+
+Sistema completo de agendamento de serviços com autenticação, gerenciamento de serviços, horários e agendamentos.
+
+## Funcionalidades
+
+### Para Clientes:
+- Criar conta e fazer login
+- Ver serviços disponíveis com preços e descrições
+- Ver horários disponíveis em tempo real
+- Agendar serviços
+- Ver histórico de agendamentos
+- Cancelar agendamentos
+
+### Para Administradores:
+- Cadastrar e editar serviços (nome, descrição, duração, preço)
+- Configurar horários de funcionamento por dia da semana
+- Ver todos os agendamentos de todos os clientes
+- Confirmar ou recusar agendamentos
+- Dashboard completo de gerenciamento
+
+## Instalação
+
+### Requisitos
+- Node.js (versão 14 ou superior)
+
+### Passo a Passo
+
+1. Abra o terminal/prompt de comando na pasta do projeto
+
+2. Instale as dependências:
+```bash
+npm install
+```
+
+3. Inicie o servidor:
+```bash
+npm start
+```
+
+4. Abra o navegador e acesse:
+```
+http://localhost:3000
+```
+
+## Login Administrador Padrão
+
+Ao iniciar o sistema pela primeira vez, um usuário administrador é criado automaticamente:
+
+- **Email:** admin@sistema.com
+- **Senha:** admin123
+
+Use estas credenciais para fazer o primeiro acesso como administrador.
+
+## Como Usar
+
+### Primeira Vez
+
+1. Acesse o sistema pelo navegador
+2. Faça login como administrador (credenciais acima)
+3. Cadastre os serviços oferecidos (ex: Corte de Cabelo, Manicure, etc)
+4. Configure os horários de funcionamento (ex: Segunda a Sexta, 9h às 18h)
+5. Agora os clientes podem se registrar e agendar!
+
+### Como Cliente
+
+1. Clique em "Registrar" e crie sua conta
+2. Na aba "Novo Agendamento":
+   - Escolha o serviço desejado
+   - Selecione a data
+   - Escolha um horário disponível
+   - Adicione observações se necessário
+   - Clique em "Agendar"
+3. Na aba "Meus Agendamentos" você vê todos os seus agendamentos e pode cancelá-los
+
+### Como Administrador
+
+1. **Gerenciar Serviços:**
+   - Clique em "Serviços"
+   - Clique em "Novo Serviço" para adicionar
+   - Preencha nome, descrição, duração (em minutos) e preço
+   - Use "Editar" para modificar ou "Desativar" para remover
+
+2. **Configurar Horários:**
+   - Clique em "Horários"
+   - Clique em "Novo Horário"
+   - Escolha o dia da semana
+   - Defina hora de início e fim
+   - O sistema gera slots de 30 minutos automaticamente
+
+3. **Gerenciar Agendamentos:**
+   - Na aba "Agendamentos" você vê todos os pedidos
+   - Clique em "Confirmar" para aprovar
+   - Clique em "Recusar" para negar
+
+## Tecnologias Utilizadas
+
+- **Backend:** Node.js + Express
+- **Banco de Dados:** SQLite (arquivo local, não precisa instalar nada)
+- **Frontend:** HTML + CSS + JavaScript puro
+- **Autenticação:** Sessões com bcrypt para senhas
+
+## Dados Salvos
+
+Todos os dados ficam salvos no arquivo `agendamento.db` que é criado automaticamente na pasta do projeto. Este arquivo contém:
+
+- Usuários (clientes e administradores)
+- Serviços cadastrados
+- Horários de funcionamento
+- Todos os agendamentos
+
+Mesmo fechando o navegador ou reiniciando o servidor, os dados permanecem salvos.
+
+## Características
+
+- ✅ Funciona em qualquer computador ou celular
+- ✅ Interface responsiva e fácil de usar
+- ✅ Não precisa criar conta em outros sites
+- ✅ Tudo funciona dentro do próprio sistema
+- ✅ Dados salvos permanentemente
+- ✅ Sistema completo e pronto para uso
+- ✅ Horários inteligentes (não permite conflitos)
+- ✅ Múltiplos usuários podem acessar simultaneamente
+
+## Porta Padrão
+
+O sistema roda na porta 3000. Se precisar mudar, pode definir a variável de ambiente PORT:
+
+```bash
+PORT=8080 npm start
+```
+
+## Problemas Comuns
+
+**Erro ao instalar:** Certifique-se de que o Node.js está instalado. Baixe em nodejs.org
+
+**Porta em uso:** Se a porta 3000 já estiver sendo usada, o sistema mostrará erro. Feche outros programas ou mude a porta.
+
+**Banco de dados:** O arquivo agendamento.db é criado automaticamente. Não delete este arquivo ou perderá todos os dados.
+
+## Suporte
+
+O sistema é autossuficiente e não depende de serviços externos. Tudo funciona localmente no seu computador.

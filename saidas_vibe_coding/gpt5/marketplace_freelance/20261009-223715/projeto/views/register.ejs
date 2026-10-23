@@ -1,0 +1,22 @@
+<%- include('partials/header') %>
+
+<div class="form-page">
+  <form class="form-card" action="/register" method="POST">
+    <h1>Criar conta</h1>
+
+    <label>Nome</label>
+    <input type="text" name="name" required>
+
+    <label>E-mail</label>
+    <input type="email" name="email" required>
+
+    <label>Senha</label>
+    <input type="password" name="password" required>
+
+    <button class="button full" type="submit">Criar conta</button>
+
+    <p>Já tem conta? <a href="/login">Entrar</a></p>
+  </form>
+</div>
+
+<%- include('partials/footer') %>

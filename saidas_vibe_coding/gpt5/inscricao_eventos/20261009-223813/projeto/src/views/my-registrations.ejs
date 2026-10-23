@@ -1,0 +1,69 @@
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Minhas inscrições</h1>
+  <p>Acompanhe suas inscrições e cancele quando precisar.</p>
+</section>
+
+<div class="card">
+  <% if (registrations.length === 0) { %>
+    <div class="empty">
+      Você ainda não fez nenhuma inscrição.
+      <p><a class="btn" href="/">Ver eventos</a></p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Evento</th>
+            <th>Data</th>
+            <th>Local</th>
+            <th>Situação</th>
+            <th>Presença</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% registrations.forEach(reg => { %>
+            <tr>
+              <td><%= reg.title %></td>
+              <td><%= new Date(reg.event_date).toLocaleString('pt-BR') %></td>
+              <td><%= reg.location %></td>
+              <td>
+                <% if (reg.status === 'cancelada') { %>
+                  <span class="badge danger">Cancelada</span>
+                <% } else if (reg.status === 'confirmada') { %>
+                  <span class="badge success">Confirmada</span>
+                <% } else { %>
+                  <span class="badge">Inscrita</span>
+                <% } %>
+                <% if (reg.event_status === 'cancelado') { %>
+                  <br><span class="badge danger">Evento cancelado</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.attendance_confirmed) { %>
+                  <span class="badge success">Presença confirmada</span>
+                <% } else { %>
+                  <span class="badge warning">Pendente</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.status !== 'cancelada') { %>
+                  <form method="post" action="/registrations/<%= reg.id %>/cancel" onsubmit="return confirm('Cancelar esta inscrição?')">
+                    <button class="danger" type="submit">Cancelar</button>
+                  </form>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>

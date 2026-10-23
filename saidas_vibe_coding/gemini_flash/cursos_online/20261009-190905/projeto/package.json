@@ -1,0 +1,15 @@
+{
+  "name": "plataforma-cursos-online",
+  "version": "1.0.0",
+  "description": "Plataforma completa de cursos online com matrícula, gestão de alunos e painel administrativo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

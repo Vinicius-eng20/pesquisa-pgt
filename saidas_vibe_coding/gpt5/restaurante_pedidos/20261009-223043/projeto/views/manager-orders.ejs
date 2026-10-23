@@ -1,0 +1,63 @@
+<%- include('partials/head', { title: 'Todos os pedidos' }) %>
+<%- include('partials/header') %>
+
+<section class="page-title">
+  <h1>Todos os pedidos</h1>
+  <p>Veja e atualize os pedidos de todos os clientes.</p>
+</section>
+
+<% if (orders.length === 0) { %>
+  <div class="card center">
+    <p>Nenhum pedido recebido ainda.</p>
+  </div>
+<% } %>
+
+<div class="orders">
+  <% orders.forEach(order => { %>
+    <article class="card order">
+      <div class="order-head">
+        <div>
+          <h2>Pedido #<%= order.id %></h2>
+          <p class="muted">
+            Cliente: <strong><%= order.customer_name %></strong> —
+            <%= order.customer_email %><br>
+            Criado em <%= order.created_at %>
+          </p>
+        </div>
+        <span class="status"><%= order.status %></span>
+      </div>
+
+      <ul class="items">
+        <% itemsByOrder[order.id].forEach(item => { %>
+          <li>
+            <span><%= item.quantity %>x <%= item.name || 'Prato removido' %></span>
+            <strong><%= formatMoney(item.quantity * item.unit_price) %></strong>
+          </li>
+        <% }) %>
+      </ul>
+
+      <% if (order.notes) { %>
+        <p><strong>Observações:</strong> <%= order.notes %></p>
+      <% } %>
+
+      <div class="total">
+        Total: <%= formatMoney(order.total) %>
+      </div>
+
+      <form action="/gerente/pedidos/<%= order.id %>/status" method="POST" class="status-form">
+        <label>
+          Alterar situação
+          <select name="status">
+            <% statuses.forEach(status => { %>
+              <option value="<%= status %>" <%= order.status === status ? 'selected' : '' %>><%= status %></option>
+            <% }) %>
+          </select>
+        </label>
+
+        <button class="button" type="submit">Atualizar</button>
+      </form>
+    </article>
+  <% }) %>
+</div>
+
+<%- include('partials/footer') %>

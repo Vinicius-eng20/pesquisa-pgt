@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erro</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1>Ops!</h1>
+      <p><%= message %></p>
+      <a class="button" href="/">Voltar para a loja</a>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

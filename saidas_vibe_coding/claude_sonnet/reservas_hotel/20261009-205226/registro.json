@@ -1,0 +1,52 @@
+{
+  "data_hora_utc": "2026-10-09T20:52:26+00:00",
+  "modelo": "claude_sonnet",
+  "modelo_id": "anthropic/claude-sonnet-4.5",
+  "dominio": "reservas_hotel",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\claude_sonnet\\reservas_hotel\\20261009-205226",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um sistema de reservas de hotel. Não sei nada de programação, só quero que funcione.\n\nVão usar os hóspedes e o gerente do hotel. Os hóspedes precisam poder ver os quartos disponíveis nas datas que escolherem, reservar um quarto e ver ou cancelar as reservas que fizeram. O gerente do hotel precisa poder cadastrar, editar e remover quartos, confirmar ou recusar reservas e ver todas as reservas de todos os hóspedes.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "prompt_versao": "v2",
+  "provedor": "Amazon Bedrock",
+  "id_geracao": "gen-1791579146-2oLJR5NyABWdpTWkKktw",
+  "modelo_servido": "anthropic/claude-sonnet-4.5",
+  "tokens_entrada": 365,
+  "tokens_saida": 19093,
+  "tokens_raciocinio": 0,
+  "tokens_total": 19458,
+  "custo_usd": 0.28749,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 164.0,
+  "duracao_api_s": 164.0,
+  "tokens_por_s": 116.4,
+  "n_arquivos": 13,
+  "arquivos": [
+    "README.md",
+    "package.json",
+    "server.js",
+    "public/index.html",
+    "public/login.html",
+    "public/cadastro.html",
+    "public/hospede.html",
+    "public/gerente.html",
+    "public/styles.css",
+    "public/login.js",
+    "public/cadastro.js",
+    "public/hospede.js",
+    "public/gerente.js"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

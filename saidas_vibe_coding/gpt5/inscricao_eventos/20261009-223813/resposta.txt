@@ -1,0 +1,1455 @@
+=== package.json ===
+{
+  "name": "portal-inscricao-eventos",
+  "version": "1.0.0",
+  "description": "Portal de inscrição para eventos com usuários, organizador, eventos e inscrições persistidos em banco SQLite.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "init-db": "node scripts/init-db.js"
+  },
+  "keywords": [
+    "eventos",
+    "inscricoes",
+    "portal",
+    "sqlite",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.8.1",
+    "connect-sqlite3": "^0.9.16",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.0.0"
+  }
+}
+
+=== README.md ===
+# Portal de Inscrição para Eventos
+
+Site completo para participantes e organizador criarem contas, entrarem no sistema, criarem eventos, se inscreverem, cancelarem inscrições, confirmarem presença e acompanharem tudo com dados salvos em banco SQLite no próprio projeto.
+
+## Requisitos
+
+Instale o Node.js versão 18 ou superior:
+
+- https://nodejs.org/
+
+## Como instalar
+
+Abra o terminal dentro da pasta do projeto e rode:
+
+```bash
+npm install
+```
+
+Depois crie o banco de dados inicial:
+
+```bash
+npm run init-db
+```
+
+## Como executar
+
+```bash
+npm start
+```
+
+Acesse no navegador:
+
+```text
+http://localhost:3000
+```
+
+## Conta inicial do organizador
+
+Ao rodar `npm run init-db`, uma conta de organizador é criada automaticamente:
+
+- E-mail: `organizador@eventos.local`
+- Senha: `admin123`
+
+Você pode alterar a senha depois editando diretamente pelo banco ou criando outra conta organizadora no script, se desejar.
+
+## Como publicar na internet
+
+Este projeto funciona com Node.js e SQLite. Para colocar na internet sem serviços externos, use um servidor/VPS próprio com Node.js instalado.
+
+Passos gerais no servidor:
+
+```bash
+npm install
+npm run init-db
+npm start
+```
+
+Para uso real em produção, configure também:
+
+- HTTPS
+- domínio
+- proxy reverso, como Nginx
+- backup periódico do arquivo `data/app.db`
+
+## Observação importante
+
+Tudo fica salvo no arquivo:
+
+```text
+data/app.db
+```
+
+Não apague esse arquivo se quiser manter usuários, eventos e inscrições.
+
+=== server.js ===
+const path = require('path');
+const express = require('express');
+const session = require('express-session');
+const SQLiteStoreFactory = require('connect-sqlite3');
+const helmet = require('helmet');
+const bcrypt = require('bcryptjs');
+const db = require('./src/db');
+
+const SQLiteStore = SQLiteStoreFactory(session);
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.set('view engine', 'ejs');
+app.set('views', path.join(__dirname, 'src', 'views'));
+
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(session({
+  store: new SQLiteStore({
+    db: 'sessions.db',
+    dir: path.join(__dirname, 'data')
+  }),
+  secret: process.env.SESSION_SECRET || 'troque-esta-chave-em-producao',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 24 * 7
+  }
+}));
+
+app.use((req, res, next) => {
+  res.locals.user = req.session.user || null;
+  res.locals.flash = req.session.flash || null;
+  delete req.session.flash;
+  next();
+});
+
+function flash(req, type, message) {
+  req.session.flash = { type, message };
+}
+
+function requireLogin(req, res, next) {
+  if (!req.session.user) {
+    flash(req, 'error', 'Entre na sua conta para continuar.');
+    return res.redirect('/login');
+  }
+  next();
+}
+
+function requireOrganizer(req, res, next) {
+  if (!req.session.user) {
+    flash(req, 'error', 'Entre na sua conta para continuar.');
+    return res.redirect('/login');
+  }
+  if (req.session.user.role !== 'organizer') {
+    flash(req, 'error', 'Apenas o organizador pode acessar esta área.');
+    return res.redirect('/dashboard');
+  }
+  next();
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function normalizeDate(value) {
+  return String(value || '').trim();
+}
+
+app.get('/', (req, res) => {
+  const events = db.prepare(`
+    SELECT e.*,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelada') AS active_registrations
+    FROM events e
+    WHERE e.status = 'ativo'
+    ORDER BY e.event_date ASC
+  `).all();
+
+  res.render('home', { title: 'Eventos disponíveis', events });
+});
+
+app.get('/register', (req, res) => {
+  res.render('auth-register', { title: 'Criar conta' });
+});
+
+app.post('/register', (req, res) => {
+  const name = normalizeText(req.body.name);
+  const email = normalizeText(req.body.email).toLowerCase();
+  const password = String(req.body.password || '');
+
+  if (!name || !email || !password) {
+    flash(req, 'error', 'Preencha nome, e-mail e senha.');
+    return res.redirect('/register');
+  }
+
+  if (password.length < 6) {
+    flash(req, 'error', 'A senha precisa ter pelo menos 6 caracteres.');
+    return res.redirect('/register');
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (existing) {
+    flash(req, 'error', 'Já existe uma conta com esse e-mail.');
+    return res.redirect('/register');
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 12);
+  const result = db.prepare(`
+    INSERT INTO users (name, email, password_hash, role)
+    VALUES (?, ?, ?, 'participant')
+  `).run(name, email, passwordHash);
+
+  req.session.user = { id: result.lastInsertRowid, name, email, role: 'participant' };
+  flash(req, 'success', 'Conta criada com sucesso.');
+  res.redirect('/dashboard');
+});
+
+app.get('/login', (req, res) => {
+  res.render('auth-login', { title: 'Entrar' });
+});
+
+app.post('/login', (req, res) => {
+  const email = normalizeText(req.body.email).toLowerCase();
+  const password = String(req.body.password || '');
+
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    flash(req, 'error', 'E-mail ou senha inválidos.');
+    return res.redirect('/login');
+  }
+
+  req.session.user = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role
+  };
+
+  flash(req, 'success', 'Entrada realizada com sucesso.');
+  res.redirect('/dashboard');
+});
+
+app.post('/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/');
+  });
+});
+
+app.get('/dashboard', requireLogin, (req, res) => {
+  if (req.session.user.role === 'organizer') {
+    return res.redirect('/organizer');
+  }
+  res.redirect('/my-registrations');
+});
+
+app.get('/events/:id', (req, res) => {
+  const event = db.prepare(`
+    SELECT e.*,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelada') AS active_registrations
+    FROM events e
+    WHERE e.id = ?
+  `).get(req.params.id);
+
+  if (!event) {
+    flash(req, 'error', 'Evento não encontrado.');
+    return res.redirect('/');
+  }
+
+  let registration = null;
+  if (req.session.user) {
+    registration = db.prepare(`
+      SELECT * FROM registrations
+      WHERE event_id = ? AND user_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(event.id, req.session.user.id);
+  }
+
+  res.render('event-detail', { title: event.title, event, registration });
+});
+
+app.post('/events/:id/register', requireLogin, (req, res) => {
+  if (req.session.user.role !== 'participant') {
+    flash(req, 'error', 'O organizador não pode se inscrever em eventos.');
+    return res.redirect(`/events/${req.params.id}`);
+  }
+
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+  if (!event || event.status !== 'ativo') {
+    flash(req, 'error', 'Este evento não está disponível para inscrição.');
+    return res.redirect('/');
+  }
+
+  const activeCount = db.prepare(`
+    SELECT COUNT(*) AS total FROM registrations
+    WHERE event_id = ? AND status != 'cancelada'
+  `).get(event.id).total;
+
+  if (event.capacity && activeCount >= event.capacity) {
+    flash(req, 'error', 'Este evento está sem vagas.');
+    return res.redirect(`/events/${event.id}`);
+  }
+
+  const existing = db.prepare(`
+    SELECT * FROM registrations
+    WHERE event_id = ? AND user_id = ? AND status != 'cancelada'
+  `).get(event.id, req.session.user.id);
+
+  if (existing) {
+    flash(req, 'error', 'Você já está inscrito neste evento.');
+    return res.redirect(`/events/${event.id}`);
+  }
+
+  db.prepare(`
+    INSERT INTO registrations (event_id, user_id, status, attendance_confirmed)
+    VALUES (?, ?, 'inscrita', 0)
+  `).run(event.id, req.session.user.id);
+
+  flash(req, 'success', 'Inscrição realizada com sucesso.');
+  res.redirect('/my-registrations');
+});
+
+app.get('/my-registrations', requireLogin, (req, res) => {
+  if (req.session.user.role !== 'participant') {
+    return res.redirect('/organizer');
+  }
+
+  const registrations = db.prepare(`
+    SELECT r.*, e.title, e.location, e.event_date, e.status AS event_status
+    FROM registrations r
+    JOIN events e ON e.id = r.event_id
+    WHERE r.user_id = ?
+    ORDER BY r.created_at DESC
+  `).all(req.session.user.id);
+
+  res.render('my-registrations', { title: 'Minhas inscrições', registrations });
+});
+
+app.post('/registrations/:id/cancel', requireLogin, (req, res) => {
+  const registration = db.prepare(`
+    SELECT * FROM registrations
+    WHERE id = ? AND user_id = ?
+  `).get(req.params.id, req.session.user.id);
+
+  if (!registration) {
+    flash(req, 'error', 'Inscrição não encontrada.');
+    return res.redirect('/my-registrations');
+  }
+
+  if (registration.status === 'cancelada') {
+    flash(req, 'error', 'Esta inscrição já está cancelada.');
+    return res.redirect('/my-registrations');
+  }
+
+  db.prepare(`
+    UPDATE registrations
+    SET status = 'cancelada', attendance_confirmed = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(registration.id);
+
+  flash(req, 'success', 'Inscrição cancelada.');
+  res.redirect('/my-registrations');
+});
+
+app.get('/organizer', requireOrganizer, (req, res) => {
+  const events = db.prepare(`
+    SELECT e.*,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id AND r.status != 'cancelada') AS active_registrations,
+      (SELECT COUNT(*) FROM registrations r WHERE r.event_id = e.id) AS total_registrations
+    FROM events e
+    ORDER BY e.event_date DESC
+  `).all();
+
+  res.render('organizer-dashboard', { title: 'Área do organizador', events });
+});
+
+app.get('/organizer/events/new', requireOrganizer, (req, res) => {
+  res.render('event-form', {
+    title: 'Criar evento',
+    event: null,
+    action: '/organizer/events/new'
+  });
+});
+
+app.post('/organizer/events/new', requireOrganizer, (req, res) => {
+  const title = normalizeText(req.body.title);
+  const description = normalizeText(req.body.description);
+  const location = normalizeText(req.body.location);
+  const eventDate = normalizeDate(req.body.event_date);
+  const capacity = Number(req.body.capacity || 0);
+
+  if (!title || !description || !location || !eventDate) {
+    flash(req, 'error', 'Preencha todos os campos obrigatórios.');
+    return res.redirect('/organizer/events/new');
+  }
+
+  db.prepare(`
+    INSERT INTO events (title, description, location, event_date, capacity, status, created_by)
+    VALUES (?, ?, ?, ?, ?, 'ativo', ?)
+  `).run(title, description, location, eventDate, capacity > 0 ? capacity : null, req.session.user.id);
+
+  flash(req, 'success', 'Evento criado com sucesso.');
+  res.redirect('/organizer');
+});
+
+app.get('/organizer/events/:id/edit', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+
+  if (!event) {
+    flash(req, 'error', 'Evento não encontrado.');
+    return res.redirect('/organizer');
+  }
+
+  res.render('event-form', {
+    title: 'Editar evento',
+    event,
+    action: `/organizer/events/${event.id}/edit`
+  });
+});
+
+app.post('/organizer/events/:id/edit', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+
+  if (!event) {
+    flash(req, 'error', 'Evento não encontrado.');
+    return res.redirect('/organizer');
+  }
+
+  const title = normalizeText(req.body.title);
+  const description = normalizeText(req.body.description);
+  const location = normalizeText(req.body.location);
+  const eventDate = normalizeDate(req.body.event_date);
+  const capacity = Number(req.body.capacity || 0);
+  const status = ['ativo', 'cancelado'].includes(req.body.status) ? req.body.status : 'ativo';
+
+  if (!title || !description || !location || !eventDate) {
+    flash(req, 'error', 'Preencha todos os campos obrigatórios.');
+    return res.redirect(`/organizer/events/${event.id}/edit`);
+  }
+
+  db.prepare(`
+    UPDATE events
+    SET title = ?, description = ?, location = ?, event_date = ?, capacity = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(title, description, location, eventDate, capacity > 0 ? capacity : null, status, event.id);
+
+  flash(req, 'success', 'Evento atualizado com sucesso.');
+  res.redirect('/organizer');
+});
+
+app.post('/organizer/events/:id/cancel', requireOrganizer, (req, res) => {
+  const event = db.prepare('SELECT * FROM events WHERE id = ?').get(req.params.id);
+
+  if (!event) {
+    flash(req, 'error', 'Evento não encontrado.');
+    return res.redirect('/organizer');
+  }
+
+  db.prepare(`
+    UPDATE events
+    SET status = 'cancelado', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(event.id);
+
+  flash(req, 'success', 'Evento cancelado.');
+  res.redirect('/organizer');
+});
+
+app.get('/organizer/registrations', requireOrganizer, (req, res) => {
+  const registrations = db.prepare(`
+    SELECT
+      r.*,
+      e.title AS event_title,
+      e.event_date,
+      e.status AS event_status,
+      u.name AS user_name,
+      u.email AS user_email
+    FROM registrations r
+    JOIN events e ON e.id = r.event_id
+    JOIN users u ON u.id = r.user_id
+    ORDER BY e.event_date DESC, r.created_at DESC
+  `).all();
+
+  res.render('organizer-registrations', { title: 'Todas as inscrições', registrations });
+});
+
+app.post('/organizer/registrations/:id/confirm', requireOrganizer, (req, res) => {
+  const registration = db.prepare('SELECT * FROM registrations WHERE id = ?').get(req.params.id);
+
+  if (!registration) {
+    flash(req, 'error', 'Inscrição não encontrada.');
+    return res.redirect('/organizer/registrations');
+  }
+
+  if (registration.status === 'cancelada') {
+    flash(req, 'error', 'Não é possível confirmar presença em inscrição cancelada.');
+    return res.redirect('/organizer/registrations');
+  }
+
+  db.prepare(`
+    UPDATE registrations
+    SET attendance_confirmed = 1, status = 'confirmada', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(registration.id);
+
+  flash(req, 'success', 'Presença confirmada.');
+  res.redirect('/organizer/registrations');
+});
+
+app.post('/organizer/registrations/:id/unconfirm', requireOrganizer, (req, res) => {
+  const registration = db.prepare('SELECT * FROM registrations WHERE id = ?').get(req.params.id);
+
+  if (!registration) {
+    flash(req, 'error', 'Inscrição não encontrada.');
+    return res.redirect('/organizer/registrations');
+  }
+
+  if (registration.status === 'cancelada') {
+    flash(req, 'error', 'Inscrição cancelada não pode ser alterada.');
+    return res.redirect('/organizer/registrations');
+  }
+
+  db.prepare(`
+    UPDATE registrations
+    SET attendance_confirmed = 0, status = 'inscrita', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(registration.id);
+
+  flash(req, 'success', 'Confirmação removida.');
+  res.redirect('/organizer/registrations');
+});
+
+app.use((req, res) => {
+  res.status(404).render('404', { title: 'Página não encontrada' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Portal rodando em http://localhost:${PORT}`);
+});
+
+=== src/db.js ===
+const fs = require('fs');
+const path = require('path');
+const Database = require('better-sqlite3');
+
+const dataDir = path.join(__dirname, '..', 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('participant', 'organizer')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    location TEXT NOT NULL,
+    event_date TEXT NOT NULL,
+    capacity INTEGER,
+    status TEXT NOT NULL DEFAULT 'ativo' CHECK(status IN ('ativo', 'cancelado')),
+    created_by INTEGER,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(created_by) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS registrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'inscrita' CHECK(status IN ('inscrita', 'confirmada', 'cancelada')),
+    attendance_confirmed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(event_id) REFERENCES events(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+`);
+
+module.exports = db;
+
+=== scripts/init-db.js ===
+const bcrypt = require('bcryptjs');
+const db = require('../src/db');
+
+const organizerEmail = 'organizador@eventos.local';
+const existingOrganizer = db.prepare('SELECT id FROM users WHERE email = ?').get(organizerEmail);
+
+if (!existingOrganizer) {
+  const passwordHash = bcrypt.hashSync('admin123', 12);
+  db.prepare(`
+    INSERT INTO users (name, email, password_hash, role)
+    VALUES (?, ?, ?, 'organizer')
+  `).run('Organizador', organizerEmail, passwordHash);
+
+  console.log('Conta do organizador criada:');
+  console.log('E-mail: organizador@eventos.local');
+  console.log('Senha: admin123');
+} else {
+  console.log('Conta do organizador já existe.');
+}
+
+const countEvents = db.prepare('SELECT COUNT(*) AS total FROM events').get().total;
+
+if (countEvents === 0) {
+  const organizer = db.prepare('SELECT id FROM users WHERE email = ?').get(organizerEmail);
+
+  db.prepare(`
+    INSERT INTO events (title, description, location, event_date, capacity, status, created_by)
+    VALUES (?, ?, ?, ?, ?, 'ativo', ?)
+  `).run(
+    'Encontro de Boas-vindas',
+    'Evento inicial para conhecer o portal, os participantes e a programação.',
+    'Auditório Principal',
+    '2026-01-15T19:00',
+    100,
+    organizer.id
+  );
+
+  db.prepare(`
+    INSERT INTO events (title, description, location, event_date, capacity, status, created_by)
+    VALUES (?, ?, ?, ?, ?, 'ativo', ?)
+  `).run(
+    'Oficina Prática',
+    'Oficina com atividades práticas e espaço para perguntas.',
+    'Sala 2',
+    '2026-02-10T14:00',
+    30,
+    organizer.id
+  );
+
+  console.log('Eventos de exemplo criados.');
+}
+
+console.log('Banco de dados pronto.');
+
+=== public/styles.css ===
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --text: #172033;
+  --muted: #667085;
+  --primary: #2854d8;
+  --primary-dark: #1f42aa;
+  --danger: #c83232;
+  --danger-dark: #982525;
+  --success: #177245;
+  --warning: #a15c00;
+  --border: #d9dfeb;
+  --shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.header {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.nav {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  font-weight: 800;
+  color: var(--text);
+  font-size: 20px;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nav-user {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 28px 18px 56px;
+}
+
+.hero {
+  background: linear-gradient(135deg, #2854d8, #673ab7);
+  color: white;
+  padding: 34px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 24px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 34px;
+}
+
+.hero p {
+  margin: 0;
+  opacity: 0.95;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  box-shadow: var(--shadow);
+  margin-bottom: 18px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.event-card h2,
+.event-card h3 {
+  margin-top: 0;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 6px 0;
+}
+
+.badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  background: #edf2ff;
+  color: var(--primary);
+}
+
+.badge.success {
+  background: #e8f7ef;
+  color: var(--success);
+}
+
+.badge.danger {
+  background: #ffecec;
+  color: var(--danger);
+}
+
+.badge.warning {
+  background: #fff4df;
+  color: var(--warning);
+}
+
+.btn,
+button {
+  display: inline-block;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--primary);
+  color: white;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.btn:hover,
+button:hover {
+  background: var(--primary-dark);
+  text-decoration: none;
+}
+
+.btn.secondary {
+  background: #eef2f8;
+  color: var(--text);
+}
+
+.btn.secondary:hover {
+  background: #dfe6f1;
+}
+
+.btn.danger,
+button.danger {
+  background: var(--danger);
+}
+
+.btn.danger:hover,
+button.danger:hover {
+  background: var(--danger-dark);
+}
+
+.inline-form {
+  display: inline;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.form {
+  max-width: 620px;
+}
+
+label {
+  display: block;
+  font-weight: 700;
+  margin: 14px 0 6px;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font-size: 16px;
+  font-family: inherit;
+  background: white;
+}
+
+textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.flash {
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-weight: 700;
+}
+
+.flash.success {
+  background: #e8f7ef;
+  color: var(--success);
+  border: 1px solid #bce8ce;
+}
+
+.flash.error {
+  background: #ffecec;
+  color: var(--danger);
+  border: 1px solid #ffcaca;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  padding: 12px;
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.empty {
+  text-align: center;
+  padding: 34px;
+  color: var(--muted);
+}
+
+.footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+  font-size: 14px;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hero h1 {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 640px) {
+  .nav {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nav-links {
+    justify-content: flex-start;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    padding: 24px;
+  }
+
+  .hero h1 {
+    font-size: 24px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions .btn,
+  .actions button {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+=== src/views/partials/header.ejs ===
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title ? title + ' - ' : '' %>Portal de Eventos</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="header">
+  <nav class="nav">
+    <a class="brand" href="/">Portal de Eventos</a>
+    <div class="nav-links">
+      <a href="/">Eventos</a>
+      <% if (user) { %>
+        <% if (user.role === 'organizer') { %>
+          <a href="/organizer">Organizador</a>
+          <a href="/organizer/registrations">Inscrições</a>
+        <% } else { %>
+          <a href="/my-registrations">Minhas inscrições</a>
+        <% } %>
+        <span class="nav-user"><%= user.name %></span>
+        <form class="inline-form" method="post" action="/logout">
+          <button class="secondary" type="submit">Sair</button>
+        </form>
+      <% } else { %>
+        <a href="/login">Entrar</a>
+        <a class="btn" href="/register">Criar conta</a>
+      <% } %>
+    </div>
+  </nav>
+</header>
+<main class="main">
+  <% if (flash) { %>
+    <div class="flash <%= flash.type %>"><%= flash.message %></div>
+  <% } %>
+
+=== src/views/partials/footer.ejs ===
+</main>
+<footer class="footer">
+  Portal de Eventos - dados salvos no banco do próprio site.
+</footer>
+</body>
+</html>
+
+=== src/views/home.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Eventos disponíveis</h1>
+  <p>Veja os próximos eventos e faça sua inscrição com sua conta.</p>
+</section>
+
+<% if (events.length === 0) { %>
+  <div class="card empty">
+    Nenhum evento disponível no momento.
+  </div>
+<% } else { %>
+  <div class="grid">
+    <% events.forEach(event => { %>
+      <article class="card event-card">
+        <div>
+          <h2><%= event.title %></h2>
+          <p class="meta">Data: <%= new Date(event.event_date).toLocaleString('pt-BR') %></p>
+          <p class="meta">Local: <%= event.location %></p>
+          <p><%= event.description.length > 130 ? event.description.slice(0, 130) + '...' : event.description %></p>
+          <p class="meta">
+            Inscritos: <%= event.active_registrations %>
+            <% if (event.capacity) { %>
+              / <%= event.capacity %>
+            <% } %>
+          </p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="/events/<%= event.id %>">Ver detalhes</a>
+        </div>
+      </article>
+    <% }) %>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>
+
+=== src/views/auth-register.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<div class="card form">
+  <h1>Criar conta de participante</h1>
+  <p class="meta">Com sua conta, suas inscrições ficam salvas e disponíveis em qualquer computador ou celular.</p>
+
+  <form method="post" action="/register">
+    <label for="name">Nome</label>
+    <input id="name" name="name" required autocomplete="name">
+
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" required autocomplete="email">
+
+    <label for="password">Senha</label>
+    <input id="password" name="password" type="password" required minlength="6" autocomplete="new-password">
+
+    <p></p>
+    <button type="submit">Criar conta</button>
+  </form>
+
+  <p>Já tem conta? <a href="/login">Entrar</a></p>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/auth-login.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<div class="card form">
+  <h1>Entrar</h1>
+
+  <form method="post" action="/login">
+    <label for="email">E-mail</label>
+    <input id="email" name="email" type="email" required autocomplete="email">
+
+    <label for="password">Senha</label>
+    <input id="password" name="password" type="password" required autocomplete="current-password">
+
+    <p></p>
+    <button type="submit">Entrar</button>
+  </form>
+
+  <p>Não tem conta? <a href="/register">Criar conta de participante</a></p>
+
+  <div class="card">
+    <strong>Organizador inicial:</strong>
+    <p class="meta">E-mail: organizador@eventos.local<br>Senha: admin123</p>
+  </div>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/event-detail.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<article class="card">
+  <h1><%= event.title %></h1>
+
+  <% if (event.status === 'cancelado') { %>
+    <p><span class="badge danger">Evento cancelado</span></p>
+  <% } else { %>
+    <p><span class="badge success">Evento ativo</span></p>
+  <% } %>
+
+  <p class="meta">Data: <%= new Date(event.event_date).toLocaleString('pt-BR') %></p>
+  <p class="meta">Local: <%= event.location %></p>
+  <p class="meta">
+    Inscritos: <%= event.active_registrations %>
+    <% if (event.capacity) { %>
+      / <%= event.capacity %>
+    <% } %>
+  </p>
+
+  <p><%= event.description %></p>
+
+  <div class="actions">
+    <% if (!user) { %>
+      <a class="btn" href="/login">Entrar para se inscrever</a>
+      <a class="btn secondary" href="/register">Criar conta</a>
+    <% } else if (user.role === 'participant') { %>
+      <% if (registration && registration.status !== 'cancelada') { %>
+        <span class="badge success">Você já está inscrito</span>
+        <a class="btn secondary" href="/my-registrations">Ver minhas inscrições</a>
+      <% } else if (event.status === 'ativo') { %>
+        <form method="post" action="/events/<%= event.id %>/register">
+          <button type="submit">Inscrever-se</button>
+        </form>
+      <% } %>
+    <% } else { %>
+      <a class="btn" href="/organizer/events/<%= event.id %>/edit">Editar evento</a>
+    <% } %>
+  </div>
+</article>
+
+<%- include('partials/footer') %>
+
+=== src/views/my-registrations.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Minhas inscrições</h1>
+  <p>Acompanhe suas inscrições e cancele quando precisar.</p>
+</section>
+
+<div class="card">
+  <% if (registrations.length === 0) { %>
+    <div class="empty">
+      Você ainda não fez nenhuma inscrição.
+      <p><a class="btn" href="/">Ver eventos</a></p>
+    </div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Evento</th>
+            <th>Data</th>
+            <th>Local</th>
+            <th>Situação</th>
+            <th>Presença</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% registrations.forEach(reg => { %>
+            <tr>
+              <td><%= reg.title %></td>
+              <td><%= new Date(reg.event_date).toLocaleString('pt-BR') %></td>
+              <td><%= reg.location %></td>
+              <td>
+                <% if (reg.status === 'cancelada') { %>
+                  <span class="badge danger">Cancelada</span>
+                <% } else if (reg.status === 'confirmada') { %>
+                  <span class="badge success">Confirmada</span>
+                <% } else { %>
+                  <span class="badge">Inscrita</span>
+                <% } %>
+                <% if (reg.event_status === 'cancelado') { %>
+                  <br><span class="badge danger">Evento cancelado</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.attendance_confirmed) { %>
+                  <span class="badge success">Presença confirmada</span>
+                <% } else { %>
+                  <span class="badge warning">Pendente</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.status !== 'cancelada') { %>
+                  <form method="post" action="/registrations/<%= reg.id %>/cancel" onsubmit="return confirm('Cancelar esta inscrição?')">
+                    <button class="danger" type="submit">Cancelar</button>
+                  </form>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/organizer-dashboard.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Área do organizador</h1>
+  <p>Crie, edite e cancele eventos.</p>
+</section>
+
+<div class="card actions">
+  <a class="btn" href="/organizer/events/new">Criar novo evento</a>
+  <a class="btn secondary" href="/organizer/registrations">Ver todas as inscrições</a>
+</div>
+
+<div class="card">
+  <h2>Eventos</h2>
+
+  <% if (events.length === 0) { %>
+    <div class="empty">Nenhum evento criado.</div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Evento</th>
+            <th>Data</th>
+            <th>Local</th>
+            <th>Status</th>
+            <th>Inscrições</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% events.forEach(event => { %>
+            <tr>
+              <td><%= event.title %></td>
+              <td><%= new Date(event.event_date).toLocaleString('pt-BR') %></td>
+              <td><%= event.location %></td>
+              <td>
+                <% if (event.status === 'ativo') { %>
+                  <span class="badge success">Ativo</span>
+                <% } else { %>
+                  <span class="badge danger">Cancelado</span>
+                <% } %>
+              </td>
+              <td>
+                <%= event.active_registrations %>
+                <% if (event.capacity) { %>
+                  / <%= event.capacity %>
+                <% } %>
+                <br>
+                <span class="meta">Total histórico: <%= event.total_registrations %></span>
+              </td>
+              <td>
+                <div class="actions">
+                  <a class="btn secondary" href="/events/<%= event.id %>">Ver</a>
+                  <a class="btn" href="/organizer/events/<%= event.id %>/edit">Editar</a>
+                  <% if (event.status !== 'cancelado') { %>
+                    <form method="post" action="/organizer/events/<%= event.id %>/cancel" onsubmit="return confirm('Cancelar este evento?')">
+                      <button class="danger" type="submit">Cancelar</button>
+                    </form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/event-form.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<div class="card form">
+  <h1><%= title %></h1>
+
+  <form method="post" action="<%= action %>">
+    <label for="title">Nome do evento</label>
+    <input id="title" name="title" required value="<%= event ? event.title : '' %>">
+
+    <label for="description">Descrição</label>
+    <textarea id="description" name="description" required><%= event ? event.description : '' %></textarea>
+
+    <label for="location">Local</label>
+    <input id="location" name="location" required value="<%= event ? event.location : '' %>">
+
+    <label for="event_date">Data e hora</label>
+    <input id="event_date" name="event_date" type="datetime-local" required value="<%= event ? event.event_date : '' %>">
+
+    <label for="capacity">Quantidade de vagas</label>
+    <input id="capacity" name="capacity" type="number" min="0" placeholder="Deixe 0 ou vazio para ilimitado" value="<%= event && event.capacity ? event.capacity : '' %>">
+
+    <% if (event) { %>
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="ativo" <%= event.status === 'ativo' ? 'selected' : '' %>>Ativo</option>
+        <option value="cancelado" <%= event.status === 'cancelado' ? 'selected' : '' %>>Cancelado</option>
+      </select>
+    <% } %>
+
+    <p></p>
+    <div class="actions">
+      <button type="submit">Salvar</button>
+      <a class="btn secondary" href="/organizer">Voltar</a>
+    </div>
+  </form>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/organizer-registrations.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<section class="hero">
+  <h1>Todas as inscrições</h1>
+  <p>Veja participantes inscritos e confirme presença.</p>
+</section>
+
+<div class="card">
+  <% if (registrations.length === 0) { %>
+    <div class="empty">Ainda não há inscrições.</div>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Participante</th>
+            <th>Evento</th>
+            <th>Data</th>
+            <th>Status</th>
+            <th>Presença</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% registrations.forEach(reg => { %>
+            <tr>
+              <td>
+                <strong><%= reg.user_name %></strong><br>
+                <span class="meta"><%= reg.user_email %></span>
+              </td>
+              <td>
+                <%= reg.event_title %>
+                <% if (reg.event_status === 'cancelado') { %>
+                  <br><span class="badge danger">Evento cancelado</span>
+                <% } %>
+              </td>
+              <td><%= new Date(reg.event_date).toLocaleString('pt-BR') %></td>
+              <td>
+                <% if (reg.status === 'cancelada') { %>
+                  <span class="badge danger">Cancelada</span>
+                <% } else if (reg.status === 'confirmada') { %>
+                  <span class="badge success">Confirmada</span>
+                <% } else { %>
+                  <span class="badge">Inscrita</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.attendance_confirmed) { %>
+                  <span class="badge success">Presença confirmada</span>
+                <% } else { %>
+                  <span class="badge warning">Pendente</span>
+                <% } %>
+              </td>
+              <td>
+                <% if (reg.status !== 'cancelada') { %>
+                  <% if (reg.attendance_confirmed) { %>
+                    <form method="post" action="/organizer/registrations/<%= reg.id %>/unconfirm">
+                      <button class="secondary" type="submit">Remover confirmação</button>
+                    </form>
+                  <% } else { %>
+                    <form method="post" action="/organizer/registrations/<%= reg.id %>/confirm">
+                      <button type="submit">Confirmar presença</button>
+                    </form>
+                  <% } %>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<%- include('partials/footer') %>
+
+=== src/views/404.ejs ===
+<%- include('partials/header', { title, user, flash }) %>
+
+<div class="card empty">
+  <h1>Página não encontrada</h1>
+  <p>O endereço acessado não existe.</p>
+  <a class="btn" href="/">Voltar para eventos</a>
+</div>
+
+<%- include('partials/footer') %>

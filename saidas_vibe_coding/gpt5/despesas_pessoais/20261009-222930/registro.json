@@ -1,0 +1,50 @@
+{
+  "data_hora_utc": "2026-10-09T22:29:30+00:00",
+  "modelo": "gpt5",
+  "modelo_id": "openai/gpt-5.5",
+  "dominio": "despesas_pessoais",
+  "rodada": 0,
+  "gratuito": false,
+  "parametros": {
+    "max_tokens": 32000,
+    "reasoning": {
+      "enabled": false
+    }
+  },
+  "pasta": "saidas\\gpt5\\despesas_pessoais\\20261009-222930",
+  "prompt_sistema": "Responda apenas com os arquivos do projeto completo. Antes do conteúdo de cada arquivo, escreva uma linha no formato === caminho/do/arquivo ===. Inclua um arquivo README.md com os comandos para instalar e executar o projeto. Não escreva explicações fora dos arquivos.",
+  "prompt_usuario": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "prompt_versao": "v2",
+  "provedor": "OpenAI",
+  "id_geracao": "gen-1791584971-74dfT7I41WBK2znetWX6",
+  "modelo_servido": "openai/gpt-5.5",
+  "tokens_entrada": 276,
+  "tokens_saida": 9634,
+  "tokens_raciocinio": 0,
+  "tokens_total": 9910,
+  "custo_usd": 0.2904,
+  "motivo_termino": "stop",
+  "tentativas_api": 1,
+  "duracao_s": 70.0,
+  "duracao_api_s": 70.0,
+  "tokens_por_s": 137.6,
+  "n_arquivos": 11,
+  "arquivos": [
+    "README.md",
+    "package.json",
+    "database.js",
+    "server.js",
+    "public/styles.css",
+    "public/app.js",
+    "public/login.html",
+    "public/register.html",
+    "public/dashboard.html",
+    "public/admin.html",
+    "public/index.html"
+  ],
+  "caminhos_recusados": [],
+  "tem_readme": true,
+  "cercas_removidas": 0,
+  "estado": "gerada",
+  "erro": ""
+}

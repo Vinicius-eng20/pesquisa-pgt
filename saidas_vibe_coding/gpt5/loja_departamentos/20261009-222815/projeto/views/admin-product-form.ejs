@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= product ? 'Editar produto' : 'Novo produto' %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="container small">
+    <section class="card">
+      <h1><%= product ? 'Editar produto' : 'Novo produto' %></h1>
+
+      <% if (error) { %>
+        <div class="alert"><%= error %></div>
+      <% } %>
+
+      <form action="<%= action %>" method="post" class="form">
+        <label>
+          Nome
+          <input type="text" name="name" value="<%= product ? product.name : '' %>" required>
+        </label>
+
+        <label>
+          Descrição
+          <textarea name="description" rows="4"><%= product ? product.description : '' %></textarea>
+        </label>
+
+        <label>
+          Categoria
+          <input type="text" name="category" value="<%= product ? product.category : '' %>" placeholder="Ex: Eletrônicos">
+        </label>
+
+        <label>
+          Preço
+          <input type="number" name="price" min="0" step="0.01" value="<%= product ? product.price : 0 %>" required>
+        </label>
+
+        <label>
+          Estoque
+          <input type="number" name="stock" min="0" step="1" value="<%= product ? product.stock : 0 %>" required>
+        </label>
+
+        <label>
+          URL da imagem
+          <input type="url" name="image_url" value="<%= product ? product.image_url : '' %>" placeholder="https://...">
+        </label>
+
+        <% if (product) { %>
+          <label class="check">
+            <input type="checkbox" name="active" value="1" <%= product.active ? 'checked' : '' %>>
+            Produto ativo na loja
+          </label>
+        <% } %>
+
+        <button type="submit">Salvar</button>
+      </form>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

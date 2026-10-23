@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Administrador</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    header { background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(10px); }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header h1 span { color: #f59e0b; }
+    .btn-sm { padding: 8px 16px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #e2e8f0; border-radius: 8px; cursor: pointer; font-size: 13px; transition: 0.2s; }
+    .btn-sm:hover { background: rgba(255,255,255,0.1); }
+    .btn-sm.logout { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    main { max-width: 1000px; margin: 0 auto; padding: 24px 16px; }
+    .resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 18px; }
+    .card .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .card .valor { font-size: 24px; font-weight: 700; }
+    .card .valor.azul { color: #60a5fa; }
+    .card .valor.amarelo { color: #fbbf24; }
+    .card .valor.verde { color: #4ade80; }
+    .card .valor.vermelho { color: #f87171; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    .tab { padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 500; border-bottom: 2px solid transparent; color: #94a3b8; transition: 0.2s; }
+    .tab.ativo { color: #f59e0b; border-bottom-color: #f59e0b; }
+    .tab-conteudo { display: none; }
+    .tab-conteudo.ativo { display: block; }
+    .tabela-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: rgba(255,255,255,0.03); padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    td { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    tr:last-child td { border-bottom: none; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .badge.ativo { background: rgba(74,222,128,0.15); color: #4ade80; }
+    .badge.inativo { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .badge-cor { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+    .btn-acao { padding: 5px 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 6px; transition: 0.2s; }
+    .btn-acao:hover { background: rgba(255,255,255,0.1); }
+    .btn-acao.pesado { border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+    .btn-acao.pesado:hover { background: rgba(239,68,68,0.15); }
+    .form-inline { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: end; }
+    .form-inline .campo { flex: 1; min-width: 140px; }
+    .form-inline label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    .form-inline input, .form-inline select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.2); color: #fff; font-size: 14px; outline: none; }
+    .form-inline input:focus, .form-inline select:focus { border-color: #f59e0b; }
+    .btn-add { padding: 10px 20px; border: none; border-radius: 8px; background: #f59e0b; color: #1c1006; font-weight: 600; font-size: 14px; cursor: pointer; height: 42px; }
+    .btn-add:hover { background: #d97706; }
+    .vazio { text-align: center; padding: 30px; color: #64748b; }
+    .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 10px; font-size: 14px; z-index: 200; display: none; }
+    .toast.ok { background: #065f46; color: #a7f3d0; border: 1px solid rgba(74,222,128,0.3); display: block; }
+    .toast.erro { background: #7f1d1d; color: #fecaca; border: 1px solid rgba(239,68,68,0.3); display: block; }
+    .secao-titulo { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
+    .input-cor { width: 50px !important; height: 42px; padding: 4px !important; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙️ Painel <span>Administrador</span></h1>
+    <button class="btn-sm logout" id="btn-sair">Sair</button>
+  </header>
+
+  <main>
+    <div class="resumo-grid" id="resumo-admin"></div>
+
+    <div class="tabs">
+      <div class="tab ativo" data-tab="usuarios">Usuários</div>
+      <div class="tab" data-tab="categorias">Categorias</div>
+      <div class="tab" data-tab="despesas">Gastos (todos)</div>
+    </div>
+
+    <!-- USUÁRIOS -->
+    <div class="tab-conteudo ativo" id="tab-usuarios">
+      <div class="secao-titulo">➕ Cadastrar novo usuário</div>
+      <div class="form-inline">
+        <div class="campo"><label>Nome</label><input type="text" id="nu-nome" placeholder="Nome do usuário" /></div>
+        <div class="campo"><label>Usuário (login)</label><input type="text" id="nu-usuario" placeholder="usuario" /></div>
+        <div class="campo"><label>Senha inicial</label><input type="password" id="nu-senha" placeholder="senha" /></div>
+        <button class="btn-add" id="btn-add-usuario">Cadastrar</button>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Nome</th><th>Usuário</th><th>Status</th><th style="text-align:right">Total gasto</th><th>Ações</th></tr></thead>
+          <tbody id="tbody-usuarios"></tbody>
+        </table>
+        <div class="vazio" id="vazio-usuarios" style="display:none">Nenhum usuário cadastrado.</div>
+      </div>
+    </div>
+
+    <!-- CATEGORIAS -->
+    <div class="tab-conteudo" id="tab-categorias">
+      <div class="secao-titulo">➕ Nova categoria</div>
+      <div class="form-inline">
+        <div class="campo"><label>Nome</label><input type="text" id="nc-nome" placeholder="Ex: Pets" /></div>
+        <div class="campo" style="max-width:100px"><label>Cor</label><input type="color" id="nc-cor" class="input-cor" value="#64748b" /></div>
+        <button class="btn-add" id="btn-add-cat">Adicionar</button>
+      </div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Categoria</th><th>Status</th><th>Ações</th></tr></thead>
+          <tbody id="tbody-cats"></tbody>
+        </table>
+        <div class="vazio" id="vazio-cats" style="display:none">Nenhuma categoria.</div>
+      </div>
+    </div>
+
+    <!-- DESPESAS TODOS -->
+    <div class="tab-conteudo" id="tab-despesas">
+      <div class="secao-titulo">📋 Todos os gastos de todos os usuários</div>
+      <div class="tabela-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Usuário</th><th>Descrição</th><th>Categoria</th><th style="text-align:right">Valor</th><th></th></tr></thead>
+          <tbody id="tbody-despesas"></tbody>
+        </table>
+        <div class="vazio" id="vazio-despesas" style="display:none">Nenhum gasto registrado.</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let categorias = [];
+    let usuarios = [];
+    let despesas = [];
+    const BRL = (v) => "R$ " + (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    function toast(msg, tipo) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.className = "toast " + tipo;
+      setTimeout(() => { el.className = "toast"; }, 2500);
+    }
+
+    function carregarTudo() {
+      Promise.all([
+        fetch("/api/admin/resumo").then(r => r.json()),
+        fetch("/api/categorias").then(r => r.json()),
+        fetch("/api/admin/despesas-todas").then(r => r.json())
+      ]).then(([resumo, cats, desp]) => {
+        usuarios = resumo.usuarios;
+        categorias = cats.categorias;
+        despesas = desp.despesas;
+        renderResumo(resumo);
+        renderUsuarios();
+        renderCats();
+        renderDespesas();
+      });
+    }
+
+    function renderResumo(r) {
+      document.getElementById("resumo-admin").innerHTML = `
+        <div class="card"><div class="label">Total geral (todos)</div><div class="valor vermelho">${BRL(r.totalGeral)}</div></div>
+        <div class="card"><div class="label">Gasto no mês</div><div class="valor amarelo">${BRL(r.totalMesAtual)}</div></div>
+        <div class="card"><div class="label">Usuários</div><div class="valor azul">${r.qtdUsuarios}</div></div>
+        <div class="card"><div class="label">Gastos registrados</div><div class="valor verde">${r.qtdDespesas}</div></div>
+      `;
+    }
+
+    function renderUsuarios() {
+      const tbody = document.getElementById("tbody-usuarios");
+      const vazio = document.getElementById("vazio-usuarios");
+      if (usuarios.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = usuarios.map(u => `
+        <tr>
+          <td><strong>${u.nome}</strong></td>
+          <td>${u.usuario}</td>
+          <td><span class="badge ${u.ativo ? 'ativo' : 'inativo'}">${u.ativo ? 'Ativo' : 'Desativado'}</span></td>
+          <td style="text-align:right;font-weight:600">${BRL(u.total)}</td>
+          <td>
+            <button class="btn-acao" data-toggle="${u.id}">${u.ativo ? 'Desativar' : 'Reativar'}</button>
+            <button class="btn-acao pesado" data-del="${u.id}">Excluir</button>
+          </td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-toggle]").forEach(b => b.onclick = async () => {
+        const r = await fetch("/api/admin/usuarios/" + b.dataset.toggle + "/toggle", { method: "POST" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast(d.ativo ? "Usuário reativado." : "Usuário desativado.", "ok");
+        carregarTudo();
+      });
+      tbody.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+        if (!confirm("Excluir este usuário e todos os seus gastos?")) return;
+        const r = await fetch("/api/admin/usuarios/" + b.dataset.del, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Usuário excluído.", "ok");
+        carregarTudo();
+      });
+    }
+
+    function renderCats() {
+      const tbody = document.getElementById("tbody-cats");
+      const vazio = document.getElementById("vazio-cats");
+      if (categorias.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = categorias.map(c => `
+        <tr>
+          <td><span class="badge-cor" style="background:${c.cor}"></span>${c.nome}</td>
+          <td><span class="badge ${c.ativa ? 'ativo' : 'inativo'}">${c.ativa ? 'Ativa' : 'Desativada'}</span></td>
+          <td>
+            <button class="btn-acao" data-toggle-cat="${c.id}">${c.ativa ? 'Desativar' : 'Reativar'}</button>
+            <button class="btn-acao pesado" data-del-cat="${c.id}">Excluir</button>
+          </td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-toggle-cat]").forEach(b => b.onclick = async () => {
+        const r = await fetch("/api/admin/categorias/" + b.dataset.toggleCat + "/toggle", { method: "POST" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast(d.ativa ? "Categoria reativada." : "Categoria desativada.", "ok");
+        carregarTudo();
+      });
+      tbody.querySelectorAll("[data-del-cat]").forEach(b => b.onclick = async () => {
+        if (!confirm("Excluir esta categoria? Os gastos já lançados nela ficarão 'Sem categoria'.")) return;
+        const r = await fetch("/api/admin/categorias/" + b.dataset.delCat, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Categoria excluída.", "ok");
+        carregarTudo();
+      });
+    }
+
+    function renderDespesas() {
+      const tbody = document.getElementById("tbody-despesas");
+      const vazio = document.getElementById("vazio-despesas");
+      if (despesas.length === 0) { tbody.innerHTML = ""; vazio.style.display = ""; return; }
+      vazio.style.display = "none";
+      tbody.innerHTML = despesas.map(d => `
+        <tr>
+          <td>${d.dataBR}</td>
+          <td>${d.usuario}</td>
+          <td>${d.descricao.replace(/</g, "&lt;")}</td>
+          <td>${d.categoria}</td>
+          <td style="text-align:right;font-weight:600">${BRL(d.valor)}</td>
+          <td><button class="btn-acao pesado" data-del-desp="${d.id}">🗑️</button></td>
+        </tr>
+      `).join("");
+      tbody.querySelectorAll("[data-del-desp]").forEach(b => b.onclick = async () => {
+        if (!confirm("Apagar este gasto?")) return;
+        const r = await fetch("/api/admin/despesas/" + b.dataset.delDesp, { method: "DELETE" });
+        const d = await r.json();
+        if (d.erro) return toast(d.erro, "erro");
+        toast("Gasto apagado.", "ok");
+        carregarTudo();
+      });
+    }
+
+    document.getElementById("btn-add-usuario").onclick = async () => {
+      const nome = document.getElementById("nu-nome").value.trim();
+      const usuario = document.getElementById("nu-usuario").value.trim();
+      const senha = document.getElementById("nu-senha").value;
+      if (!usuario || !senha) return toast("Preencha usuário e senha.", "erro");
+      const r = await fetch("/api/admin/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, usuario, senha })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Usuário cadastrado! ✅", "ok");
+      document.getElementById("nu-nome").value = "";
+      document.getElementById("nu-usuario").value = "";
+      document.getElementById("nu-senha").value = "";
+      carregarTudo();
+    };
+
+    document.getElementById("btn-add-cat").onclick = async () => {
+      const nome = document.getElementById("nc-nome").value.trim();
+      const cor = document.getElementById("nc-cor").value;
+      if (!nome) return toast("Dê um nome.", "erro");
+      const r = await fetch("/api/admin/categorias", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, cor })
+      });
+      const d = await r.json();
+      if (d.erro) return toast(d.erro, "erro");
+      toast("Categoria adicionada! ✅", "ok");
+      document.getElementById("nc-nome").value = "";
+      carregarTudo();
+    };
+
+    document.getElementById("btn-sair").onclick = async () => {
+      await fetch("/api/logout", { method: "POST" });
+      window.location.href = "/";
+    };
+
+    document.querySelectorAll(".tab").forEach(t => {
+      t.onclick = () => {
+        document.querySelectorAll(".tab").forEach(x => x.classList.remove("ativo"));
+        document.querySelectorAll(".tab-conteudo").forEach(x => x.classList.remove("ativo"));
+        t.classList.add("ativo");
+        document.getElementById("tab-" + t.dataset.tab).classList.add("ativo");
+      };
+    });
+
+    carregarTudo();
+  </script>
+</body>
+</html>

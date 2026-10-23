@@ -1,0 +1,21 @@
+<%- include('partials/header') %>
+
+<div class="form-page">
+  <form class="form-card wide" action="/services/new" method="POST">
+    <h1>Publicar serviço</h1>
+    <p class="muted">Seu serviço ficará pendente até ser aprovado pelo administrador.</p>
+
+    <label>Título do serviço</label>
+    <input type="text" name="title" required>
+
+    <label>Descrição</label>
+    <textarea name="description" rows="7" required></textarea>
+
+    <label>Preço em reais</label>
+    <input type="number" name="price" min="0" step="0.01" required>
+
+    <button class="button full" type="submit">Publicar</button>
+  </form>
+</div>
+
+<%- include('partials/footer') %>
