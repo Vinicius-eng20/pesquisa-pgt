@@ -1,0 +1,116 @@
+[
+  {
+    "hora_utc": "2026-10-19T19:07:12+00:00",
+    "tipo": "ferramentas",
+    "nomes": [
+      "ask_question",
+      "create_app_from_prompt",
+      "get_publish_status",
+      "list_app_files",
+      "list_apps",
+      "publish_app",
+      "read_app_file",
+      "resolve_app_by_name",
+      "search_apps",
+      "update_app_using_prompt"
+    ],
+    "esquema_create": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "userSpecifiedAppName": {
+          "description": "App name provided directly by the user, if any. Leave this null when the user did not specify a name in their own words.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "appDescription": {
+          "type": "string",
+          "description": "Describe the user's Replit App's intended functionality in natural language with enough detail for Replit Agent to understand what their Replit App should do, without restating every part of the conversation. Use natural language only—Replit Agent will handle implementation."
+        },
+        "userQuotes": {
+          "description": "Important details from the user's messages not fully captured in appDescription—copy their exact words, do not paraphrase. Use quotation marks: \"exact quote\". Leave null if appDescription covers everything.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attachmentSummary": {
+          "description": "If attachments are provided, summarize only the essential details needed to understand the request, kept to a few lines. Leave null if no attachments.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "app_stack": {
+          "type": "string",
+          "enum": [
+            "react_website",
+            "mobile_app",
+            "design",
+            "slides",
+            "animation",
+            "data_visualization",
+            "3d_game",
+            "document",
+            "spreadsheet"
+          ],
+          "description": "The type of project to create. Use \"react_website\" for websites, web apps, dashboards, interactive demos, and any web-based experience (this is the default). Use \"mobile_app\" only when the user explicitly wants a native mobile app. Use \"design\" for UI/UX design prototypes. Use \"slides\" for slide decks and presentations. Use \"animation\" for motion graphics and animated videos. Use \"data_visualization\" for charts, graphs, and data dashboards. Use \"3d_game\" for 3D games. Use \"document\" for written documents and reports. Use \"spreadsheet\" for spreadsheet-based projects."
+        },
+        "sourceReplId": {
+          "description": "ID of one of the user's existing Replit Apps to remix. When set, the new Replit App starts as a private copy of that app instead of a blank project: the source app's secret values are copied if the user can edit its secrets, and its database contents are copied if the user can view them, but connected integrations are never copied and must be reconnected in the new app. This is an app ID (a UUID), not a URL; deployed or custom-domain URLs cannot be converted into an app ID, so use search_apps to find the app first. Omit to start from a blank project.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "appDescription",
+        "app_stack"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "hora_utc": "2026-10-19T19:07:15+00:00",
+    "tipo": "mcp",
+    "ferramenta": "create_app_from_prompt",
+    "argumentos": {
+      "appDescription": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+      "app_stack": "react_website",
+      "userQuotes": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site."
+    },
+    "erro": false,
+    "duracao_s": 2.9,
+    "resultado": {
+      "replId": "5f35a5dc-024a-4912-a2a0-a3ec59461d3e",
+      "turnId": "5f35a5dc-024a-4912-a2a0-a3ec59461d3e/01a1558f-8e26-730b-85b2-79a2999c0f72/01a1558f-8ec5-70b9-9290-2fedd32d0d9d",
+      "phase": "creating",
+      "replUrl": "https://replit.com/@vinisilva5416/DisastrousMonthlyNetworks",
+      "user": {
+        "id": 66952585,
+        "username": "vinisilva5416"
+      }
+    }
+  }
+]

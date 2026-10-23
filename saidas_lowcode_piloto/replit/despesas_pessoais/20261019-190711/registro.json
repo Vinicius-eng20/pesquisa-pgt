@@ -1,0 +1,19 @@
+{
+  "data_hora_utc": "2026-10-19T19:07:11+00:00",
+  "plataforma": "replit",
+  "dominio": "despesas_pessoais",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "pasta": "saidas_lowcode_piloto\\replit\\despesas_pessoais\\20261019-190711",
+  "interacoes": [],
+  "intervencoes_manuais": [],
+  "parametros": {
+    "app_stack": "react_website",
+    "userQuotes": true
+  },
+  "id_externo": "5f35a5dc-024a-4912-a2a0-a3ec59461d3e",
+  "url_editor": "https://replit.com/@vinisilva5416/DisastrousMonthlyNetworks",
+  "estado": "aguardando_codigo",
+  "erro": "",
+  "duracao_s": 4.6
+}

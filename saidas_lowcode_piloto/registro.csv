@@ -1,0 +1,4 @@
+data_hora_utc,plataforma,dominio,prompt_versao,modelo,id_externo,url_editor,estado,duracao_s,n_interacoes,intervencoes_manuais,banco,creditos_antes,creditos_depois,creditos_usados,tokens_entrada,tokens_saida,n_arquivos,tem_backend,tem_migrations,usa_localstorage,pasta,erro
+2026-10-19T18:58:28+00:00,lovable,loja_departamentos,v2,,,,erro,2.4,0,0,,,,,,,,,,,saidas_lowcode_piloto\lovable\loja_departamentos\20261019-185828,ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+2026-10-19T18:59:29+00:00,v0,despesas_pessoais,v2,v0-mini,o1z4ytAO7od,,gerada,331.6,5,3,"Neon, Neon, Neon",,,0.65955,102,7021,22,False,False,False,saidas_lowcode_piloto\v0\despesas_pessoais\20261019-185929,
+2026-10-19T19:07:11+00:00,replit,despesas_pessoais,v2,,5f35a5dc-024a-4912-a2a0-a3ec59461d3e,https://replit.com/@vinisilva5416/DisastrousMonthlyNetworks,aguardando_codigo,4.6,0,0,,,,,,,,,,,saidas_lowcode_piloto\replit\despesas_pessoais\20261019-190711,

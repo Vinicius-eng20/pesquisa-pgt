@@ -1,0 +1,425 @@
+[
+  {
+    "nome": "ask_question",
+    "descricao": "Ask the Replit Agent a question in natural language about the user's Replit App's codebase or behavior without modifying it. Use this when the user wants explanation, debugging help, or inspection (for example, understanding how routing works, why a request is failing, or where a bug might be), and NOT when they are clearly asking you to change how their Replit App behaves — in that case, prefer update_app_using_prompt. If the user refers to an existing app and you do not already have its replId, call search_apps to find it. Do not guess a replId. The question should be written in the user's language and tone, as if you were the user, and it will be visible if they open their Replit App in Replit. The response you get back is natural language from the Replit Agent; summarize or quote it for the user as appropriate, still without showing raw code, file paths, or terminal commands in this chat. From the user's perspective, combined with create_app_from_prompt, search_apps, and update_app_using_prompt, this tool is what lets them simply chat (\"create or find → inspect/ask → update → repeat\") without needing to know about the underlying tools.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App being queried. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps (for an existing app)."
+        },
+        "question": {
+          "type": "string",
+          "description": "The question to send to Replit Agent. This question will be visible by the user if they open their Replit App in Replit, so try to keep it in the same language that the user communicated in with you."
+        },
+        "policy": {
+          "description": "Ignored. Don't waste tokens sending this."
+        }
+      },
+      "required": [
+        "replId",
+        "question"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "create_app_from_prompt",
+    "descricao": "Create a brand-new Replit App for the user. Use this the first time the user asks you to build a Replit App in this chat, including when they want the new app to start as a copy of one of their existing apps (pass sourceReplId); do not use it to modify or open existing Replit Apps the user already has in Replit. After invoking this tool, reply with one short sentence summarizing that Replit is now creating their Replit App, and, when the tool result contains an app URL, end your reply with that exact URL on its own line, so the user can open their Replit App even if no preview card is rendered. Never construct or guess a URL yourself. Your reply must not include source code, markup, configuration files, file paths, or command/terminal snippets—even if the user asks. Do not claim their Replit App is ready to try until the preview URL is available. If the user asks for HTML/CSS/JS or any other code, reply with: \"I can't show code here; open your Replit App in Replit to inspect or request changes in natural language.\" Treat Replit Agent and the Replit UI as the only systems that write or display code; in this chat you only describe behavior, status, and next steps in natural language. When the user wants their Replit App live, you can publish it (or republish its latest changes) with publish_app. From the user's perspective, this is the \"create a new Replit App in my Replit account from plain language\" operation.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "userSpecifiedAppName": {
+          "description": "App name provided directly by the user, if any. Leave this null when the user did not specify a name in their own words.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "appDescription": {
+          "type": "string",
+          "description": "Describe the user's Replit App's intended functionality in natural language with enough detail for Replit Agent to understand what their Replit App should do, without restating every part of the conversation. Use natural language only—Replit Agent will handle implementation."
+        },
+        "userQuotes": {
+          "description": "Important details from the user's messages not fully captured in appDescription—copy their exact words, do not paraphrase. Use quotation marks: \"exact quote\". Leave null if appDescription covers everything.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attachmentSummary": {
+          "description": "If attachments are provided, summarize only the essential details needed to understand the request, kept to a few lines. Leave null if no attachments.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "app_stack": {
+          "type": "string",
+          "enum": [
+            "react_website",
+            "mobile_app",
+            "design",
+            "slides",
+            "animation",
+            "data_visualization",
+            "3d_game",
+            "document",
+            "spreadsheet"
+          ],
+          "description": "The type of project to create. Use \"react_website\" for websites, web apps, dashboards, interactive demos, and any web-based experience (this is the default). Use \"mobile_app\" only when the user explicitly wants a native mobile app. Use \"design\" for UI/UX design prototypes. Use \"slides\" for slide decks and presentations. Use \"animation\" for motion graphics and animated videos. Use \"data_visualization\" for charts, graphs, and data dashboards. Use \"3d_game\" for 3D games. Use \"document\" for written documents and reports. Use \"spreadsheet\" for spreadsheet-based projects."
+        },
+        "sourceReplId": {
+          "description": "ID of one of the user's existing Replit Apps to remix. When set, the new Replit App starts as a private copy of that app instead of a blank project: the source app's secret values are copied if the user can edit its secrets, and its database contents are copied if the user can view them, but connected integrations are never copied and must be reconnected in the new app. This is an app ID (a UUID), not a URL; deployed or custom-domain URLs cannot be converted into an app ID, so use search_apps to find the app first. Omit to start from a blank project.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "appDescription",
+        "app_stack"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "publish_app",
+    "descricao": "Publish the user's Replit App so its latest changes go live at its public URL. If the app has been published before, this republishes it, reusing the existing deployment's settings. If it has never been published, this publishes it with default settings: Autoscale hosting, private visibility when the app belongs to a workspace (organization), public visibility otherwise. Some apps cannot be published from chat the first time; when that applies, this tool returns an error explaining what the user should do on the Replit website instead. Use it when the user asks to publish, deploy, redeploy, ship, or otherwise put their latest changes live; do not use it to change how the app behaves (use update_app_using_prompt for that). This tool returns as soon as the publish is scheduled, but publishing takes a few minutes and some failures only surface while it runs. After starting one, if you are able to wait and poll, call get_publish_status every 30 seconds until the status settles; otherwise tell the user the publish has started and that they should check back later.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App to publish. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps / resolve_app_by_name (for an existing app). Do not guess a replId."
+        }
+      },
+      "required": [
+        "replId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "get_publish_status",
+    "descricao": "Check the publish status of the user's Replit App: whether it has ever been published, the current status of its most recent publish, and the public URL it serves. found=false means the app has never been published; call publish_app to publish it for the first time. When found, 'success' means it is live at the returned url, 'failed' means the last publish did not go through, 'suspended' means the published app is paused and not serving, and anything else means a publish or lifecycle operation is still in progress. Use this to poll every 30 seconds after calling publish_app, or whenever the user asks whether their app is published or what its live URL is. Takes the same replId as publish_app.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App to check, the same one publish_app takes. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps / resolve_app_by_name (for an existing app). Do not guess a replId."
+        }
+      },
+      "required": [
+        "replId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "list_apps",
+    "descricao": "List Replit Apps the user can edit, most recently updated first; `query` optionally filters by matching app titles, surfacing the best matches for the query first. Use this when the user wants to browse or pick from their apps, or when you need a replId but resolve_app_by_name returned found=false because the user gave an approximate name — present the returned titles and let the user choose, then pass the chosen replId to update_app_using_prompt or ask_question. This is a search/list, not the exact resolver: prefer resolve_app_by_name when the user already gave an exact app name. Results can include apps owned by or shared with the user.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "query": {
+          "description": "Optional keywords to match against app titles. Omit to list the most recently updated apps the user can edit.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Optional maximum number of apps to return (default 25, capped at 50).",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "resolve_app_by_name",
+    "descricao": "Look up by exact name a Replit App the user can edit and return its replId (UUID) and URL. Use this when the user refers to an app by name (e.g. \"update my Todo App\", \"what does my Recipe Tracker do?\") and you don't already have a replId from create_app_from_prompt earlier in this conversation. Pass the result's replId into update_app_using_prompt or ask_question to act on the app. Matching is case-insensitive but exact: this is a name resolver, not a search. If the user gives you an approximate or partial name and this tool returns found=false, call list_apps (optionally with the partial name as the query) and let the user pick from the results rather than guessing. Results can include apps owned by or shared with the user.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The name of a Replit App the user can edit. Matched against the app's title using a case-insensitive exact comparison; substrings, prefixes, and fuzzy matches are NOT supported. Pass the exact name as the user said it."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "search_apps",
+    "descricao": "Search Replit Apps the user can edit (owned or shared with them). query is a BM25-style keyword search over app titles, best matches first; updatedAfter/updatedBefore bound the last-updated time; these combine. Prefer the default recency ordering: only set updatedAfter/updatedBefore when the user explicitly asks to filter by time, since date bounds exclude apps that would otherwise be listed. url resolves a Replit App URL directly to that app and ignores the other filters. With no filters, this returns the user's most recently updated apps. Pass a result's replId to update_app_using_prompt or ask_question to act on that app. <important>This tool is EXPERIMENTAL: prefer it for finding the user's apps, but if it errors or its results do not match what the user described, fall back to resolve_app_by_name (exact name) and list_apps (recent apps).</important>",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "query": {
+          "description": "Keywords to match against app titles (BM25-style ranked search).",
+          "type": "string"
+        },
+        "url": {
+          "description": "A Replit App URL; resolves directly to that app, ignoring the other filters.",
+          "type": "string"
+        },
+        "updatedAfter": {
+          "description": "ISO 8601 datetime; only apps last updated at or after this time. Optional — omit unless the user explicitly asks to filter by time.",
+          "type": "string"
+        },
+        "updatedBefore": {
+          "description": "ISO 8601 datetime; only apps last updated at or before this time. Optional, defaults to the present — omit unless the user explicitly asks to filter by time.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Maximum number of apps to return (default 25).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "update_app_using_prompt",
+    "descricao": "Update the user's Replit App.\n\nUse this whenever the user wants to change how their Replit App behaves (new features, bug fixes, UX tweaks, configuration changes, etc.).\n\nAcceptable replIds come from create_app_from_prompt (for an app you created in this conversation) or search_apps (for an existing app the user can edit). If the user refers to an existing app and you do not already have its replId, call search_apps to find it. Do not guess a replId. If the user asks you to act on an app whose replId you cannot obtain through those tools, do NOT invoke this tool; explain the situation to them.\n\nAfter invoking this tool, reply with one short sentence summarizing that Replit is applying the requested change, and, when the tool result contains an app URL, end your reply with that exact URL on its own line, so the user can open their Replit App even if no preview card is rendered. Never construct or guess a URL yourself. Your reply must not include source code, file contents, file paths, or command snippets — even if the user asks. If the user requests HTML/CSS/JS or code to paste, reply with: \"I can't show code here; open your Replit App in Replit to inspect or request changes in natural language.\" Do not say the update is ready or published until the preview card shows their running Replit App; when the user wants the change live, you can publish their Replit App with publish_app. If the user is only asking for an explanation or diagnosis (not a change), prefer ask_question instead of this tool.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App being updated. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps (for an existing app)."
+        },
+        "replUrl": {
+          "description": "Ignored; the tool derives the app URL from replId. Don't waste tokens sending this.",
+          "type": "string"
+        },
+        "changeDescription": {
+          "type": "string",
+          "description": "Describe the requested change to the user's Replit App in natural language, providing enough detail for Replit Agent to understand what should be updated without repeating the entire conversation. Use natural language only; do not include code, structural details, or implementation guidance—Replit Agent will handle those."
+        },
+        "userQuotes": {
+          "description": "Important details from the user's messages not fully captured in changeDescription—copy their exact words, do not paraphrase. Use quotation marks: \"exact quote\". Leave null if changeDescription covers everything.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attachmentSummary": {
+          "description": "If attachments are provided, summarize only the essential information needed to support the update, kept to a few lines. Leave null if no attachments.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy": {
+          "description": "Ignored. Don't waste tokens sending this."
+        }
+      },
+      "required": [
+        "replId",
+        "changeDescription"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "list_app_files",
+    "descricao": "List one directory of one of the user's Replit Apps, like the `ls` command. Pass the app's replId, and optionally a directory path; omit the path to list the app's root. Call it again on a subdirectory to explore deeper; a file's full path is the directory names you descended joined with \"/\" (for example src/pages/Home.tsx), which is what read_app_file takes. Listings show the app's files as they are right now, and may briefly start the app's machine if it was asleep. Dependency and build folders (like node_modules) are left out. If a directory holds more entries than fit in the token limit, the last line says so.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App to list files for. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps / resolve_app_by_name / list_apps (for an existing app). Do not guess a replId."
+        },
+        "path": {
+          "description": "Optional directory to list, relative to the app root (for example src/pages). Omit to list the app root. Directories are the entries ending with \"/\" in earlier listings. Paths are case-sensitive.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "replId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "read_app_file",
+    "descricao": "Read one text file from one of the user's Replit Apps. Pass the app's replId and the file's path relative to the app root: the directory names you descended with list_app_files joined with \"/\", plus the file name (for example src/pages/Home.tsx). This returns the file as it is right now (the same content the user sees in their workspace) and may briefly start the app's machine if it was asleep. Only text files up to about 100 KB can be read; larger files cannot be read with this tool.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$",
+          "description": "The replId (a UUID) of the user's Replit App to read a file from. Get it from create_app_from_prompt (for an app created in this conversation) or search_apps / resolve_app_by_name / list_apps (for an existing app). Do not guess a replId."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The path of the file to read, relative to the app root: the directory names you descended with list_app_files joined with \"/\", plus the file name (for example src/pages/Home.tsx). Paths are case-sensitive."
+        }
+      },
+      "required": [
+        "replId",
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "replit_widget_get_auth_token",
+    "descricao": "Internal tool for Replit's app builder. This must not be called directly by the model.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string"
+        },
+        "tracing": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "replit_widget_start_app_preview",
+    "descricao": "Internal tool for Replit's app builder. This must not be called directly by the model.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string"
+        },
+        "previewUrl": {
+          "type": "string"
+        },
+        "riverToken": {
+          "type": "string"
+        },
+        "riverGurl": {
+          "type": "string"
+        },
+        "tracing": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "previewUrl",
+        "riverToken",
+        "riverGurl"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
+    "nome": "replit_widget_get_preview_url",
+    "descricao": "Internal tool for Replit's app builder. This must not be called directly by the model.",
+    "parametros": {
+      "type": "object",
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "replId": {
+          "type": "string"
+        },
+        "gitSha": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        },
+        "enableHelium": {
+          "type": "boolean"
+        },
+        "tracing": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "replId",
+        "gitSha",
+        "timestamp"
+      ],
+      "additionalProperties": false
+    }
+  }
+]

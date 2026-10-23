@@ -1,0 +1,13 @@
+{
+  "data_hora_utc": "2026-10-19T18:58:28+00:00",
+  "plataforma": "lovable",
+  "dominio": "loja_departamentos",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja uma loja virtual de departamentos, com produtos de vários tipos, tipo um shopping online. Não sei nada de programação, só quero que funcione.\n\nVão usar os clientes e o dono da loja. Os clientes precisam poder ver os produtos e colocar no carrinho, finalizar o pedido e ver os pedidos que já fizeram. O dono da loja precisa poder cadastrar, editar e remover produtos, mudar a situação dos pedidos e ver todos os pedidos de todos os clientes.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "pasta": "saidas_lowcode_piloto\\lovable\\loja_departamentos\\20261019-185828",
+  "interacoes": [],
+  "intervencoes_manuais": [],
+  "estado": "erro",
+  "erro": "ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)",
+  "duracao_s": 2.4
+}

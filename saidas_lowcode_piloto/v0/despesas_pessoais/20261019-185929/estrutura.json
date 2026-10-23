@@ -1,0 +1,19 @@
+{
+  "n_arquivos": 22,
+  "tem_backend": false,
+  "tem_migrations": false,
+  "usa_localstorage": false,
+  "migrations": [],
+  "funcoes_edge_supabase": [],
+  "rotas_api": [],
+  "arquivos_servidor": [],
+  "clientes_supabase": [],
+  "arquivos_localstorage": [],
+  "dependencias_banco": [],
+  "variaveis_ambiente": [
+    "NODE_ENV"
+  ],
+  "package_json": [
+    "package.json"
+  ]
+}

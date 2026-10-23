@@ -1,0 +1,117 @@
+{
+  "data_hora_utc": "2026-10-19T18:59:29+00:00",
+  "plataforma": "v0",
+  "dominio": "despesas_pessoais",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja um controle de despesas pessoais. Não sei nada de programação, só quero que funcione.\n\nVão usar as pessoas que controlam seus gastos e o administrador do sistema. As pessoas que controlam seus gastos precisam poder registrar seus gastos, organizar os gastos por categoria e ver quanto gastaram no mês. O administrador do sistema precisa poder cadastrar as categorias de gasto disponíveis, desativar contas de usuários e ver o total de gastos de todos os usuários.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "pasta": "saidas_lowcode_piloto\\v0\\despesas_pessoais\\20261019-185929",
+  "interacoes": [
+    {
+      "descricao": "integração confirmada",
+      "tarefa": {
+        "type": "confirmed-steps",
+        "connectedIntegrationNames": [
+          "Neon"
+        ]
+      }
+    },
+    {
+      "descricao": "integração confirmada",
+      "tarefa": {
+        "type": "confirmed-steps",
+        "connectedIntegrationNames": [
+          "Neon"
+        ]
+      }
+    },
+    {
+      "descricao": "perguntas respondidas com a primeira opção",
+      "tarefa": {
+        "type": "answered-questions",
+        "answers": [
+          {
+            "questionId": "q-0",
+            "questionText": "O Neon não está conectado a este projeto. Como deseja prosseguir?",
+            "selectedLabels": [
+              "Conectar Neon (Recomendado)"
+            ]
+          },
+          {
+            "questionId": "q-1",
+            "questionText": "Depois de conectar o Neon, você também precisa definir um BETTER_AUTH_SECRET (mínimo de 32 caracteres) para o login seguro. Deseja continuar com essa configuração?",
+            "selectedLabels": [
+              "Sim, configurar"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "descricao": "integração confirmada",
+      "tarefa": {
+        "type": "confirmed-steps",
+        "connectedIntegrationNames": [
+          "Neon"
+        ]
+      }
+    },
+    {
+      "descricao": "perguntas respondidas com a primeira opção",
+      "tarefa": {
+        "type": "answered-questions",
+        "answers": [
+          {
+            "questionId": "q-0",
+            "questionText": "O Neon não está conectado: a verificação mostra apenas Vercel AI Gateway e nenhuma variável de ambiente. Você pode conectar o Neon em Settings → Integrations e depois voltar aqui?",
+            "selectedLabels": [
+              "Vou conectar agora (Recomendado)"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "intervencoes_manuais": [
+    {
+      "hora_utc": "2026-10-19T19:00:03+00:00",
+      "descricao": "integração ['Neon']: sem nota"
+    },
+    {
+      "hora_utc": "2026-10-19T19:00:38+00:00",
+      "descricao": "integração ['Neon']: sem nota"
+    },
+    {
+      "hora_utc": "2026-10-19T19:01:40+00:00",
+      "descricao": "integração ['Neon']: sem nota"
+    }
+  ],
+  "modelo": "v0-mini",
+  "parametros": {
+    "modelConfiguration": {
+      "modelId": "v0-mini",
+      "imageGenerations": false
+    },
+    "mcpServerIds": [],
+    "privacy": "private"
+  },
+  "id_externo": "o1z4ytAO7od",
+  "url_editor": null,
+  "tokens_entrada": 102,
+  "tokens_saida": 7021,
+  "creditos_usados": 0.65955,
+  "motivo_termino": "stop",
+  "integracoes_pedidas": [
+    "Neon",
+    "Neon",
+    "Neon"
+  ],
+  "banco": "Neon, Neon, Neon",
+  "arquivos_recusados": [],
+  "estado": "gerada",
+  "erro": "",
+  "duracao_s": 331.6,
+  "n_arquivos": 22,
+  "tem_backend": false,
+  "tem_migrations": false,
+  "usa_localstorage": false
+}
