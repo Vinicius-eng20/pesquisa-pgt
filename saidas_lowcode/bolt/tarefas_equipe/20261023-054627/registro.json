@@ -1,0 +1,43 @@
+{
+  "data_hora_registro_utc": "2026-10-23T05:46:27+00:00",
+  "protocolo_versao": "1.0",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja um sistema de gestão de tarefas de equipe. Não sei nada de programação, só quero que funcione.\n\nVão usar os membros da equipe e o gerente da equipe. Os membros da equipe precisam poder ver as tarefas que receberam, mudar a situação das suas tarefas e criar tarefas para si mesmos. O gerente da equipe precisa poder criar e distribuir tarefas para os membros, editar e remover tarefas e ver todas as tarefas de todos os membros.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "plataforma": "bolt",
+  "dominio": "tarefas_equipe",
+  "dia_ordem": 7,
+  "rodada": 0,
+  "conta": "bolt-1",
+  "inicio_local": "2026-10-22 21:40",
+  "fim_local": "2026-10-22 21:40",
+  "cota_antes": "141k",
+  "cota_depois": "0",
+  "cota_esgotada": true,
+  "concluida_pela_plataforma": true,
+  "banco": "automatico",
+  "n_mensagens_apoio": 1,
+  "mensagens_apoio": [
+    "deu esse erro: Database error saving new user"
+  ],
+  "registro_conversa": "project-bolt-7.zip",
+  "observacoes": "",
+  "duracao_min": 0,
+  "estado": "gerada",
+  "motivo_nao_entregue": "",
+  "desvios": [],
+  "pasta": "saidas_lowcode\\bolt\\tarefas_equipe\\20261023-054627",
+  "zip_origem": "project-bolt-7.zip",
+  "zip_sha256": "98815a3575811503e65b87654c905963c9e4f0f5278006d50bd7f4c3d0c07573",
+  "n_arquivos": 27,
+  "n_excluidos_dependencias": 0,
+  "caminhos_recusados": [],
+  "tem_backend": true,
+  "tipo_backend": "supabase",
+  "tem_migrations": true,
+  "esquema_por_orm": false,
+  "usa_localstorage": false,
+  "arquivos_env": [
+    ".env"
+  ],
+  "variaveis_sensiveis_env": []
+}

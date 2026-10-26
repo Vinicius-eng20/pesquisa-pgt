@@ -1,0 +1,371 @@
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const dbFile = path.join(__dirname, 'agenda.db');
+
+const db = new Database(dbFile, (err) => {
+  if (err) console.error('Erro ao abrir banco:', err.message);
+});
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    papel TEXT NOT NULL CHECK(papel IN ('cliente','admin'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS servicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    duracao_min INTEGER NOT NULL DEFAULT 60,
+    preco REAL DEFAULT 0,
+    ativo INTEGER DEFAULT 1
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS horarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    servico_id INTEGER NOT NULL,
+    dia_semana INTEGER NOT NULL CHECK(dia_semana BETWEEN 0 AND 6),
+    hora TEXT NOT NULL,
+    UNIQUE(servico_id, dia_semana, hora)
+  ) REFERENCES servicos(id)`);
+  db.run(`CREATE TABLE IF NOT EXISTS agendamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    servico_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    hora TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pendente','confirmado','recusado','cancelado')),
+    criado_em TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(servico_id, usuario_id, data, hora)
+  ) REFERENCES servicos(id), usuarios(id)`);
+
+  const seed = () => {
+    db.all('SELECT id FROM servicos', (err, rows) => {
+      if (rows.length === 0) {
+        db.run(`INSERT INTO servicos (nome, descricao, duracao_min, preco) VALUES ('Corte de cabelo', 'Serviço básico de corte e acabamento', 45, 80)`);
+        db.run(`INSERT INTO servicos (nome, descricao, duracao_min, preco) VALUES ('Barba completa', 'Modelagem e acabamento de barba', 30, 50)`);
+        db.run('SELECT id FROM servicos', [], (e, r) => {
+          const ids = r.map(x => x.id);
+          const dias = [0,1,2,3,4,5];
+          const horas = ['08:00','09:00','10:00','11:00','14:00','15:00','16:00','17:00'];
+          let n = 0;
+          const done = () => { console.log('Banco pronto.'); };
+          ids.forEach(sid => {
+            dias.forEach(d => {
+              horas.forEach(h => {
+                n++;
+                db.run('INSERT INTO horarios (servico_id, dia_semana, hora) VALUES (?,?,?)', [sid, d, h], (e) => {
+                  if (e) console.error(e.message);
+                  if (--n === 0) done();
+                });
+              });
+            });
+          });
+        });
+      } else {
+        console.log('Banco já contém dados.');
+      }
+    });
+  };
+  db.all('SELECT COUNT(*) as n FROM servicos', [], (err, rows) => {
+    if (rows && rows.length > 0 && rows[0].n === 0) seed();
+    else console.log('Banco pronto.');
+  });
+});
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: 'agenda-servicos-chave-segura-2025',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+function reqUsuario(req, res, next) {
+  if (!req.session.usuario) { return res.redirect('/entrar'); }
+  next();
+}
+function reqAdmin(req, res, next) {
+  if (!req.session.usuario || req.session.usuario.papel !== 'admin') { return res.redirect('/'); }
+  next();
+}
+
+app.get('/', (req, res) => {
+  if (req.session.usuario) return res.redirect(req.session.usuario.papel === 'admin' ? '/admin' : '/cliente');
+  res.redirect('/entrar');
+});
+
+// Login
+app.get('/entrar', (req, res) => {
+  if (req.session.usuario) return res.redirect(req.session.usuario.papel === 'admin' ? '/admin' : '/cliente');
+  res.sendFile(path.join(__dirname, 'views', 'entrar.html'));
+});
+app.post('/entrar', (req, res) => {
+  const { email, senha } = req.body;
+  db.get('SELECT * FROM usuarios WHERE email = ?', [email], (err, u) => {
+    if (!u) return res.redirect('/entrar?erro=1');
+    if (bcrypt.compareSync(senha, u.senha)) {
+      req.session.usuario = { id: u.id, nome: u.nome, email: u.email, papel: u.papel };
+      res.redirect(u.papel === 'admin' ? '/admin' : '/cliente');
+    } else {
+      res.redirect('/entrar?erro=1');
+    }
+  });
+});
+
+// Cadastro
+app.get('/cadastro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'cadastro.html'));
+});
+app.post('/cadastro', (req, res) => {
+  const { nome, email, senha, papel } = req.body;
+  db.get('SELECT id FROM usuarios WHERE email = ?', [email], (err, u) => {
+    if (u) return res.redirect('/cadastro?erro=dup');
+    const hash = bcrypt.hashSync(senha, 10);
+    db.run('INSERT INTO usuarios (nome, email, senha, papel) VALUES (?,?,?,?)', [nome, email, hash, papel], (e) => {
+      if (e) return res.redirect('/cadastro?erro=1');
+      db.get('SELECT id, nome, email, papel FROM usuarios WHERE email = ?', [email], (e2, user) => {
+        req.session.usuario = { id: user.id, nome: user.nome, email: user.email, papel: user.papel };
+        res.redirect(papel === 'admin' ? '/admin' : '/cliente');
+      });
+    });
+  });
+});
+
+app.post('/sair', (req, res) => {
+  req.session.destroy(() => res.redirect('/entrar'));
+});
+
+// Cliente: serviços + horários livres + agendar
+const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+function parseHora(h) { const [hh, mm] = h.split(':'); return parseInt(hh,10)*60 + parseInt(mm,10); }
+
+app.get('/cliente', reqUsuario, (req, res) => {
+  db.all(`SELECT s.*, 
+    (SELECT COUNT(*) FROM horarios h WHERE h.servico_id = s.id) as qtd_horarios,
+    (SELECT COUNT(*) FROM agendamentos a WHERE a.servico_id = s.id AND a.status IN ('pendente','confirmado')) as qtd_agen
+    FROM servicos s WHERE s.ativo = 1 ORDER BY s.nome`, [], (err, servicos) => {
+    if (!servicos) servicos = [];
+    servicos.forEach(s => {
+      const inicio = parseHora(s.hora_inicio);
+      const fim = parseHora(s.hora_fim);
+      const passos = Math.max(1, Math.floor((fim - inicio) / (s.passo || 60)));
+      s.total_horas = passos + 1;
+      s.livres = s.total_horas - s.qtd_agen;
+      if (s.livres < 0) s.livres = 0;
+      s.carga = Math.min(100, Math.round((s.qtd_agen / Math.max(1, s.total_horas)) * 100));
+    });
+    db.all(`SELECT a.*, s.nome as nome_servico FROM agendamentos a 
+      JOIN servicos s ON a.servico_id = s.id 
+      WHERE a.usuario_id = ? AND a.status IN ('pendente','confirmado') 
+      ORDER BY a.data DESC, a.hora DESC`, [req.session.usuario.id], (e, meus) => {
+      meus = meus || [];
+      meus.forEach(a => { const [d, hh, mm] = a.data.split('-'); a.data_fmt = `${d}/${hh}/${mm}`; });
+      const servicoMap = {};
+      servicos.forEach(s => servicoMap[s.id] = s);
+      res.sendFile(path.join(__dirname, 'views', 'cliente.html'), { usuario: req.session.usuario, servicos, servicoMap, meus, DIAS });
+    });
+  });
+});
+
+app.get('/cliente/agendar/:servicoId', reqUsuario, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  db.get('SELECT * FROM servicos WHERE id = ? AND ativo = 1', [sid], (err, s) => {
+    if (!s) return res.redirect('/cliente');
+    db.all('SELECT dia_semana, hora FROM horarios WHERE servico_id = ? ORDER BY dia_semana, hora', [sid], (e, hrs) => {
+      hrs = hrs || [];
+      db.all(`SELECT data, hora, status FROM agendamentos WHERE servico_id = ? AND status IN ('pendente','confirmado')`, [sid], (e2, agens) => {
+        agens = agens || [];
+        const busy = {};
+        agens.forEach(a => { busy[a.data + '|' + a.hora] = a.status; });
+        const porDia = {};
+        hrs.forEach(r => {
+          if (!porDia[r.dia_semana]) porDia[r.dia_semana] = [];
+          const hoje = new Date().toISOString().split('T')[0];
+          const prox = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
+          let data = hoje;
+          if (r.dia_semana === 0) { let dt = new Date(); while (dt.getDay() !== 0) { dt.setDate(dt.getDate() + 1); } data = dt.toISOString().split('T')[0]; }
+          else { let dt = new Date(); let cont = 0; while (dt.getDay() !== r.dia_semana && cont < 8) { dt.setDate(dt.getDate() + 1); cont++; } if (cont >= 8) return; data = dt.toISOString().split('T')[0]; }
+          if (data < prox) return;
+          porDia[r.dia_semana].push({ hora: r.hora, data, estado: busy[data + '|' + r.hora] || 'livre' });
+        });
+        res.sendFile(path.join(__dirname, 'views', 'agendar.html'), { usuario: req.session.usuario, servico: s, porDia, DIAS });
+      });
+    });
+  });
+});
+
+app.post('/cliente/agendar/:servicoId', reqUsuario, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  const { data, hora } = req.body;
+  db.get('SELECT id FROM horarios WHERE servico_id = ? AND dia_semana = ? AND hora = ?', [sid, new Date(data + 'T12:00:00').getDay(), hora], (err, h) => {
+    if (!h) return res.redirect('/cliente/agendar/' + sid + '?erro=1');
+    db.get(`SELECT id FROM agendamentos WHERE servico_id = ? AND usuario_id = ? AND data = ? AND hora = ? AND status IN ('pendente','confirmado')`, [sid, req.session.usuario.id, data, hora], (e, meu) => {
+      db.get(`SELECT id, status FROM agendamentos WHERE servico_id = ? AND usuario_id != ? AND data = ? AND hora = ? AND status IN ('pendente','confirmado')`, [sid, req.session.usuario.id, data, hora], (e2, outro) => {
+        if (meu || outro) { return res.redirect('/cliente/agendar/' + sid + '?erro=ocupado'); }
+        db.run(`INSERT INTO agendamentos (servico_id, usuario_id, data, hora, status) VALUES (?,?,?,'pendente')`, [sid, req.session.usuario.id, data, hora], (err2) => {
+          if (err2) res.redirect('/cliente/agendar/' + sid + '?erro=1');
+          else res.redirect('/cliente?ok=agendado');
+        });
+      });
+    });
+  });
+});
+
+app.post('/cliente/cancelar/:id', reqUsuario, (req, res) => {
+  const aid = parseInt(req.params.id, 10);
+  db.get(`SELECT * FROM agendamentos WHERE id = ? AND usuario_id = ?`, [aid, req.session.usuario.id], (err, a) => {
+    if (!a) return res.redirect('/cliente');
+    if (a.status !== 'pendente' && a.status !== 'confirmado') return res.redirect('/cliente');
+    db.run(`UPDATE agendamentos SET status = 'cancelado' WHERE id = ?`, [aid], () => res.redirect('/cliente'));
+  });
+});
+
+// Admin painel
+const DIAS_SHORT = ['dom','seg','ter','qua','qui','sex','sáb'];
+function getCalendario(dia, servico_id, data_inicio) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const [Y, M, D] = data_inicio.split('-').map(x => parseInt(x,10));
+  const inicio = new Date(Y, M - 1, D);
+  if (inicio < hoje) inicio.setHours(0,0,0,0); inicio.setDate(inicio.getDate()); 
+  const fim = new Date(Y, M - 1, D, 23,59,59,999);
+  fim.setDate(fim.getDate() + 7);
+  const resultados = [];
+  let cur = new Date(inicio);
+  if (dia === null) {
+    for (let i = 0; i < 8; i++) {
+      const dia_txt = `${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`;
+      resultados.push({ data: cur.toISOString().split('T')[0], rotulo: `${DIAS_SHORT[cur.getDay()]} ${dia_txt}`, dias: [] });
+      cur.setDate(cur.getDate() + 1);
+    }
+  } else {
+    let cont = 0;
+    while (cur.getDay() !== dia && cont < 14) { cur.setDate(cur.getDate() + 1); cont++; }
+    for (let i = 0; i < 8; i++) {
+      if (cont >= 14) break;
+      const dia_txt = `${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`;
+      resultados.push({ data: cur.toISOString().split('T')[0], rotulo: `${DIAS_SHORT[cur.getDay()]} ${dia_txt}`, dias: [] });
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  return resultados;
+}
+
+function renderPainel(res, opts) {
+  db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+    FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id 
+    WHERE ${opts.sql} ${opts.args ? '?' : ''} ORDER BY a.data ${opts.ordem || ''}`, opts.args || [], (err, rows) => {
+    rows = rows || [];
+    rows.forEach(r => {
+      const [a, b, c] = r.data.split('-');
+      r.data_fmt = `${a}/${b}/${c}`;
+    });
+    opts.callback(res, rows);
+  });
+}
+
+app.get('/admin', reqAdmin, (req, res) => {
+  db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+    FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.status = 'pendente' ORDER BY a.data ASC, a.hora ASC`, [], (err, pendentes) => {
+    db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+      FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.status = 'confirmado' AND a.data >= date('now','localtime') ORDER BY a.data ASC, a.hora ASC`, [], (e2, confirmados) => {
+      db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+        FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.data < date('now','localtime') OR (a.status IN ('confirmado','recusado','cancelado') AND a.data < date('now','localtime')) ORDER BY a.data DESC, a.hora DESC LIMIT 50`, [], (e3, historico) => {
+        pendentes = pendentes || []; confirmados = confirmados || []; historico = historico || [];
+        [pendentes, confirmados, historico].forEach(lista => lista.forEach(r => { const [a,b,c] = r.data.split('-'); r.data_fmt = `${a}/${b}/${c}`; }));
+        db.all('SELECT id, nome, duracao_min FROM servicos WHERE ativo = 1 ORDER BY nome', [], (err, servicos) => {
+          res.sendFile(path.join(__dirname, 'views', 'painel.html'), { usuario: req.session.usuario, pendentes, confirmados, historico, servicos, DIAS });
+        });
+      });
+    });
+  });
+});
+
+// serviços CRUD
+app.get('/admin/servicos', reqAdmin, (req, res) => {
+  db.all('SELECT * FROM servicos ORDER BY nome', [], (err, rows) => {
+    db.all('SELECT servico_id, COUNT(*) as n FROM horarios GROUP BY servico_id', [], (e, cnts) => {
+      const mapa = {}; cnts.forEach(c => mapa[c.servico_id] = c.n);
+      rows = rows || []; rows.forEach(r => r.n_horarios = mapa[r.id] || 0);
+      res.sendFile(path.join(__dirname, 'views', 'servicos.html'), { usuario: req.session.usuario, servicos: rows });
+    });
+  });
+});
+app.get('/admin/servicos/novo', reqAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'servico_form.html'), { usuario: req.session.usuario, servico: null });
+});
+app.post('/admin/servicos/novo', reqAdmin, (req, res) => {
+  const { nome, descricao, duracao_min, preco } = req.body;
+  db.run('INSERT INTO servicos (nome, descricao, duracao_min, preco, ativo) VALUES (?,?,?,?,1)', [nome, descricao, duracao_min, preco], (err) => {
+    if (err) res.redirect('/admin/servicos'); else res.redirect('/admin/servicos');
+  });
+});
+app.get('/admin/servicos/editar/:id', reqAdmin, (req, res) => {
+  db.get('SELECT * FROM servicos WHERE id = ?', [req.params.id], (err, s) => {
+    if (!s) return res.redirect('/admin/servicos');
+    res.sendFile(path.join(__dirname, 'views', 'servico_form.html'), { usuario: req.session.usuario, servico: s });
+  });
+});
+app.post('/admin/servicos/editar/:id', reqAdmin, (req, res) => {
+  const { nome, descricao, duracao_min, preco, ativo } = req.body;
+  db.run('UPDATE servicos SET nome=?, descricao=?, duracao_min=?, preco=?, ativo=? WHERE id=?', [nome, descricao, duracao_min, preco, ativo ? 1 : 0, req.params.id], () => res.redirect('/admin/servicos'));
+});
+app.post('/admin/servicos/excluir/:id', reqAdmin, (req, res) => {
+  db.run('UPDATE servicos SET ativo = 0 WHERE id = ?', [req.params.id], () => res.redirect('/admin/servicos'));
+});
+
+// horários CRUD
+app.get('/admin/horarios/:servicoId', reqAdmin, (req, res) => {
+  db.get('SELECT * FROM servicos WHERE id = ?', [req.params.servicoId], (err, s) => {
+    if (!s) return res.redirect('/admin/servicos');
+    db.all('SELECT * FROM horarios WHERE servico_id = ? ORDER BY dia_semana, hora', [req.params.servicoId], (e, hrs) => {
+      hrs = hrs || [];
+      hrs.forEach(h => h.dia_nome = DIAS[h.dia_semana]);
+      const porDia = {};
+      hrs.forEach(h => { if (!porDia[h.dia_semana]) porDia[h.dia_semana] = []; porDia[h.dia_semana].push(h.hora); });
+      res.sendFile(path.join(__dirname, 'views', 'horarios.html'), { usuario: req.session.usuario, servico: s, horarios: hrs, DIAS, porDia });
+    });
+  });
+});
+app.post('/admin/horarios/:servicoId/gerar', reqAdmin, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  const { dias, hora_inicio, hora_fim, passo } = req.body;
+  let dias_arr = [];
+  if (dias instanceof Array) dias_arr = dias.map(x => parseInt(x,10));
+  else if (dias) dias_arr = dias.split(',').filter(x => x).map(x => parseInt(x,10));
+  const passo_n = parseInt(passo, 10);
+  const ini = parseHora(hora_inicio), fim = parseHora(hora_fim);
+  let n = 0;
+  if (dias_arr.length === 0) return res.redirect('/admin/horarios/' + sid);
+  const horaList = [];
+  for (let t = ini; t <= fim; t += passo_n) { const h = String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0'); horaList.push(h); }
+  if (horaList.length === 0) return res.redirect('/admin/horarios/' + sid);
+  const done = () => { db.run('DELETE FROM horarios WHERE servico_id = ?', [sid], () => { let rem = dias_arr.length * horaList.length; const finish = () => res.redirect('/admin/horarios/' + sid); dias_arr.forEach(d => horaList.forEach(h => { db.run('INSERT INTO horarios (servico_id, dia_semana, hora) VALUES (?,?,?)', [sid, d, h], () => { if (--rem === 0) finish(); }); })); }); };
+  n = dias_arr.length * horaList.length;
+  done();
+});
+app.post('/admin/horarios/excluir/:id', reqAdmin, (req, res) => {
+  db.get('SELECT servico_id FROM horarios WHERE id = ?', [req.params.id], (err, h) => {
+    db.run('DELETE FROM horarios WHERE id = ?', [req.params.id], () => res.redirect('/admin/horarios/' + h.servico_id));
+  });
+});
+
+// confirmar/recusar
+app.post('/admin/agendar/:id/confirmar', reqAdmin, (req, res) => {
+  db.run(`UPDATE agendamentos SET status = 'confirmado' WHERE id = ? AND status = 'pendente'`, [req.params.id], () => res.redirect('/admin'));
+});
+app.post('/admin/agendar/:id/recusar', reqAdmin, (req, res) => {
+  db.run(`UPDATE agendamentos SET status = 'recusado' WHERE id = ? AND status = 'pendente'`, [req.params.id], () => res.redirect('/admin'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));

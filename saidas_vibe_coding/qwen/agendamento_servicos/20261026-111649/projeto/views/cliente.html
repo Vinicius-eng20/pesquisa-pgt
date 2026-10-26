@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minha Agenda - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo .logo h1 { font-size:1rem; font-weight:700; }
+  .usuario { display:flex; align-items:center; gap:1rem; }
+  .usuario .info { text-align:right; }
+  .usuario .nome { font-size:.85rem; font-weight:600; }
+  .usuario .email { font-size:.7rem; color:var(--cinza); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1100px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:1.8rem; }
+  .msg { background:rgba(46,204,113,.15); border:1px solid rgba(46,204,113,.4); color:var(--verde); padding:.8rem 1rem; border-radius:10px; font-size:.9rem; margin-bottom:1.5rem; }
+  .servicos { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:1.2rem; margin-bottom:2.5rem; }
+  .servico { background:linear-gradient(160deg, rgba(27,58,92,.7), rgba(13,27,42,.8)); border:1px solid rgba(62,143,209,.15); border-radius:16px; padding:1.4rem; transition:.25s; position:relative; overflow:hidden; }
+  .servico:hover { transform:translateY(-4px); border-color:rgba(62,143,209,.4); box-shadow:0 20px 50px -15px rgba(62,143,209,.3); }
+  .servico .topo-s { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1rem; }
+  .servico .nome-s { font-size:1.05rem; font-weight:700; }
+  .servico .desc { font-size:.8rem; color:var(--cinza); line-height:1.4; margin-bottom:1rem; min-height:2.2rem; }
+  .servico .meta { display:flex; gap:1rem; font-size:.75rem; color:var(--cinza); margin-bottom:1rem; }
+  .servico .meta b { color:var(--branco); }
+  .barra { height:5px; background:rgba(139,154,177,.15); border-radius:3px; margin-bottom:.4rem; overflow:hidden; }
+  .barra div { height:100%; background:linear-gradient(90deg, var(--azul-claro), var(--dourado)); border-radius:3px; transition:width .6s; }
+  .carga-txt { font-size:.7rem; color:var(--cinza); margin-bottom:1rem; }
+  .btn-agendar { width:100%; padding:.7rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:9px; font-size:.85rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn-agendar:hover { filter:brightness(1.1); }
+  .meus-agendamentos { margin-top:1rem; }
+  .meus-agendamentos h2 { font-size:1.2rem; margin-bottom:1rem; }
+  .lista-agendamentos { display:flex; flex-direction:column; gap:.8rem; }
+  .agend { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem 1.2rem; flex-wrap:wrap; }
+  .agend .dados { flex:1; min-width:180px; }
+  .agend .ns { font-weight:700; font-size:.95rem; }
+  .agend .dh { font-size:.8rem; color:var(--cinza); margin-top:.2rem; }
+  .agend .dh b { color:var(--dourado); }
+  .status { font-size:.7rem; font-weight:700; padding:.35rem .7rem; border-radius:20px; text-transform:uppercase; letter-spacing:.05em; }
+  .st-pendente { background:rgba(240,165,0,.15); color:var(--dourado); }
+  .st-confirmado { background:rgba(46,204,113,.15); color:var(--verde); }
+  .btn-cancelar { background:transparent; border:1px solid rgba(231,76,60,.4); color:var(--vermelho); padding:.5rem .9rem; border-radius:8px; font-size:.8rem; cursor:pointer; transition:.2s; }
+  .btn-cancelar:hover { background:rgba(231,76,60,.1); border-color:var(--vermelho); }
+  .vazio { color:var(--cinza); font-size:.9rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  @media(max-width:600px) { .topo { padding:0 1rem; } .usuario .email { display:none; } .agend { flex-direction:column; align-items:flex-start; } }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">📅</div><h1>Agenda de Serviços</h1></div>
+    <div class="usuario"><div class="info"><div class="nome"><%= usuario.nome %></div><div class="email"><%= usuario.email %></div></div><form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form></div>
+  </div>
+  <div class="container">
+    <% if (query && query.ok === 'agendado') { %><div class="msg">✓ Agendamento realizado com sucesso.</div><% } %>
+    <div class="titulo">Serviços disponíveis</div>
+    <div class="subtitulo">Escolha um serviço para visualizar horários livres e agendar.</div>
+    <% if (servicos.length === 0) { %><div class="vazio">Nenhum serviço disponível no momento.</div><% } else { %>
+      <div class="servicos">
+        <% servicos.forEach(s => { %>
+          <div class="servico">
+            <div class="topo-s"><div class="nome-s"><%= s.nome %></div></div>
+            <div class="desc"><%= s.descricao || 'Sem descrição.' %></div>
+            <div class="meta"><span>⏱ <b><%= s.duracao_min %></b> min</span><span>💰 <b>R$ <%= Number(s.preco).toFixed(2).replace('.',',') %></b></span><span>📍 <b><%= s.livres %></b> livres</span></div>
+            <div class="barra"><div style="width:<%= s.carga %>%"></div></div>
+            <div class="carga-txt">Capacidade da semana: <%= s.qtd_agen %>/<%= s.total_horas %> horários</div>
+            <a href="/cliente/agendar/<%= s.id %>" style="text-decoration:none;"><button class="btn-agendar" type="button">Ver horários e agendar</button></a>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+    <div class="meus-agendamentos">
+      <h2>Meus agendamentos</h2>
+      <% if (meus.length === 0) { %><div class="vazio">Você ainda não possui agendamentos ativos.</div><% } else { %>
+        <div class="lista-agendamentos">
+          <% meus.forEach(a => { %>
+            <div class="agend">
+              <div class="dados"><div class="ns"><%= a.nome_servico %></div><div class="dh"><%= a.data_fmt %> às <b><%= a.hora %></b></div></div>
+              <span class="status <%= a.status === 'confirmado' ? 'st-confirmado' : 'st-pendente' %>"><%= a.status %></span>
+              <form method="POST" action="/cliente/cancelar/<%= a.id %>" onsubmit="return confirm('Cancelar este agendamento?');"><button type="submit" class="btn-cancelar">Cancelar</button></form>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

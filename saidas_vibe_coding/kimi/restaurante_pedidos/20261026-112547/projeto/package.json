@@ -1,0 +1,21 @@
+{
+  "name": "restaurante-pedidos",
+  "version": "1.0.0",
+  "description": "Sistema de pedidos para restaurante (clientes e gerente) com login e banco de dados SQLite.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "NODE_ENV=development node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "connect-sqlite3": "^0.9.13",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "helmet": "^7.1.0"
+  }
+}

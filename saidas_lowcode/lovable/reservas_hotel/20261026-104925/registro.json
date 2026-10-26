@@ -1,0 +1,43 @@
+{
+  "data_hora_registro_utc": "2026-10-26T10:49:25+00:00",
+  "protocolo_versao": "1.0",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja um sistema de reservas de hotel. Não sei nada de programação, só quero que funcione.\n\nVão usar os hóspedes e o gerente do hotel. Os hóspedes precisam poder ver os quartos disponíveis nas datas que escolherem, reservar um quarto e ver ou cancelar as reservas que fizeram. O gerente do hotel precisa poder cadastrar, editar e remover quartos, confirmar ou recusar reservas e ver todas as reservas de todos os hóspedes.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "plataforma": "lovable",
+  "dominio": "reservas_hotel",
+  "dia_ordem": 9,
+  "rodada": 0,
+  "conta": "lov-2",
+  "inicio_local": "2026-10-26 07:00",
+  "fim_local": "2026-10-26 07:00",
+  "cota_antes": "5",
+  "cota_depois": "0",
+  "cota_esgotada": false,
+  "concluida_pela_plataforma": true,
+  "banco": "automatico",
+  "n_mensagens_apoio": 0,
+  "mensagens_apoio": [],
+  "registro_conversa": "hotel-reserva.zip",
+  "observacoes": "",
+  "duracao_min": 0,
+  "estado": "gerada",
+  "motivo_nao_entregue": "",
+  "desvios": [
+    "geracao_repetida"
+  ],
+  "pasta": "saidas_lowcode\\lovable\\reservas_hotel\\20261026-104925",
+  "zip_origem": "hotel-reserva.zip",
+  "zip_sha256": "43a087f6a48fdb810ff1a8c5b6c9045254f32d7054d10bdabe30aa1fa0298928",
+  "n_arquivos": 101,
+  "n_excluidos_dependencias": 0,
+  "caminhos_recusados": [],
+  "tem_backend": true,
+  "tipo_backend": "supabase",
+  "tem_migrations": true,
+  "esquema_por_orm": true,
+  "usa_localstorage": true,
+  "arquivos_env": [
+    ".env"
+  ],
+  "variaveis_sensiveis_env": []
+}

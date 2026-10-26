@@ -1,0 +1,1337 @@
+=== package.json ===
+{
+  "name": "gestao-tarefas-equipe",
+  "version": "1.0.0",
+  "description": "Sistema de gestao de tarefas de equipe",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "bcryptjs": "^2.4.3",
+    "express-session": "^1.18.0",
+    "lowdb": "^7.0.1"
+  }
+}
+
+=== server.js ===
+import express from "express";
+import expressSession from "express-session";
+import bcrypt from "bcryptjs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const DB_FILE = join(__dirname, "data.json");
+const SALT_ROUNDS = 10;
+
+const DEFAULT_STATUS = [
+  "A fazer",
+  "Em andamento",
+  "Concluída"
+];
+const DEFAULT_PRIORIDADES = ["Baixa", "Média", "Alta"];
+
+const app = express();
+app.use(express.json());
+app.use(express.static(join(__dirname, "public")));
+
+app.use(expressSession({
+  name: "sessao_gestao",
+  secret: process.env.SESSAO_SECRET || "chave-secreta-nao-use-em-producao",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24 * 30
+  }
+}));
+
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+function getDb() {
+  const empty = {
+    users: [],
+    tasks: [],
+    status: DEFAULT_STATUS.slice(),
+    prioridades: DEFAULT_PRIORIDADES.slice()
+  };
+  if (!existsSync(DB_FILE)) {
+    writeFileSync(DB_FILE, JSON.stringify(empty, null, 2));
+    return empty;
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(DB_FILE, "utf8"));
+    return {
+      users: parsed.users || [],
+      tasks: parsed.tasks || [],
+      status: parsed.status || DEFAULT_STATUS.slice(),
+      prioridades: parsed.prioridades || DEFAULT_PRIORIDADES.slice()
+    };
+  } catch (err) {
+    return empty;
+  }
+}
+
+function saveDb(db) {
+  writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    papel: user.papel
+  };
+}
+
+function publicTask(task) {
+  return {
+    id: task.id,
+    titulo: task.titulo,
+    descricao: task.descricao,
+    status: task.status,
+    prioridade: task.prioridade,
+    dataEntrega: task.dataEntrega,
+    criadaPor: task.criadaPor,
+    criadaPorNome: task.criadaPorNome,
+    criadaEm: task.criadaEm,
+    atualizadaEm: task.atualizadaEm,
+    atribuidas: (task.atribuidas || []).map(a => ({
+      userId: a.userId,
+      nome: a.nome,
+      done: !!a.done
+    }))
+  };
+}
+
+function isGerente(user) {
+  return user && user.papel === "gerente";
+}
+
+function isAtribuida(user, task) {
+  return (task.atribuidas || []).some(a => a.userId === user.id);
+}
+
+function auth(req, res, next) {
+  const user = req.session.user;
+  if (!user) {
+    return res.status(401).json({ error: "Faça login para continuar." });
+  }
+  req.user = user;
+  next();
+}
+
+function requireGerente(req, res, next) {
+  if (!isGerente(req.user)) {
+    return res.status(403).json({ error: "Só o gerente pode fazer isso." });
+  }
+  next();
+}
+
+// ===== AUTENTICACAO =====
+app.post("/api/auth/registro", (req, res) => {
+  const db = getDb();
+  const { nome, email, senha } = req.body || {};
+  if (!nome || !email || !senha) {
+    return res.status(400).json({ error: "Preencha nome, e-mail e senha." });
+  }
+  if (senha.length < 4) {
+    return res.status(400).json({ error: "A senha precisa ter pelo menos 4 caracteres." });
+  }
+  const emailNorm = String(email).trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailNorm)) {
+    return res.status(400).json({ error: "E-mail inválido." });
+  }
+  if (db.users.some(u => u.email === emailNorm)) {
+    return res.status(409).json({ error: "Já existe uma conta com este e-mail." });
+  }
+
+  const primeiro = db.users.length === 0;
+  const papel = primeiro ? "gerente" : "membro";
+  const salt = bcrypt.genSaltSync(SALT_ROUNDS);
+  const user = {
+    id: uid(),
+    nome: String(nome).trim(),
+    email: emailNorm,
+    salt,
+    hash: bcrypt.hashSync(String(senha), salt),
+    papel
+  };
+  db.users.push(user);
+  saveDb(db);
+
+  req.session.user = {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    papel: user.papel
+  };
+  res.json({ usuario: publicUser(user) });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const db = getDb();
+  const { email, senha } = req.body || {};
+  const emailNorm = String(email || "").trim().toLowerCase();
+  const user = db.users.find(u => u.email === emailNorm);
+  if (!user || !bcrypt.compareSync(String(senha || ""), user.hash)) {
+    return res.status(401).json({ error: "E-mail ou senha incorretos." });
+  }
+  req.session.user = {
+    id: user.id,
+    nome: user.nome,
+    email: user.email,
+    papel: user.papel
+  };
+  res.json({ usuario: publicUser(user) });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  req.session.destroy(err => {
+    res.clearCookie("sessao_gestao");
+    res.json({ ok: true });
+  });
+});
+
+app.get("/api/auth/me", auth, (req, res) => {
+  res.json({ usuario: publicUser(req.user) });
+});
+
+// ===== CONFIGURACOES =====
+app.get("/api/config", auth, (req, res) => {
+  const db = getDb();
+  res.json({ status: db.status, prioridades: db.prioridades });
+});
+
+// ===== USUARIOS (para atribuir tarefas) =====
+app.get("/api/users", auth, (req, res) => {
+  const db = getDb();
+  res.json({ users: db.users.map(publicUser) });
+});
+
+// ===== TAREFAS: listar =====
+app.get("/api/tasks", auth, (req, res) => {
+  const db = getDb();
+  let tasks = db.tasks;
+  if (!isGerente(req.user)) {
+    tasks = tasks.filter(t => isAtribuida(req.user, t));
+  }
+  tasks = tasks.slice().sort((a, b) => (b.criadaEm || 0) - (a.criadaEm || 0));
+  res.json({ tasks: tasks.map(publicTask) });
+});
+
+// ===== TAREFAS: criar =====
+app.post("/api/tasks", auth, (req, res) => {
+  const db = getDb();
+  const { titulo, descricao, prioridade, dataEntrega, atribuidas, paraSi } = req.body || {};
+  if (!titulo || !String(titulo).trim()) {
+    return res.status(400).json({ error: "A tarefa precisa de um título." });
+  }
+  const agora = Date.now();
+
+  let lista;
+  if (isGerente(req.user)) {
+    lista = [];
+    (atribuidas || []).forEach(id => {
+      const u = db.users.find(x => x.id === id);
+      if (u) lista.push({ userId: u.id, nome: u.nome, done: false });
+    });
+  } else {
+    if (!paraSi) {
+      return res.status(403).json({ error: "Você não pode atribuir tarefa para outros." });
+    }
+    lista = [{ userId: req.user.id, nome: req.user.nome, done: false }];
+  }
+
+  const task = {
+    id: uid(),
+    titulo: String(titulo).trim(),
+    descricao: String(descricao || "").trim(),
+    status: "A fazer",
+    prioridade: prioridade || "Média",
+    dataEntrega: dataEntrega || "",
+    criadaPor: req.user.id,
+    criadaPorNome: req.user.nome,
+    criadaEm: agora,
+    atualizadaEm: agora,
+    atribuidas: lista
+  };
+  db.tasks.push(task);
+  saveDb(db);
+  res.json({ task: publicTask(task) });
+});
+
+// ===== TAREFAS: editar =====
+app.put("/api/tasks/:id", auth, requireGerente, (req, res) => {
+  const db = getDb();
+  const task = db.tasks.find(t => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "Tarefa não encontrada." });
+
+  const { titulo, descricao, prioridade, status, dataEntrega, atribuidas } = req.body || {};
+  if (titulo !== undefined) task.titulo = String(titulo).trim();
+  if (titulo && !String(titulo).trim()) {
+    return res.status(400).json({ error: "O título não pode ficar vazio." });
+  }
+  if (descricao !== undefined) task.descricao = String(descricao).trim();
+  if (prioridade !== undefined) task.prioridade = prioridade;
+  if (status !== undefined) task.status = status;
+  if (dataEntrega !== undefined) task.dataEntrega = dataEntrega;
+  if (atribuidas !== undefined) {
+    task.atribuidas = [];
+    (atribuidas || []).forEach(id => {
+      const u = db.users.find(x => x.id === id);
+      if (u) task.atribuidas.push({ userId: u.id, nome: u.nome, done: false });
+    });
+  }
+  task.atualizadaEm = Date.now();
+  saveDb(db);
+  res.json({ task: publicTask(task) });
+});
+
+// ===== TAREFAS: remover =====
+app.delete("/api/tasks/:id", auth, requireGerente, (req, res) => {
+  const db = getDb();
+  const idx = db.tasks.findIndex(t => t.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Tarefa não encontrada." });
+  db.tasks.splice(idx, 1);
+  saveDb(db);
+  res.json({ ok: true });
+});
+
+// ===== ATUALIZAR STATUS (membro) =====
+app.put("/api/tasks/:id/status", auth, (req, res) => {
+  const db = getDb();
+  const task = db.tasks.find(t => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "Tarefa não encontrada." });
+  if (!isGerente(req.user) && !isAtribuida(req.user, task)) {
+    return res.status(403).json({ error: "Você não pode mudar o status desta tarefa." });
+  }
+  const { status } = req.body || {};
+  if (!db.status.includes(status)) {
+    return res.status(400).json({ error: "Status inválido." });
+  }
+  task.status = status;
+  task.atualizadaEm = Date.now();
+  saveDb(db);
+  res.json({ task: publicTask(task) });
+});
+
+// ===== MARCAR COMO CONCLUIDA POR QUEM RECEBEU =====
+app.put("/api/tasks/:id/done", auth, (req, res) => {
+  const db = getDb();
+  const task = db.tasks.find(t => t.id === req.params.id);
+  if (!task) return res.status(404).json({ error: "Tarefa não encontrada." });
+  if (!isGerente(req.user) && !isAtribuida(req.user, task)) {
+    return res.status(403).json({ error: "Você não pode alterar esta tarefa." });
+  }
+  const { done } = req.body || {};
+  const a = (task.atribuidas || []).find(x => x.userId === req.user.id);
+  if (a) a.done = !!done;
+  else if (isGerente(req.user) && !task.atribuidas.length) {
+    task.status = done ? "Concluída" : "A fazer";
+  }
+  task.atualizadaEm = Date.now();
+  saveDb(db);
+  res.json({ task: publicTask(task) });
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Gestão de Tarefas rodando em http://localhost:${PORT}`);
+});
+
+=== public/index.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestão de Tarefas da Equipe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ================= LOGIN ================= -->
+  <div id="auth-screen" class="auth-screen hidden">
+    <div class="auth-card">
+      <div class="auth-logo">📋</div>
+      <h1>Gestão de Tarefas</h1>
+      <p class="auth-sub">Equipe e gerente em um só lugar</p>
+
+      <div class="tabs">
+        <button id="tab-login" class="tab active">Entrar</button>
+        <button id="tab-registro" class="tab">Criar conta</button>
+      </div>
+
+      <!-- form login -->
+      <form id="form-login" class="auth-form">
+        <label>E-mail</label>
+        <input type="email" id="login-email" placeholder="voce@empresa.com" required autocomplete="email" />
+        <label>Senha</label>
+        <input type="password" id="login-senha" placeholder="Sua senha" required autocomplete="current-password" />
+        <button type="submit" class="btn btn-primary btn-block">Entrar</button>
+        <p id="login-erro" class="auth-erro"></p>
+        <p id="login-info" class="auth-info"></p>
+      </form>
+
+      <!-- form registro -->
+      <form id="form-registro" class="auth-form hidden">
+        <label>Nome</label>
+        <input type="text" id="reg-nome" placeholder="Seu nome" required autocomplete="name" />
+        <label>E-mail</label>
+        <input type="email" id="reg-email" placeholder="voce@empresa.com" required autocomplete="email" />
+        <label>Senha</label>
+        <input type="password" id="reg-senha" placeholder="Crie uma senha (mín. 4)" required autocomplete="new-password" />
+        <button type="submit" class="btn btn-primary btn-block">Criar conta</button>
+        <p id="reg-erro" class="auth-erro"></p>
+        <p id="reg-info" class="auth-info"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= APLICACAO ================= -->
+  <div id="app-screen" class="hidden">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <span class="brand-ico">📋</span>
+        <span class="brand-txt">Gestão de Tarefas</span>
+      </div>
+      <div class="topbar-right">
+        <div class="user-chip">
+          <span class="user-nome" id="user-nome"></span>
+          <span class="user-papel" id="user-papel"></span>
+        </div>
+        <button id="btn-logout" class="btn btn-ghost">Sair</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- barra de filtros / abas -->
+      <div class="toolbar">
+        <div class="filter-tabs" id="filter-tabs"></div>
+        <div class="toolbar-right">
+          <input type="search" id="busca" placeholder="Buscar tarefa..." />
+          <button id="btn-nova" class="btn btn-primary">+ Nova tarefa</button>
+        </div>
+      </div>
+
+      <div id="vazio" class="vazio hidden">
+        <p id="vazio-txt">Nenhuma tarefa por aqui. Crie a primeira!</p>
+      </div>
+
+      <section id="lista" class="lista"></section>
+    </main>
+  </div>
+
+  <!-- ================= MODAL: criar/editar tarefa ================= -->
+  <div id="modal-tarefa" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="modal-titulo">Nova tarefa</h2>
+        <button class="modal-fechar" data-close>×</button>
+      </div>
+
+      <form id="form-tarefa" class="task-form">
+        <label>Título</label>
+        <input type="text" id="t-titulo" placeholder="O que precisa ser feito?" required />
+
+        <label>Descrição (opcional)</label>
+        <textarea id="t-descricao" rows="3" placeholder="Detalhes, instruções..."></textarea>
+
+        <div class="linha-2">
+          <div>
+            <label>Prioridade</label>
+            <select id="t-prioridade"></select>
+          </div>
+          <div>
+            <label>Data de entrega</label>
+            <input type="date" id="t-data" />
+          </div>
+        </div>
+
+        <!-- visivel so para gerente -->
+        <div id="bloco-atribuir" class="hidden">
+          <label>Atribuir para</label>
+          <div id="lista-atribuir" class="lista-atribuir"></div>
+        </div>
+        <input type="hidden" id="t-id" />
+        <input type="hidden" id="t-status" />
+
+        <div class="modal-acoes">
+          <button type="button" class="btn btn-ghost" data-close>Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+        <p id="t-erro" class="form-erro"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: detalhes ================= -->
+  <div id="modal-detalhes" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Detalhes da tarefa</h2>
+        <button class="modal-fechar" data-close>×</button>
+      </div>
+      <div id="detalhes-corpo"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+=== public/style.css ===
+:root {
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --ink: #1f2733;
+  --ink-soft: #64748b;
+  --line: #e5e9f2;
+  --primary: #4f46e5;
+  --primary-dark: #4338ca;
+  --danger: #e11d48;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --radius: 14px;
+  --shadow: 0 6px 24px rgba(20, 30, 60, 0.08);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+.hidden { display: none !important; }
+
+/* ================= AUTH ================= */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: radial-gradient(1200px 600px at 20% -10%, #eef0ff 0%, var(--bg) 60%);
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--card);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  padding: 34px 30px;
+  text-align: center;
+}
+.auth-logo { font-size: 44px; }
+.auth-card h1 { margin: 10px 0 4px; font-size: 24px; }
+.auth-sub { color: var(--ink-soft); margin: 0 0 22px; font-size: 14px; }
+
+.tabs {
+  display: flex;
+  background: #f0f2f8;
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+.tab {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  padding: 9px;
+  border-radius: 9px;
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.tab.active { background: #fff; color: var(--primary); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+
+.auth-form { text-align: left; display: block; }
+.auth-form label, .task-form label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  margin: 12px 0 5px;
+}
+input, textarea, select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--ink);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+textarea { resize: vertical; }
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, transform .05s;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-ghost { background: #eef1f8; color: var(--ink); }
+.btn-ghost:hover { background: #e2e7f2; }
+.btn-danger { background: #fee2e2; color: var(--danger); }
+.btn-danger:hover { background: #fecdd3; }
+.btn-block { width: 100%; margin-top: 18px; }
+
+.auth-erro { color: var(--danger); font-size: 13px; min-height: 18px; margin: 12px 0 0; }
+.auth-info { color: var(--ink-soft); font-size: 12px; min-height: 18px; margin: 10px 0 0; }
+
+/* ================= TOPBAR ================= */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.brand-ico { font-size: 22px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.user-chip { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; }
+.user-nome { font-weight: 700; font-size: 14px; }
+.user-papel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: #eef0ff;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.container { max-width: 900px; margin: 0 auto; padding: 22px 16px 60px; }
+
+/* ================= TOOLBAR ================= */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.ftab {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.ftab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.ftab .count { opacity: 0.7; margin-left: 4px; }
+.toolbar-right { display: flex; gap: 8px; align-items: center; }
+.toolbar-right input { width: 180px; }
+
+/* ================= LISTA DE TAREFAS ================= */
+.vazio {
+  text-align: center;
+  color: var(--ink-soft);
+  padding: 50px 10px;
+}
+.lista { display: flex; flex-direction: column; gap: 12px; }
+
+.tarefa {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.tarefa-coluna { flex: 1; min-width: 0; }
+.tarefa-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tarefa-titulo { font-weight: 700; font-size: 15px; flex: 1; min-width: 120px; }
+.tarefa-desc { color: var(--ink-soft); font-size: 13px; margin-top: 4px; white-space: pre-wrap; }
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.st-Afazer { background: #eef1f8; color: #475569; }
+.st-EmAndamento { background: #fef3c7; color: #b45309; }
+.st-Concluida { background: #dcfce7; color: #166534; }
+.pri-Baixa { background: #e0f2fe; color: #0369a1; }
+.pri-Media { background: #fef9c3; color: #a16207; }
+.pri-Alta { background: #fee2e2; color: #b91c1c; }
+
+.tarefa-meta { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--ink-soft); }
+.tarefa-meta b { color: var(--ink); font-weight: 600; }
+.atrasado { color: var(--danger); font-weight: 700; }
+
+.tarefa-acoes { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; flex-shrink: 0; }
+.mini {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mini:hover { background: #f0f2f8; }
+.mini.atrasado { border-color: #fca5a5; color: var(--danger); }
+.mini.sel { background: var(--primary); color: #fff; border-color: var(--primary); }
+.mini.danger { color: var(--danger); }
+.mini.danger:hover { background: #fee2e2; }
+.mini.ok { color: var(--ok); }
+
+.avatares { display: flex; }
+.avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700;
+  border: 2px solid #fff;
+  margin-left: -8px;
+}
+.avatar:first-child { margin-left: 0; }
+.avatars .more { background: #94a3b8; }
+
+/* ================= MODAL ================= */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+.modal-card {
+  background: #fff;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 0;
+}
+.modal-head h2 { margin: 0; font-size: 18px; }
+.modal-fechar {
+  border: 0;
+  background: #f0f2f8;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--ink-soft);
+  line-height: 1;
+}
+.modal-fechar:hover { background: #e2e7f2; }
+.task-form { padding: 6px 20px 20px; }
+.linha-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.lista-atribuir {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.item-atribuir {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.item-atribuir:hover { background: #f6f7fc; }
+.item-atribuir input { width: auto; margin: 0; }
+.item-atribuir .nome { flex: 1; font-weight: 600; }
+.item-atribuir .papel { font-size: 11px; color: var(--ink-soft); }
+
+.modal-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.form-erro { color: var(--danger); font-size: 13px; min-height: 18px; margin: 10px 0 0; text-align: right; }
+
+/* detalhes */
+#detalhes-corpo { padding: 4px 20px 20px; }
+.det-titulo { font-size: 18px; font-weight: 700; margin: 8px 0 4px; }
+.det-desc { white-space: pre-wrap; color: var(--ink); margin: 8px 0; }
+.det-bloco { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.det-bloco h4 { margin: 0 0 8px; font-size: 13px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .03em; }
+.status-opcoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.status-opcao {
+  border: 1px solid var(--line);
+  background: #fff;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+.status-opcao.sel { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* ================= TOAST ================= */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 12px;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  z-index: 100;
+  max-width: 90vw;
+}
+.toast.erro { background: var(--danger); }
+.toast.ok { background: var(--ok); }
+
+@media (max-width: 640px) {
+  .linha-2 { grid-template-columns: 1fr; }
+  .toolbar-right { width: 100%; }
+  .toolbar-right input { flex: 1; }
+  .tarefa-acoes { flex-direction: row; flex-wrap: wrap; width: 100%; }
+  .user-chip { display: none; }
+}
+
+=== public/app.js ===
+const state = {
+  usuario: null,
+  config: { status: [], prioridades: [] },
+  users: [],
+  tasks: [],
+  filtro: "todas",
+  busca: "",
+  polling: null
+};
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------- helpers ---------- */
+function slug(s) {
+  return String(s || "A fazer").replace(/[^a-z0-9]/gi, "");
+}
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+function iniciais(nome) {
+  return String(nome || "?").split(" ").filter(Boolean).slice(0, 2).map(p => p[0]).join("").toUpperCase();
+}
+function formatarData(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString("pt-BR");
+}
+function estaAtrasada(task) {
+  if (!task.dataEntrega || task.status === "Concluída") return false;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const d = new Date(task.dataEntrega + "T00:00:00");
+  return d < hoje;
+}
+function ehGerente() { return state.usuario && state.usuario.papel === "gerente"; }
+function estouAtribuido(task) {
+  return (task.atribuidas || []).some(a => a.userId === state.usuario.id);
+}
+
+/* ---------- api ---------- */
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Algo deu errado.");
+  return data;
+}
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg, tipo = "") {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = "toast " + tipo;
+  el.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 3200);
+}
+
+/* ---------- auth ---------- */
+$("tab-login").addEventListener("click", () => trocarAba("login"));
+$("tab-registro").addEventListener("click", () => trocarAba("registro"));
+
+function trocarAba(aba) {
+  const eLogin = aba === "login";
+  $("tab-login").classList.toggle("active", eLogin);
+  $("tab-registro").classList.toggle("active", !eLogin);
+  $("form-login").classList.toggle("hidden", !eLogin);
+  $("form-registro").classList.toggle("hidden", eLogin);
+  $("login-erro").textContent = "";
+  $("reg-erro").textContent = "";
+}
+
+$("form-login").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("login-erro").textContent = "";
+  try {
+    const { usuario } = await api("/api/auth/login", {
+      method: "POST",
+      body: { email: $("login-email").value, senha: $("login-senha").value }
+    });
+    entrar(usuario);
+  } catch (err) {
+    $("login-erro").textContent = err.message;
+  }
+});
+
+$("form-registro").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("reg-erro").textContent = "";
+  try {
+    const { usuario } = await api("/api/auth/registro", {
+      method: "POST",
+      body: {
+        nome: $("reg-nome").value,
+        email: $("reg-email").value,
+        senha: $("reg-senha").value
+      }
+    });
+    entrar(usuario, usuario.papel === "gerente");
+  } catch (err) {
+    $("reg-erro").textContent = err.message;
+  }
+});
+
+$("btn-logout").addEventListener("click", async () => {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch (e) {}
+  pararPolling();
+  state.usuario = null;
+  location.reload();
+});
+
+async function entrar(usuario, ehPrimeiro = false) {
+  state.usuario = usuario;
+  await carregarDados();
+  mostrarApp(ehPrimeiro);
+}
+
+function mostrarApp(ehPrimeiro) {
+  $("auth-screen").classList.add("hidden");
+  $("app-screen").classList.remove("hidden");
+  $("user-nome").textContent = state.usuario.nome;
+  $("user-papel").textContent = ehGerente() ? "Gerente" : "Membro";
+  montarFiltros();
+  render();
+  iniciarPolling();
+  if (ehPrimeiro) {
+    toast("Conta de gerente criada! Convide a equipe para criar as demais contas.", "ok");
+  }
+}
+
+/* ---------- dados ---------- */
+async function carregarDados() {
+  const [cfg, us, tk] = await Promise.all([
+    api("/api/config"),
+    api("/api/users"),
+    api("/api/tasks")
+  ]);
+  state.config = cfg;
+  state.users = us.users;
+  state.tasks = tk.tasks;
+}
+
+function iniciarPolling() {
+  pararPolling();
+  state.polling = setInterval(async () => {
+    if (!$("app-screen").classList.contains("hidden")) {
+      try { await carregarDados(); montarFiltros(); render(); }
+      catch (e) {}
+    }
+  }, 5000);
+}
+function pararPolling() { if (state.polling) { clearInterval(state.polling); state.polling = null; } }
+
+/* ---------- filtros ---------- */
+function montarFiltros() {
+  const conts = { todas: state.tasks.length };
+  state.config.status.forEach(s => conts[s] = state.tasks.filter(t => t.status === s).length);
+  const el = $("filter-tabs");
+  let html = `<button class="ftab ${state.filtro==='todas'?'active':''}" data-f="todas">Todas <span class="count">${conts.todas}</span></button>`;
+  state.config.status.forEach(s => {
+    html += `<button class="ftab ${state.filtro===s?'active':''}" data-f="${esc(s)}">${esc(s)} <span class="count">${conts[s]}</span></button>`;
+  });
+  el.innerHTML = html;
+  el.querySelectorAll(".ftab").forEach(b => b.addEventListener("click", () => {
+    state.filtro = b.dataset.f;
+    montarFiltros(); render();
+  }));
+}
+
+$("busca").addEventListener("input", (e) => { state.busca = e.target.value.toLowerCase(); render(); });
+
+function tarefasFiltradas() {
+  let t = state.tasks;
+  if (state.filtro !== "todas") t = t.filter(x => x.status === state.filtro);
+  if (state.busca) {
+    t = t.filter(x =>
+      x.titulo.toLowerCase().includes(state.busca) ||
+      x.descricao.toLowerCase().includes(state.busca) ||
+      (x.atribuidas || []).some(a => a.nome.toLowerCase().includes(state.busca))
+    );
+  }
+  return t;
+}
+
+/* ---------- render ---------- */
+function render() {
+  const tarefas = tarefasFiltradas();
+  const lista = $("lista");
+  const vazio = $("vazio");
+  if (!tarefas.length) {
+    lista.innerHTML = "";
+    vazio.classList.remove("hidden");
+    $("vazio-txt").textContent = state.busca ? "Nenhuma tarefa encontrada." : "Nenhuma tarefa por aqui. Crie a primeira!";
+    return;
+  }
+  vazio.classList.add("hidden");
+
+  lista.innerHTML = tarefas.map(cardHTML).join("");
+  ligarCardEventos();
+}
+
+function cardHTML(task) {
+  const atrasada = estaAtrasada(task);
+  const podeGerenciar = ehGerente();
+  const sou = estouAtribuido(task);
+  const podeMudarStatus = podeGerenciar || sou;
+
+  // avatares
+  let avs = task.atribuidas.map(a => `<span class="avatar" title="${esc(a.nome)}">${esc(iniciais(a.nome))}</span>`).join("");
+  if (!task.atribuidas.length) avs = `<span class="avatar more">–</span>`;
+
+  const st = slug(task.status);
+  const pri = slug(task.prioridade);
+
+  // mini opcoes de status
+  let statusHtml = "";
+  if (podeMudarStatus) {
+    statusHtml = state.config.status.map(s =>
+      `<button class="mini st-mini ${s===task.status?'sel':''}" data-id="${task.id}" data-st="${esc(s)}">${esc(s)}</button>`
+    ).join(" ");
+  }
+
+  let acoesHtml = `
+    <div class="tarefa-acoes">
+      <button class="mini" data-ver="${task.id}">Detalhes</button>`;
+  if (podeGerenciar) {
+    acoesHtml += `<button class="mini" data-editar="${task.id}">Editar</button>`;
+    acoesHtml += `<button class="mini danger" data-del="${task.id}">Remover</button>`;
+  }
+  acoesHtml += `</div>`;
+
+  let entregaHtml = "";
+  if (task.dataEntrega) {
+    entregaHtml = `<span class="${atrasada ? 'atrasado' : ''}">📅 ${esc(formatarData(task.dataEntrega))}${atrasada ? " (atrasado)" : ""}</span>`;
+  }
+
+  return `
+    <div class="tarefa" data-id="${task.id}">
+      <div class="tarefa-coluna">
+        <div class="tarefa-top">
+          <span class="badge st-${st}">${esc(task.status)}</span>
+          <span class="badge pri-${pri}">${esc(task.prioridade)}</span>
+          <span class="tarefa-titulo">${esc(task.titulo)}</span>
+        </div>
+        ${task.descricao ? `<div class="tarefa-desc">${esc(task.descricao)}</div>` : ""}
+        <div class="tarefa-meta">
+          <div class="avatares" title="${esc(task.atribuidas.map(a=>a.nome).join(', '))}">${avs}</div>
+          <span>Por <b>${esc(task.criadaPorNome)}</b></span>
+          ${entregaHtml}
+        </div>
+        ${statusHtml ? `<div class="status-opcoes" style="margin-top:10px">${statusHtml}</div>` : ""}
+      </div>
+      ${acoesHtml}
+    </div>`;
+}
+
+function ligarCardEventos() {
+  document.querySelectorAll(".st-mini").forEach(b => b.addEventListener("click", () => mudarStatus(b.dataset.id, b.dataset.st)));
+  document.querySelectorAll("[data-ver]").forEach(b => b.addEventListener("click", () => abrirDetalhes(b.dataset.ver)));
+  document.querySelectorAll("[data-editar]").forEach(b => b.addEventListener("click", () => abrirModalTarefa(b.dataset.editar)));
+  document.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => removerTarefa(b.dataset.del)));
+}
+
+async function mudarStatus(id, status) {
+  try {
+    await api(`/api/tasks/${id}/status`, { method: "PUT", body: { status } });
+    await carregarDados(); montarFiltros(); render();
+  } catch (e) { toast(e.message, "erro"); }
+}
+
+async function removerTarefa(id) {
+  if (!confirm("Remover esta tarefa?")) return;
+  try {
+    await api(`/api/tasks/${id}`, { method: "DELETE" });
+    await carregarDados(); montarFiltros(); render();
+    toast("Tarefa removida.", "ok");
+  } catch (e) { toast(e.message, "erro"); }
+}
+
+/* ---------- modal tarefa (criar/editar) ---------- */
+$("btn-nova").addEventListener("click", () => abrirModalTarefa(null));
+
+function abrirModalTarefa(id) {
+  $("t-erro").textContent = "";
+  const editando = id ? state.tasks.find(t => t.id === id) : null;
+  $("modal-titulo").textContent = editando ? "Editar tarefa" : "Nova tarefa";
+  $("t-id").value = editando ? editando.id : "";
+  $("t-titulo").value = editando ? editando.titulo : "";
+  $("t-descricao").value = editando ? editando.descricao : "";
+  $("t-data").value = editando ? editando.dataEntrega : "";
+
+  // prioridade
+  const sel = $("t-prioridade");
+  sel.innerHTML = state.config.prioridades.map(p =>
+    `<option value="${esc(p)}" ${editando && editando.prioridade===p ? "selected" : ""}>${esc(p)}</option>`
+  ).join("");
+  if (editando && !state.config.prioridades.includes(editando.prioridade)) {
+    sel.innerHTML += `<option value="${esc(editando.prioridade)}" selected>${esc(editando.prioridade)}</option>`;
+  }
+
+  // atribuir (so gerente)
+  const bloco = $("bloco-atribuir");
+  if (ehGerente()) {
+    bloco.classList.remove("hidden");
+    const lista = $("lista-atribuir");
+    lista.innerHTML = state.users.map(u => {
+      const marcado = editando && (editando.atribuidas || []).some(a => a.userId === u.id);
+      return `
+        <label class="item-atribuir">
+          <input type="checkbox" value="${u.id}" ${marcado ? "checked" : ""} />
+          <span class="nome">${esc(u.nome)}</span>
+          <span class="papel">${u.papel === 'gerente' ? 'Gerente' : 'Membro'}</span>
+        </label>`;
+    }).join("");
+  } else {
+    bloco.classList.add("hidden");
+  }
+
+  $("modal-tarefa").classList.remove("hidden");
+}
+
+document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", fecharModais));
+document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", (e) => {
+  if (e.target === m) fecharModais();
+}));
+function fecharModais() {
+  $("modal-tarefa").classList.add("hidden");
+  $("modal-detalhes").classList.add("hidden");
+}
+
+$("form-tarefa").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("t-erro").textContent = "";
+  const id = $("t-id").value;
+  const titulo = $("t-titulo").value.trim();
+  if (!titulo) { $("t-erro").textContent = "Dê um título para a tarefa."; return; }
+
+  const payload = {
+    titulo,
+    descricao: $("t-descricao").value.trim(),
+    prioridade: $("t-prioridade").value,
+    dataEntrega: $("t-data").value
+  };
+
+  try {
+    if (id) {
+      // gerente editando
+      payload.atribuidas = [...document.querySelectorAll("#lista-atribuir input:checked")].map(i => i.value);
+      await api(`/api/tasks/${id}`, { method: "PUT", body: payload });
+    } else {
+      if (ehGerente()) {
+        payload.atribuidas = [...document.querySelectorAll("#lista-atribuir input:checked")].map(i => i.value);
+      } else {
+        payload.paraSi = true;
+      }
+      await api("/api/tasks", { method: "POST", body: payload });
+    }
+    fecharModais();
+    await carregarDados(); montarFiltros(); render();
+    toast(id ? "Tarefa atualizada." : "Tarefa criada.", "ok");
+  } catch (err) {
+    $("t-erro").textContent = err.message;
+  }
+});
+
+/* ---------- modal detalhes ---------- */
+function abrirDetalhes(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+  const atrasada = estaAtrasada(task);
+  const podeMudarStatus = ehGerente() || estouAtribuido(task);
+  const st = slug(task.status);
+  const pri = slug(task.prioridade);
+
+  const statusHtml = podeMudarStatus
+    ? state.config.status.map(s =>
+        `<button class="status-opcao ${s===task.status?'sel':''}" data-id="${task.id}" data-st="${esc(s)}">${esc(s)}</button>`
+      ).join(" ")
+    : `<span class="badge st-${st}">${esc(task.status)}</span>`;
+
+  const pessoas = (task.atribuidas || []).map(a => `<span class="avatar" title="${esc(a.nome)}">${esc(iniciais(a.nome))}</span>`).join("") || "—";
+
+  $("detalhes-corpo").innerHTML = `
+    <div class="det-topo" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span class="badge st-${st}">${esc(task.status)}</span>
+      <span class="badge pri-${pri}">${esc(task.prioridade)}</span>
+    </div>
+    <div class="det-titulo">${esc(task.titulo)}</div>
+    ${task.descricao ? `<div class="det-desc">${esc(task.descricao)}</div>` : ""}
+    <div class="tarefa-meta" style="margin-top:10px">
+      <div class="avatares">${pessoas}</div>
+      <span>Por <b>${esc(task.criadaPorNome)}</b></span>
+      ${task.dataEntrega ? `<span class="${atrasada?'atrasado':''}">📅 ${esc(formatarData(task.dataEntrega))}${atrasada?' (atrasado)':''}</span>` : ""}
+    </div>
+    <div class="det-bloco">
+      <h4>Status</h4>
+      <div class="status-opcoes">${statusHtml}</div>
+    </div>
+    <div class="modal-acoes">
+      ${ehGerente() ? `<button class="btn btn-primary" data-editar="${task.id}" style="margin-left:auto">Editar</button>` : ""}
+      <button class="btn btn-ghost" data-close>Fechar</button>
+    </div>
+  `;
+
+  $("modal-detalhes").classList.remove("hidden");
+  $("modal-detalhes").querySelectorAll(".status-opcao[data-st]").forEach(b =>
+    b.addEventListener("click", async () => {
+      try {
+        await api(`/api/tasks/${b.dataset.id}/status`, { method: "PUT", body: { status: b.dataset.st } });
+        await carregarDados(); montarFiltros(); render();
+        abrirDetalhes(b.dataset.id);
+      } catch (e) { toast(e.message, "erro"); }
+    })
+  );
+  const ed = $("modal-detalhes").querySelector("[data-editar]");
+  if (ed) ed.addEventListener("click", () => { abrirDetalhesFechar(); abrirModalTarefa(ed.dataset.editar); });
+}
+function abrirDetalhesFechar() { $("modal-detalhes").classList.add("hidden"); }
+
+/* ---------- init ---------- */
+(async function init() {
+  try {
+    const { usuario } = await api("/api/auth/me");
+    state.usuario = usuario;
+    await carregarDados();
+    mostrarApp(false);
+  } catch (e) {
+    $("auth-screen").classList.remove("hidden");
+    // dica sobre primeira conta
+    try {
+      // se nao ha nenhum usuario, avisa
+      const r = await fetch("/api/config").catch(() => null);
+      // nao importa; apenas mostra hint
+      $("login-info").textContent = "A primeira conta criada será o gerente da equipe.";
+    } catch (e2) {}
+  }
+})();
+
+=== README.md ===
+# Sistema de Gestão de Tarefas da Equipe
+
+Um site completo para gerenciar tarefas de uma equipe. O **gerente** cria e distribui tarefas para os membros, edita e remove qualquer tarefa e vê tudo. Os **membros** veem as tarefas que receberam, mudam o status e criam tarefas para si mesmos. Tudo fica salvo no próprio servidor do site (não no aparelho), então cada pessoa encontra as mesmas informações de qualquer computador ou celular, e o que uma pessoa faz aparece para quem precisa ver.
+
+## Requisitos
+
+- [Node.js](https://nodejs.org) versão **18** ou mais nova instalada.
+
+## Como instalar e executar
+
+1. Abra um terminal na pasta do projeto e rode:
+
+```bash
+npm install
+```
+
+2. Inicie o site:
+
+```bash
+npm start
+```
+
+3. Abra o navegador em:
+
+```
+http://localhost:3000
+```
+
+Para rodar em outra porta, use:
+
+```bash
+PORT=8080 npm start
+```
+
+## Como usar
+
+- **Criar a conta do gerente:** na tela inicial, escolha **Criar conta**. A **primeira** conta criada é automaticamente o **gerente** da equipe.
+- **Criar contas dos membros:** cada membro acessa o site de qualquer computador/celular e usa **Criar conta** com seu nome, e-mail e senha.
+- **Entrar:** depois de criada, a pessoa escolhe **Entrar** e digita e-mail e senha.
+- **Gerente:** pode criar tarefas e atribuí-las a um ou mais membros, editar e remover qualquer tarefa, mudar status e ver todas as tarefas de todos.
+- **Membro:** vê as tarefas atribuídas a ele, muda o status (A fazer / Em andamento / Concluída) e cria tarefas apenas para si mesmo.
+
+## Onde ficam os dados
+
+Todos os dados (contas, tarefas, configurações) ficam salvos no arquivo `data.json`, criado automaticamente na pasta do projeto. Por isso as informações **não somem** ao fechar o site e são **compartilhadas** entre todos os usuários.
+
+> **Importante:** para que as pessoas da equipe acessem de outros computadores/celulares, o servidor precisa estar disponível na internet (por exemplo, rodando em um computador com acesso de rede, ou publicado em uma hospedagem/serviço de deploy). Neste projeto não é preciso se cadastrar em nenhum outro site nem ligar com outros serviços — tudo fica dentro do próprio site.

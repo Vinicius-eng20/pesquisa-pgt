@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Horários - <%= servico.nome %></title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .voltar { color:var(--cinza); text-decoration:none; font-size:.85rem; transition:.2s; }
+  .voltar:hover { color:var(--branco); }
+  .container { max-width:900px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.4rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.85rem; margin-bottom:1.8rem; }
+  .gerador { background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.15); border-radius:14px; padding:1.4rem; margin-bottom:2rem; }
+  .gerador h3 { font-size:.9rem; margin-bottom:1rem; color:var(--dourado); }
+  .dias-check { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
+  .dia-cb { padding:.5rem .8rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:8px; cursor:pointer; font-size:.8rem; transition:.2s; }
+  .dia-cb input { position:absolute; opacity:0; width:0; height:0; }
+  .dia-cb.sel { border-color:var(--azul-claro); background:rgba(62,143,209,.15); color:var(--azul-claro); }
+  .parametros { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:.8rem; align-items:end; }
+  .campo label { display:block; font-size:.7rem; color:var(--cinza); margin-bottom:.2rem; }
+  select, input[type=time], input[type=number] { width:100%; padding:.6rem .8rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:8px; color:var(--branco); font-size:.85rem; outline:none; }
+  select option { background:var(--azul-medio); }
+  .btn { padding:.7rem 1.2rem; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); color:var(--branco); border:none; border-radius:8px; font-size:.85rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn:hover { filter:brightness(1.1); }
+  .calendario { display:flex; flex-direction:column; gap:.8rem; }
+  .dia-linha { background:rgba(27,58,92,.4); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem; }
+  .dia-linha h4 { font-size:.8rem; color:var(--dourado); margin-bottom:.7rem; text-transform:uppercase; }
+  .h-slots { display:flex; flex-wrap:wrap; gap:.4rem; }
+  .h-slot { position:relative; }
+  .h-slot span { padding:.4rem .7rem; background:rgba(46,204,113,.1); border:1px solid rgba(46,204,113,.3); border-radius:7px; font-size:.75rem; color:var(--verde); }
+  .h-slot button { position:absolute; top:-4px; right:-4px; width:16px; height:16px; background:var(--vermelho); border:none; border-radius:50%; font-size:.55rem; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:.7; transition:.2s; }
+  .h-slot button:hover { opacity:1; transform:scale(1.1); }
+  .vazio { color:var(--cinza); font-size:.8rem; padding:.8rem; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="topo"><div class="logo"><div class="ic">⏰</div><h1 style="font-size:1rem;font-weight:700;">Horários de <%= servico.nome %></h1></div><a class="voltar" href="/admin/servicos">← Voltar</a></div>
+  <div class="container">
+    <div class="titulo">Gerenciamento de agenda semanal</div>
+    <div class="subtitulo">Os horários abaixo serão repetidos toda semana para este serviço. Gerar substitui os horários anteriores.</div>
+    <div class="gerador">
+      <h3>Parâmetros da geração</h3>
+      <div class="dias-check">
+        <% for (let i = 0; i < 7; i++) { %><div class="dia-cb <%= i < 6 ? 'sel' : '' %>" onclick="tgl(this)"><input type="checkbox" name="dias" value="<%= i %>" <%= i < 6 ? 'checked' : '' %>><span><%= DIAS[i].slice(0,3).toUpperCase() %></span></div><% } %>
+      </div>
+      <form method="POST" action="/admin/horarios/<%= servico.id %>/gerar">
+        <div class="parametros">
+          <div class="campo"><label>Início</label><input type="time" name="hora_inicio" required value="08:00"></div>
+          <div class="campo"><label>Fim</label><input type="time" name="hora_fim" required value="18:00"></div>
+          <div class="campo"><label>Passo (min)</label><select name="passo"><option value="15">15</option><option value="30" selected>30</option><option value="45">45</option><option value="60">60</option></select></div>
+          <div class="campo"><label>&nbsp;</label><button type="submit" class="btn" onclick="return confirm('Isto substituirá todos os horários atuais deste serviço. Confirmar?')">⚙ Gerar agenda</button></div>
+        </div>
+      </form>
+    </div>
+    <% if (horarios.length === 0) { %><div class="vazio">Nenhum horário cadastrado. Use o formulário acima para gerar.</div><% } else { %>
+      <div class="calendario">
+        <% const grupos = {}; horarios.forEach(h => { if (!grupos[h.dia_semana]) grupos[h.dia_semana] = []; grupos[h.dia_semana].push(h); }); %>
+        <% for (const d in grupos) { %>
+          <div class="dia-linha"><h4><%= DIAS[parseInt(d,10)] %></h4><div class="h-slots">
+            <% grupos[d].forEach(h => { %><div class="h-slot"><span><%= h.hora %></span><form method="POST" action="/admin/horarios/excluir/<%= h.id %>"><button type="submit" title="Excluir horário">×</button></form></div><% } %>
+          </div></div>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+  <script>function tgl(el){el.classList.toggle('sel');el.querySelector('input').checked=!el.querySelector('input').checked;}</script>
+</body>
+</html>

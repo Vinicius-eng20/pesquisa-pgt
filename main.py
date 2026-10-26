@@ -6,9 +6,10 @@ from time import sleep
 #   - agendamento_serviços, cursos_online, reservas_hotel, biblioteca_digital
 #   - marketplace_freelance, inscricao_eventos, tarefas_equipe
 
-MODELO = "gpt5"
+MODELO = "qwen"
 
-DOMINIOS = ['loja_departamentos', 'despesas_pessoais', 'restaurante_pedidos', 'agendamento_servicos', 'cursos_online', 'reservas_hotel', 'biblioteca_digital', 'marketplace_freelance', 'inscricao_eventos', 'tarefas_equipe']
+# DOMINIOS = ['loja_departamentos', 'despesas_pessoais', 'restaurante_pedidos', 'agendamento_servicos', 'cursos_online', 'reservas_hotel', 'biblioteca_digital', 'marketplace_freelance', 'inscricao_eventos', 'tarefas_equipe']
+DOMINIOS = ['tarefas_equipe']
 
 for dominio in DOMINIOS:
     print(f'\nDomínio: {dominio}')

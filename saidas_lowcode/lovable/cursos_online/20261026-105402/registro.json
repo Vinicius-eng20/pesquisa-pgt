@@ -1,0 +1,43 @@
+{
+  "data_hora_registro_utc": "2026-10-26T10:54:02+00:00",
+  "protocolo_versao": "1.0",
+  "prompt_versao": "v2",
+  "prompt_usuario": "Crie um site que seja uma plataforma de cursos online com matrícula. Não sei nada de programação, só quero que funcione.\n\nVão usar os alunos e o administrador da plataforma. Os alunos precisam poder ver os cursos disponíveis, se matricular em um curso e ver os cursos em que estão matriculados. O administrador da plataforma precisa poder cadastrar, editar e remover cursos, cancelar matrículas e ver todas as matrículas de todos os alunos.\n\nCada pessoa entra com a sua conta e pode usar o site de qualquer computador ou celular. Tudo precisa ficar salvo no próprio site, e não só no aparelho de quem está usando: se a pessoa entrar pelo celular, tem que encontrar as mesmas informações que deixou no computador, e o que uma pessoa faz precisa aparecer para quem deve ver. Mesmo se eu fechar e abrir o site de novo, nada pode sumir. Quero que funcione de verdade na internet. Não quero ter que criar conta em outros sites nem ligar com outros serviços, quero tudo dentro do próprio site.",
+  "plataforma": "lovable",
+  "dominio": "cursos_online",
+  "dia_ordem": 3,
+  "rodada": 0,
+  "conta": "lov-2",
+  "inicio_local": "2026-10-23 19:49",
+  "fim_local": "2026-10-23 19:49",
+  "cota_antes": "5",
+  "cota_depois": "0.3",
+  "cota_esgotada": false,
+  "concluida_pela_plataforma": true,
+  "banco": "automatico",
+  "n_mensagens_apoio": 0,
+  "mensagens_apoio": [],
+  "registro_conversa": "cursos-online.zip",
+  "observacoes": "",
+  "duracao_min": 0,
+  "estado": "gerada",
+  "motivo_nao_entregue": "",
+  "desvios": [
+    "geracao_repetida"
+  ],
+  "pasta": "saidas_lowcode\\lovable\\cursos_online\\20261026-105402",
+  "zip_origem": "cursos-online.zip",
+  "zip_sha256": "f575a4ebf611f3cb9777cfd45c4b9298c7b7f173007d53653fe60ce35e2a9322",
+  "n_arquivos": 101,
+  "n_excluidos_dependencias": 0,
+  "caminhos_recusados": [],
+  "tem_backend": true,
+  "tipo_backend": "supabase",
+  "tem_migrations": true,
+  "esquema_por_orm": true,
+  "usa_localstorage": true,
+  "arquivos_env": [
+    ".env"
+  ],
+  "variaveis_sensiveis_env": []
+}

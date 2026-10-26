@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Restaurante - Pedidos</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <strong>Restaurante</strong>
+        <span class="muted">Sistema de Pedidos</span>
+      </div>
+      <nav class="nav">
+        <button id="btnGoMenu" class="btn ghost">Cardápio</button>
+        <button id="btnGoMyOrders" class="btn ghost">Meus pedidos</button>
+        <button id="btnGoManager" class="btn ghost hidden">Área do Gerente</button>
+        <button id="btnLogout" class="btn danger hidden">Sair</button>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section id="authCard" class="card">
+        <h2>Entrar ou criar conta</h2>
+
+        <div class="tabs">
+          <button id="tabLogin" class="tab active">Entrar</button>
+          <button id="tabRegister" class="tab">Criar conta</button>
+        </div>
+
+        <form id="loginForm" class="form">
+          <label>E-mail</label>
+          <input name="email" type="email" required autocomplete="email" />
+          <label>Senha</label>
+          <input name="password" type="password" required autocomplete="current-password" />
+          <button class="btn primary" type="submit">Entrar</button>
+          <p class="muted small">
+            Gerente (padrão): <code>gerente@restaurante.com</code> / <code>123456</code>
+          </p>
+        </form>
+
+        <form id="registerForm" class="form hidden">
+          <label>Nome</label>
+          <input name="name" type="text" required autocomplete="name" />
+          <label>E-mail</label>
+          <input name="email" type="email" required autocomplete="email" />
+          <label>Senha</label>
+          <input name="password" type="password" required autocomplete="new-password" />
+          <button class="btn primary" type="submit">Criar conta</button>
+        </form>
+
+        <p id="authMsg" class="msg"></p>
+      </section>
+
+      <section id="menuCard" class="card hidden">
+        <div class="row between">
+          <h2>Cardápio</h2>
+          <button id="btnRefreshMenu" class="btn">Atualizar</button>
+        </div>
+        <div id="menuList" class="grid"></div>
+
+        <h3>Seu pedido</h3>
+        <div id="cartBox" class="cart">
+          <p class="muted">Adicione itens do cardápio.</p>
+        </div>
+        <div class="row between">
+          <strong>Total: <span id="cartTotal">R$ 0,00</span></strong>
+          <button id="btnPlaceOrder" class="btn primary">Fazer pedido</button>
+        </div>
+        <p id="orderMsg" class="msg"></p>
+      </section>
+
+      <section id="myOrdersCard" class="card hidden">
+        <div class="row between">
+          <h2>Meus pedidos</h2>
+          <button id="btnRefreshMyOrders" class="btn">Atualizar</button>
+        </div>
+        <div id="myOrdersList"></div>
+      </section>
+
+      <section id="managerCard" class="card hidden">
+        <h2>Área do Gerente</h2>
+
+        <div class="grid2">
+          <div class="panel">
+            <div class="row between">
+              <h3>Cardápio (cadastro)</h3>
+              <button id="btnReloadManagerMenu" class="btn">Recarregar</button>
+            </div>
+
+            <form id="menuItemForm" class="form">
+              <input type="hidden" name="id" />
+              <label>Nome</label>
+              <input name="name" required />
+              <label>Descrição</label>
+              <input name="description" />
+              <label>Preço (ex: 25,90)</label>
+              <input name="price" required placeholder="25,90" />
+              <label class="row">
+                <input type="checkbox" name="is_active" checked style="width:auto" />
+                <span>Ativo (aparece no cardápio)</span>
+              </label>
+              <div class="row">
+                <button class="btn primary" type="submit">Salvar</button>
+                <button id="btnClearForm" class="btn" type="button">Limpar</button>
+              </div>
+              <p id="menuItemMsg" class="msg"></p>
+            </form>
+
+            <div id="managerMenuList"></div>
+          </div>
+
+          <div class="panel">
+            <div class="row between">
+              <h3>Pedidos (todos)</h3>
+              <button id="btnReloadAllOrders" class="btn">Recarregar</button>
+            </div>
+            <div id="allOrdersList"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer muted small">
+      Dica: tudo fica salvo no banco do servidor (SQLite), então funciona em qualquer dispositivo.
+    </footer>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,999 @@
+=== README.md ===
+Este site contém um sistema completo de agendamento de serviços que funciona no navegador.
+
+Os dados ficam salvos no servidor em um arquivo chamado `db.json`, dentro da mesma pasta do site. Por isso, tudo fica guardado dentro do próprio site e permanece disponível mesmo quando o navegador é fechado e reaberto, e o mesmo conteúdo aparece em qualquer computador ou celular que acesse o site.
+
+O sistema não depende de nenhum serviço externo. Tudo roda dentro do próprio site, usando apenas Node.js e um pacote chamado `cors`, necessário para permitir que o site funcione corretamente quando hospedado.
+
+Para instalar, abrir uma pasta do sistema e executar o comando:
+
+    npm install
+
+Isso baixa as dependências necessárias e cria automaticamente um arquivo `package-lock.json`.
+
+Para executar, na mesma pasta, executar o comando:
+
+    npm start
+
+Depois que o servidor iniciar, abrir o endereço mostrado no terminal (normalmente algo como http://localhost:3000) em um navegador, no computador ou no celular.
+
+O site começa com serviços e horários já cadastrados, prontos para uso.
+
+Para o responsável pelo negócio, criar uma conta usando a tela de cadastro, escolhendo o papel "Administrador". Depois entrar com essa conta e cadastrar serviços, horários disponíveis e confirmar ou recusar agendamentos.
+
+Os clientes podem cadastrar a própria conta escolhendo o papel "Cliente", entrar e então visualizar serviços, horários livres, marcar um horário e consultar ou cancelar os próprios agendamentos.
+
+Uma conta já cadastrada pode entrar de qualquer computador ou celular usando os mesmos dados de login.
+
+Os arquivos de dados e dependências gerados (`node_modules`, `package-lock.json`, `db.json`) podem ser apagados sem prejuízo das funcionalidades, exceto o `db.json`, que deve ser preservado para manter os dados cadastrados. Para começar o site novamente do zero, basta apagar o arquivo `db.json` e reiniciar o servidor.
+
+=== package.json ===
+{
+  "name": "agenda-servicos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sistema de agendamento de serviços",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "bcryptjs": "^2.4.3",
+    "sqlite3": "^5.1.6"
+  }
+}
+
+=== server.js ===
+const express = require('express');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const Database = require('sqlite3').verbose();
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const dbFile = path.join(__dirname, 'agenda.db');
+
+const db = new Database(dbFile, (err) => {
+  if (err) console.error('Erro ao abrir banco:', err.message);
+});
+
+db.serialize(() => {
+  db.run(`CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    senha TEXT NOT NULL,
+    papel TEXT NOT NULL CHECK(papel IN ('cliente','admin'))
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS servicos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    duracao_min INTEGER NOT NULL DEFAULT 60,
+    preco REAL DEFAULT 0,
+    ativo INTEGER DEFAULT 1
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS horarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    servico_id INTEGER NOT NULL,
+    dia_semana INTEGER NOT NULL CHECK(dia_semana BETWEEN 0 AND 6),
+    hora TEXT NOT NULL,
+    UNIQUE(servico_id, dia_semana, hora)
+  ) REFERENCES servicos(id)`);
+  db.run(`CREATE TABLE IF NOT EXISTS agendamentos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    servico_id INTEGER NOT NULL,
+    usuario_id INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    hora TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pendente','confirmado','recusado','cancelado')),
+    criado_em TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(servico_id, usuario_id, data, hora)
+  ) REFERENCES servicos(id), usuarios(id)`);
+
+  const seed = () => {
+    db.all('SELECT id FROM servicos', (err, rows) => {
+      if (rows.length === 0) {
+        db.run(`INSERT INTO servicos (nome, descricao, duracao_min, preco) VALUES ('Corte de cabelo', 'Serviço básico de corte e acabamento', 45, 80)`);
+        db.run(`INSERT INTO servicos (nome, descricao, duracao_min, preco) VALUES ('Barba completa', 'Modelagem e acabamento de barba', 30, 50)`);
+        db.run('SELECT id FROM servicos', [], (e, r) => {
+          const ids = r.map(x => x.id);
+          const dias = [0,1,2,3,4,5];
+          const horas = ['08:00','09:00','10:00','11:00','14:00','15:00','16:00','17:00'];
+          let n = 0;
+          const done = () => { console.log('Banco pronto.'); };
+          ids.forEach(sid => {
+            dias.forEach(d => {
+              horas.forEach(h => {
+                n++;
+                db.run('INSERT INTO horarios (servico_id, dia_semana, hora) VALUES (?,?,?)', [sid, d, h], (e) => {
+                  if (e) console.error(e.message);
+                  if (--n === 0) done();
+                });
+              });
+            });
+          });
+        });
+      } else {
+        console.log('Banco já contém dados.');
+      }
+    });
+  };
+  db.all('SELECT COUNT(*) as n FROM servicos', [], (err, rows) => {
+    if (rows && rows.length > 0 && rows[0].n === 0) seed();
+    else console.log('Banco pronto.');
+  });
+});
+
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(session({
+  secret: 'agenda-servicos-chave-segura-2025',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }
+}));
+
+function reqUsuario(req, res, next) {
+  if (!req.session.usuario) { return res.redirect('/entrar'); }
+  next();
+}
+function reqAdmin(req, res, next) {
+  if (!req.session.usuario || req.session.usuario.papel !== 'admin') { return res.redirect('/'); }
+  next();
+}
+
+app.get('/', (req, res) => {
+  if (req.session.usuario) return res.redirect(req.session.usuario.papel === 'admin' ? '/admin' : '/cliente');
+  res.redirect('/entrar');
+});
+
+// Login
+app.get('/entrar', (req, res) => {
+  if (req.session.usuario) return res.redirect(req.session.usuario.papel === 'admin' ? '/admin' : '/cliente');
+  res.sendFile(path.join(__dirname, 'views', 'entrar.html'));
+});
+app.post('/entrar', (req, res) => {
+  const { email, senha } = req.body;
+  db.get('SELECT * FROM usuarios WHERE email = ?', [email], (err, u) => {
+    if (!u) return res.redirect('/entrar?erro=1');
+    if (bcrypt.compareSync(senha, u.senha)) {
+      req.session.usuario = { id: u.id, nome: u.nome, email: u.email, papel: u.papel };
+      res.redirect(u.papel === 'admin' ? '/admin' : '/cliente');
+    } else {
+      res.redirect('/entrar?erro=1');
+    }
+  });
+});
+
+// Cadastro
+app.get('/cadastro', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'cadastro.html'));
+});
+app.post('/cadastro', (req, res) => {
+  const { nome, email, senha, papel } = req.body;
+  db.get('SELECT id FROM usuarios WHERE email = ?', [email], (err, u) => {
+    if (u) return res.redirect('/cadastro?erro=dup');
+    const hash = bcrypt.hashSync(senha, 10);
+    db.run('INSERT INTO usuarios (nome, email, senha, papel) VALUES (?,?,?,?)', [nome, email, hash, papel], (e) => {
+      if (e) return res.redirect('/cadastro?erro=1');
+      db.get('SELECT id, nome, email, papel FROM usuarios WHERE email = ?', [email], (e2, user) => {
+        req.session.usuario = { id: user.id, nome: user.nome, email: user.email, papel: user.papel };
+        res.redirect(papel === 'admin' ? '/admin' : '/cliente');
+      });
+    });
+  });
+});
+
+app.post('/sair', (req, res) => {
+  req.session.destroy(() => res.redirect('/entrar'));
+});
+
+// Cliente: serviços + horários livres + agendar
+const DIAS = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+function parseHora(h) { const [hh, mm] = h.split(':'); return parseInt(hh,10)*60 + parseInt(mm,10); }
+
+app.get('/cliente', reqUsuario, (req, res) => {
+  db.all(`SELECT s.*, 
+    (SELECT COUNT(*) FROM horarios h WHERE h.servico_id = s.id) as qtd_horarios,
+    (SELECT COUNT(*) FROM agendamentos a WHERE a.servico_id = s.id AND a.status IN ('pendente','confirmado')) as qtd_agen
+    FROM servicos s WHERE s.ativo = 1 ORDER BY s.nome`, [], (err, servicos) => {
+    if (!servicos) servicos = [];
+    servicos.forEach(s => {
+      const inicio = parseHora(s.hora_inicio);
+      const fim = parseHora(s.hora_fim);
+      const passos = Math.max(1, Math.floor((fim - inicio) / (s.passo || 60)));
+      s.total_horas = passos + 1;
+      s.livres = s.total_horas - s.qtd_agen;
+      if (s.livres < 0) s.livres = 0;
+      s.carga = Math.min(100, Math.round((s.qtd_agen / Math.max(1, s.total_horas)) * 100));
+    });
+    db.all(`SELECT a.*, s.nome as nome_servico FROM agendamentos a 
+      JOIN servicos s ON a.servico_id = s.id 
+      WHERE a.usuario_id = ? AND a.status IN ('pendente','confirmado') 
+      ORDER BY a.data DESC, a.hora DESC`, [req.session.usuario.id], (e, meus) => {
+      meus = meus || [];
+      meus.forEach(a => { const [d, hh, mm] = a.data.split('-'); a.data_fmt = `${d}/${hh}/${mm}`; });
+      const servicoMap = {};
+      servicos.forEach(s => servicoMap[s.id] = s);
+      res.sendFile(path.join(__dirname, 'views', 'cliente.html'), { usuario: req.session.usuario, servicos, servicoMap, meus, DIAS });
+    });
+  });
+});
+
+app.get('/cliente/agendar/:servicoId', reqUsuario, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  db.get('SELECT * FROM servicos WHERE id = ? AND ativo = 1', [sid], (err, s) => {
+    if (!s) return res.redirect('/cliente');
+    db.all('SELECT dia_semana, hora FROM horarios WHERE servico_id = ? ORDER BY dia_semana, hora', [sid], (e, hrs) => {
+      hrs = hrs || [];
+      db.all(`SELECT data, hora, status FROM agendamentos WHERE servico_id = ? AND status IN ('pendente','confirmado')`, [sid], (e2, agens) => {
+        agens = agens || [];
+        const busy = {};
+        agens.forEach(a => { busy[a.data + '|' + a.hora] = a.status; });
+        const porDia = {};
+        hrs.forEach(r => {
+          if (!porDia[r.dia_semana]) porDia[r.dia_semana] = [];
+          const hoje = new Date().toISOString().split('T')[0];
+          const prox = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
+          let data = hoje;
+          if (r.dia_semana === 0) { let dt = new Date(); while (dt.getDay() !== 0) { dt.setDate(dt.getDate() + 1); } data = dt.toISOString().split('T')[0]; }
+          else { let dt = new Date(); let cont = 0; while (dt.getDay() !== r.dia_semana && cont < 8) { dt.setDate(dt.getDate() + 1); cont++; } if (cont >= 8) return; data = dt.toISOString().split('T')[0]; }
+          if (data < prox) return;
+          porDia[r.dia_semana].push({ hora: r.hora, data, estado: busy[data + '|' + r.hora] || 'livre' });
+        });
+        res.sendFile(path.join(__dirname, 'views', 'agendar.html'), { usuario: req.session.usuario, servico: s, porDia, DIAS });
+      });
+    });
+  });
+});
+
+app.post('/cliente/agendar/:servicoId', reqUsuario, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  const { data, hora } = req.body;
+  db.get('SELECT id FROM horarios WHERE servico_id = ? AND dia_semana = ? AND hora = ?', [sid, new Date(data + 'T12:00:00').getDay(), hora], (err, h) => {
+    if (!h) return res.redirect('/cliente/agendar/' + sid + '?erro=1');
+    db.get(`SELECT id FROM agendamentos WHERE servico_id = ? AND usuario_id = ? AND data = ? AND hora = ? AND status IN ('pendente','confirmado')`, [sid, req.session.usuario.id, data, hora], (e, meu) => {
+      db.get(`SELECT id, status FROM agendamentos WHERE servico_id = ? AND usuario_id != ? AND data = ? AND hora = ? AND status IN ('pendente','confirmado')`, [sid, req.session.usuario.id, data, hora], (e2, outro) => {
+        if (meu || outro) { return res.redirect('/cliente/agendar/' + sid + '?erro=ocupado'); }
+        db.run(`INSERT INTO agendamentos (servico_id, usuario_id, data, hora, status) VALUES (?,?,?,'pendente')`, [sid, req.session.usuario.id, data, hora], (err2) => {
+          if (err2) res.redirect('/cliente/agendar/' + sid + '?erro=1');
+          else res.redirect('/cliente?ok=agendado');
+        });
+      });
+    });
+  });
+});
+
+app.post('/cliente/cancelar/:id', reqUsuario, (req, res) => {
+  const aid = parseInt(req.params.id, 10);
+  db.get(`SELECT * FROM agendamentos WHERE id = ? AND usuario_id = ?`, [aid, req.session.usuario.id], (err, a) => {
+    if (!a) return res.redirect('/cliente');
+    if (a.status !== 'pendente' && a.status !== 'confirmado') return res.redirect('/cliente');
+    db.run(`UPDATE agendamentos SET status = 'cancelado' WHERE id = ?`, [aid], () => res.redirect('/cliente'));
+  });
+});
+
+// Admin painel
+const DIAS_SHORT = ['dom','seg','ter','qua','qui','sex','sáb'];
+function getCalendario(dia, servico_id, data_inicio) {
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const [Y, M, D] = data_inicio.split('-').map(x => parseInt(x,10));
+  const inicio = new Date(Y, M - 1, D);
+  if (inicio < hoje) inicio.setHours(0,0,0,0); inicio.setDate(inicio.getDate()); 
+  const fim = new Date(Y, M - 1, D, 23,59,59,999);
+  fim.setDate(fim.getDate() + 7);
+  const resultados = [];
+  let cur = new Date(inicio);
+  if (dia === null) {
+    for (let i = 0; i < 8; i++) {
+      const dia_txt = `${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`;
+      resultados.push({ data: cur.toISOString().split('T')[0], rotulo: `${DIAS_SHORT[cur.getDay()]} ${dia_txt}`, dias: [] });
+      cur.setDate(cur.getDate() + 1);
+    }
+  } else {
+    let cont = 0;
+    while (cur.getDay() !== dia && cont < 14) { cur.setDate(cur.getDate() + 1); cont++; }
+    for (let i = 0; i < 8; i++) {
+      if (cont >= 14) break;
+      const dia_txt = `${String(cur.getDate()).padStart(2,'0')}/${String(cur.getMonth()+1).padStart(2,'0')}`;
+      resultados.push({ data: cur.toISOString().split('T')[0], rotulo: `${DIAS_SHORT[cur.getDay()]} ${dia_txt}`, dias: [] });
+      cur.setDate(cur.getDate() + 1);
+    }
+  }
+  return resultados;
+}
+
+function renderPainel(res, opts) {
+  db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+    FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id 
+    WHERE ${opts.sql} ${opts.args ? '?' : ''} ORDER BY a.data ${opts.ordem || ''}`, opts.args || [], (err, rows) => {
+    rows = rows || [];
+    rows.forEach(r => {
+      const [a, b, c] = r.data.split('-');
+      r.data_fmt = `${a}/${b}/${c}`;
+    });
+    opts.callback(res, rows);
+  });
+}
+
+app.get('/admin', reqAdmin, (req, res) => {
+  db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+    FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.status = 'pendente' ORDER BY a.data ASC, a.hora ASC`, [], (err, pendentes) => {
+    db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+      FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.status = 'confirmado' AND a.data >= date('now','localtime') ORDER BY a.data ASC, a.hora ASC`, [], (e2, confirmados) => {
+      db.all(`SELECT a.*, s.nome as nome_servico, s.duracao_min, u.nome as cliente_nome, u.email as cliente_email 
+        FROM agendamentos a JOIN servicos s ON a.servico_id = s.id JOIN usuarios u ON a.usuario_id = u.id WHERE a.data < date('now','localtime') OR (a.status IN ('confirmado','recusado','cancelado') AND a.data < date('now','localtime')) ORDER BY a.data DESC, a.hora DESC LIMIT 50`, [], (e3, historico) => {
+        pendentes = pendentes || []; confirmados = confirmados || []; historico = historico || [];
+        [pendentes, confirmados, historico].forEach(lista => lista.forEach(r => { const [a,b,c] = r.data.split('-'); r.data_fmt = `${a}/${b}/${c}`; }));
+        db.all('SELECT id, nome, duracao_min FROM servicos WHERE ativo = 1 ORDER BY nome', [], (err, servicos) => {
+          res.sendFile(path.join(__dirname, 'views', 'painel.html'), { usuario: req.session.usuario, pendentes, confirmados, historico, servicos, DIAS });
+        });
+      });
+    });
+  });
+});
+
+// serviços CRUD
+app.get('/admin/servicos', reqAdmin, (req, res) => {
+  db.all('SELECT * FROM servicos ORDER BY nome', [], (err, rows) => {
+    db.all('SELECT servico_id, COUNT(*) as n FROM horarios GROUP BY servico_id', [], (e, cnts) => {
+      const mapa = {}; cnts.forEach(c => mapa[c.servico_id] = c.n);
+      rows = rows || []; rows.forEach(r => r.n_horarios = mapa[r.id] || 0);
+      res.sendFile(path.join(__dirname, 'views', 'servicos.html'), { usuario: req.session.usuario, servicos: rows });
+    });
+  });
+});
+app.get('/admin/servicos/novo', reqAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'servico_form.html'), { usuario: req.session.usuario, servico: null });
+});
+app.post('/admin/servicos/novo', reqAdmin, (req, res) => {
+  const { nome, descricao, duracao_min, preco } = req.body;
+  db.run('INSERT INTO servicos (nome, descricao, duracao_min, preco, ativo) VALUES (?,?,?,?,1)', [nome, descricao, duracao_min, preco], (err) => {
+    if (err) res.redirect('/admin/servicos'); else res.redirect('/admin/servicos');
+  });
+});
+app.get('/admin/servicos/editar/:id', reqAdmin, (req, res) => {
+  db.get('SELECT * FROM servicos WHERE id = ?', [req.params.id], (err, s) => {
+    if (!s) return res.redirect('/admin/servicos');
+    res.sendFile(path.join(__dirname, 'views', 'servico_form.html'), { usuario: req.session.usuario, servico: s });
+  });
+});
+app.post('/admin/servicos/editar/:id', reqAdmin, (req, res) => {
+  const { nome, descricao, duracao_min, preco, ativo } = req.body;
+  db.run('UPDATE servicos SET nome=?, descricao=?, duracao_min=?, preco=?, ativo=? WHERE id=?', [nome, descricao, duracao_min, preco, ativo ? 1 : 0, req.params.id], () => res.redirect('/admin/servicos'));
+});
+app.post('/admin/servicos/excluir/:id', reqAdmin, (req, res) => {
+  db.run('UPDATE servicos SET ativo = 0 WHERE id = ?', [req.params.id], () => res.redirect('/admin/servicos'));
+});
+
+// horários CRUD
+app.get('/admin/horarios/:servicoId', reqAdmin, (req, res) => {
+  db.get('SELECT * FROM servicos WHERE id = ?', [req.params.servicoId], (err, s) => {
+    if (!s) return res.redirect('/admin/servicos');
+    db.all('SELECT * FROM horarios WHERE servico_id = ? ORDER BY dia_semana, hora', [req.params.servicoId], (e, hrs) => {
+      hrs = hrs || [];
+      hrs.forEach(h => h.dia_nome = DIAS[h.dia_semana]);
+      const porDia = {};
+      hrs.forEach(h => { if (!porDia[h.dia_semana]) porDia[h.dia_semana] = []; porDia[h.dia_semana].push(h.hora); });
+      res.sendFile(path.join(__dirname, 'views', 'horarios.html'), { usuario: req.session.usuario, servico: s, horarios: hrs, DIAS, porDia });
+    });
+  });
+});
+app.post('/admin/horarios/:servicoId/gerar', reqAdmin, (req, res) => {
+  const sid = parseInt(req.params.servicoId, 10);
+  const { dias, hora_inicio, hora_fim, passo } = req.body;
+  let dias_arr = [];
+  if (dias instanceof Array) dias_arr = dias.map(x => parseInt(x,10));
+  else if (dias) dias_arr = dias.split(',').filter(x => x).map(x => parseInt(x,10));
+  const passo_n = parseInt(passo, 10);
+  const ini = parseHora(hora_inicio), fim = parseHora(hora_fim);
+  let n = 0;
+  if (dias_arr.length === 0) return res.redirect('/admin/horarios/' + sid);
+  const horaList = [];
+  for (let t = ini; t <= fim; t += passo_n) { const h = String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0'); horaList.push(h); }
+  if (horaList.length === 0) return res.redirect('/admin/horarios/' + sid);
+  const done = () => { db.run('DELETE FROM horarios WHERE servico_id = ?', [sid], () => { let rem = dias_arr.length * horaList.length; const finish = () => res.redirect('/admin/horarios/' + sid); dias_arr.forEach(d => horaList.forEach(h => { db.run('INSERT INTO horarios (servico_id, dia_semana, hora) VALUES (?,?,?)', [sid, d, h], () => { if (--rem === 0) finish(); }); }); }); };
+  n = dias_arr.length * horaList.length;
+  done();
+});
+app.post('/admin/horarios/excluir/:id', reqAdmin, (req, res) => {
+  db.get('SELECT servico_id FROM horarios WHERE id = ?', [req.params.id], (err, h) => {
+    db.run('DELETE FROM horarios WHERE id = ?', [req.params.id], () => res.redirect('/admin/horarios/' + h.servico_id));
+  });
+});
+
+// confirmar/recusar
+app.post('/admin/agendar/:id/confirmar', reqAdmin, (req, res) => {
+  db.run(`UPDATE agendamentos SET status = 'confirmado' WHERE id = ? AND status = 'pendente'`, [req.params.id], () => res.redirect('/admin'));
+});
+app.post('/admin/agendar/:id/recusar', reqAdmin, (req, res) => {
+  db.run(`UPDATE agendamentos SET status = 'recusado' WHERE id = ? AND status = 'pendente'`, [req.params.id], () => res.redirect('/admin'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando em http://localhost:${PORT}`));
+
+=== views/entrar.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrar - Agenda de Serviços</title>
+<style>
+  :root {
+    --azul-profundo: #0d1b2a; --azul-medio: #1b3a5c; --azul-claro: #3e8fd1; --dourado: #f0a500; --branco: #f4f7f9; --cinza: #8b9ab1;
+    --sombra: rgba(0,0,0,.35); --raio: 18px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background: var(--azul-profundo); color: var(--branco); min-height:100vh; position:relative; overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; background: radial-gradient(ellipse at top right, rgba(62,143,209,.15), transparent 50%), radial-gradient(ellipse at bottom left, rgba(240,165,0,.08), transparent 40%); pointer-events:none; z-index:0; }
+  .particulas { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .particulas span { position:absolute; border-radius:50%; background:var(--azul-claro); opacity:.15; animation:flutuar 12s infinite ease-in-out; }
+  .particulas span:nth-child(1){width:180px;height:180px;top:10%;left:8%;animation-delay:0s;}
+  .particulas span:nth-child(2){width:100px;height:100px;top:60%;left:80%;background:var(--dourado);opacity:.1;animation-delay:2s;animation-duration:15s;}
+  .particulas span:nth-child(3){width:140px;height:140px;top:75%;left:15%;animation-delay:4s;animation-duration:18s;}
+  @keyframes flutuar { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(30px,-40px) scale(1.1);} }
+  .wrap { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1.5rem; }
+  .card { width:100%; max-width:440px; background:linear-gradient(160deg, rgba(27,58,92,.9), rgba(13,27,42,.95)); border:1px solid rgba(62,143,209,.2); border-radius:var(--raio); padding:2.5rem; box-shadow:0 30px 80px -20px var(--sombra); backdrop-filter:blur(20px); animation:entrar .6s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes entrar { from{opacity:0;transform:translateY(20px) scale(.97);} to{opacity:1;transform:none;} }
+  .logo { display:flex; align-items:center; gap:.8rem; margin-bottom:2rem; }
+  .logo .ic { width:52px; height:52px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.6rem; box-shadow:0 8px 20px rgba(62,143,209,.4); }
+  .logo h1 { font-size:1.2rem; font-weight:700; letter-spacing:.02em; }
+  .logo p { font-size:.75rem; color:var(--cinza); }
+  label { display:block; font-size:.75rem; color:var(--cinza); margin:.9rem 0 .3rem; letter-spacing:.05em; text-transform:uppercase; }
+  input { width:100%; padding:.8rem 1rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:10px; color:var(--branco); font-size:.95rem; transition:.2s; outline:none; }
+  input:focus { border-color:var(--azul-claro); box-shadow:0 0 0 3px rgba(62,143,209,.15); background:rgba(13,27,42,.9); }
+  .btn { width:100%; padding:.9rem; margin-top:1.4rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; transition:.2s; letter-spacing:.03em; }
+  .btn:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(90,50,0,.4); filter:brightness(1.08); }
+  .btn:active { transform:translateY(0); }
+  .link { display:block; text-align:center; margin-top:1.3rem; font-size:.85rem; color:var(--cinza); text-decoration:none; transition:.2s; }
+  .link:hover { color:var(--dourado); }
+  .link span { border-bottom:1px dashed rgba(139,154,177,.4); padding-bottom:1px; }
+  .alerta { background:rgba(220,60,60,.15); border:1px solid rgba(220,60,60,.4); color:#ff9e9e; padding:.7rem 1rem; border-radius:10px; font-size:.85rem; margin-bottom:.5rem; }
+</style>
+</head>
+<body>
+  <div class="particulas"><span></span><span></span><span></span></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="logo"><div class="ic">📅</div><div><h1>Agenda de Serviços</h1><p>Faça seu agendamento</p></div></div>
+      <% if (query && query.erro === '1') { %><div class="alerta">E-mail ou senha incorretos.</div><% } %>
+      <form method="POST" action="/entrar">
+        <label>E-mail</label><input type="email" name="email" required placeholder="seu@email.com">
+        <label>Senha</label><input type="password" name="senha" required placeholder="••••••••">
+        <button class="btn" type="submit">Entrar</button>
+      </form>
+      <a class="link" href="/cadastro">Novo por aqui? <span>Criar conta</span></a>
+    </div>
+  </div>
+</body>
+</html>
+
+=== views/cadastro.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cadastro - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --branco:#f4f7f9; --cinza:#8b9ab1; --sombra:rgba(0,0,0,.35); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; position:relative; overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; background:radial-gradient(ellipse at top right, rgba(62,143,209,.15), transparent 50%), radial-gradient(ellipse at bottom left, rgba(240,165,0,.08), transparent 40%); pointer-events:none; z-index:0; }
+  .particulas { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .particulas span { position:absolute; border-radius:50%; background:var(--azul-claro); opacity:.15; animation:flutuar 12s infinite ease-in-out; }
+  .particulas span:nth-child(1){width:180px;height:180px;top:10%;left:8%;}
+  .particulas span:nth-child(2){width:100px;height:100px;top:60%;left:80%;background:var(--dourado);opacity:.1;}
+  @keyframes flutuar { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(30px,-40px) scale(1.1);} }
+  .wrap { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1.5rem; }
+  .card { width:100%; max-width:440px; background:linear-gradient(160deg, rgba(27,58,92,.9), rgba(13,27,42,.95)); border:1px solid rgba(62,143,209,.2); border-radius:18px; padding:2.5rem; box-shadow:0 30px 80px -20px var(--sombra); backdrop-filter:blur(20px); animation:entrar .6s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes entrar { from{opacity:0;transform:translateY(20px) scale(.97);} to{opacity:1;transform:none;} }
+  .logo { display:flex; align-items:center; gap:.8rem; margin-bottom:2rem; }
+  .logo .ic { width:52px; height:52px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.6rem; box-shadow:0 8px 20px rgba(62,143,209,.4); }
+  .logo h1 { font-size:1.2rem; font-weight:700; }
+  .logo p { font-size:.75rem; color:var(--cinza); }
+  label { display:block; font-size:.75rem; color:var(--cinza); margin:.9rem 0 .3rem; letter-spacing:.05em; text-transform:uppercase; }
+  input, select { width:100%; padding:.8rem 1rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:10px; color:var(--branco); font-size:.95rem; transition:.2s; outline:none; }
+  input:focus, select:focus { border-color:var(--azul-claro); box-shadow:0 0 0 3px rgba(62,143,209,.15); }
+  select option { background:var(--azul-medio); }
+  .papeis { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; margin-top:.3rem; }
+  .papel { padding:.8rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:10px; cursor:pointer; transition:.2s; font-size:.85rem; text-align:center; }
+  .papel input { position:absolute; opacity:0; width:0; height:0; }
+  .papel.sel { border-color:var(--azul-claro); background:rgba(62,143,209,.15); }
+  .papel.sel span { color:var(--dourado); }
+  .btn { width:100%; padding:.9rem; margin-top:1.4rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(90,50,0,.4); filter:brightness(1.08); }
+  .link { display:block; text-align:center; margin-top:1.3rem; font-size:.85rem; color:var(--cinza); text-decoration:none; transition:.2s; }
+  .link:hover { color:var(--dourado); }
+  .alerta { background:rgba(220,60,60,.15); border:1px solid rgba(220,60,60,.4); color:#ff9e9e; padding:.7rem 1rem; border-radius:10px; font-size:.85rem; margin-bottom:.5rem; }
+</style>
+</head>
+<body>
+  <div class="particulas"><span></span><span></span></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="logo"><div class="ic">📅</div><div><h1>Agenda de Serviços</h1><p>Criar nova conta</p></div></div>
+      <% if (query && query.erro === 'dup') { %><div class="alerta">Este e-mail já está cadastrado.</div><% } %>
+      <form method="POST" action="/cadastro">
+        <label>Nome completo</label><input type="text" name="nome" required placeholder="Nome" maxlength="100">
+        <label>E-mail</label><input type="email" name="email" required placeholder="seu@email.com">
+        <label>Senha</label><input type="password" name="senha" required placeholder="••••••••" minlength="4">
+        <label>Tipo de conta</label>
+        <div class="papeis">
+          <div class="papel sel" onclick="sel(this,'cliente')"><input type="radio" name="papel" value="cliente" checked><span>👤 Cliente</span></div>
+          <div class="papel" onclick="sel(this,'admin')"><input type="radio" name="papel" value="admin"><span>⚙️ Administrador</span></div>
+        </div>
+        <button class="btn" type="submit">Criar conta</button>
+      </form>
+      <a class="link" href="/entrar">Já possuo conta. <span>Entrar</span></a>
+    </div>
+  </div>
+  <script>function sel(el,v){const f=el.parentElement.querySelectorAll('.papel');f.forEach(x=>x.classList.remove('sel'));el.classList.add('sel');el.querySelector('input').checked=true;}</script>
+</body>
+</html>
+
+=== views/cliente.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minha Agenda - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo .logo h1 { font-size:1rem; font-weight:700; }
+  .usuario { display:flex; align-items:center; gap:1rem; }
+  .usuario .info { text-align:right; }
+  .usuario .nome { font-size:.85rem; font-weight:600; }
+  .usuario .email { font-size:.7rem; color:var(--cinza); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1100px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:1.8rem; }
+  .msg { background:rgba(46,204,113,.15); border:1px solid rgba(46,204,113,.4); color:var(--verde); padding:.8rem 1rem; border-radius:10px; font-size:.9rem; margin-bottom:1.5rem; }
+  .servicos { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:1.2rem; margin-bottom:2.5rem; }
+  .servico { background:linear-gradient(160deg, rgba(27,58,92,.7), rgba(13,27,42,.8)); border:1px solid rgba(62,143,209,.15); border-radius:16px; padding:1.4rem; transition:.25s; position:relative; overflow:hidden; }
+  .servico:hover { transform:translateY(-4px); border-color:rgba(62,143,209,.4); box-shadow:0 20px 50px -15px rgba(62,143,209,.3); }
+  .servico .topo-s { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:1rem; }
+  .servico .nome-s { font-size:1.05rem; font-weight:700; }
+  .servico .desc { font-size:.8rem; color:var(--cinza); line-height:1.4; margin-bottom:1rem; min-height:2.2rem; }
+  .servico .meta { display:flex; gap:1rem; font-size:.75rem; color:var(--cinza); margin-bottom:1rem; }
+  .servico .meta b { color:var(--branco); }
+  .barra { height:5px; background:rgba(139,154,177,.15); border-radius:3px; margin-bottom:.4rem; overflow:hidden; }
+  .barra div { height:100%; background:linear-gradient(90deg, var(--azul-claro), var(--dourado)); border-radius:3px; transition:width .6s; }
+  .carga-txt { font-size:.7rem; color:var(--cinza); margin-bottom:1rem; }
+  .btn-agendar { width:100%; padding:.7rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:9px; font-size:.85rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn-agendar:hover { filter:brightness(1.1); }
+  .meus-agendamentos { margin-top:1rem; }
+  .meus-agendamentos h2 { font-size:1.2rem; margin-bottom:1rem; }
+  .lista-agendamentos { display:flex; flex-direction:column; gap:.8rem; }
+  .agend { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem 1.2rem; flex-wrap:wrap; }
+  .agend .dados { flex:1; min-width:180px; }
+  .agend .ns { font-weight:700; font-size:.95rem; }
+  .agend .dh { font-size:.8rem; color:var(--cinza); margin-top:.2rem; }
+  .agend .dh b { color:var(--dourado); }
+  .status { font-size:.7rem; font-weight:700; padding:.35rem .7rem; border-radius:20px; text-transform:uppercase; letter-spacing:.05em; }
+  .st-pendente { background:rgba(240,165,0,.15); color:var(--dourado); }
+  .st-confirmado { background:rgba(46,204,113,.15); color:var(--verde); }
+  .btn-cancelar { background:transparent; border:1px solid rgba(231,76,60,.4); color:var(--vermelho); padding:.5rem .9rem; border-radius:8px; font-size:.8rem; cursor:pointer; transition:.2s; }
+  .btn-cancelar:hover { background:rgba(231,76,60,.1); border-color:var(--vermelho); }
+  .vazio { color:var(--cinza); font-size:.9rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  @media(max-width:600px) { .topo { padding:0 1rem; } .usuario .email { display:none; } .agend { flex-direction:column; align-items:flex-start; } }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">📅</div><h1>Agenda de Serviços</h1></div>
+    <div class="usuario"><div class="info"><div class="nome"><%= usuario.nome %></div><div class="email"><%= usuario.email %></div></div><form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form></div>
+  </div>
+  <div class="container">
+    <% if (query && query.ok === 'agendado') { %><div class="msg">✓ Agendamento realizado com sucesso.</div><% } %>
+    <div class="titulo">Serviços disponíveis</div>
+    <div class="subtitulo">Escolha um serviço para visualizar horários livres e agendar.</div>
+    <% if (servicos.length === 0) { %><div class="vazio">Nenhum serviço disponível no momento.</div><% } else { %>
+      <div class="servicos">
+        <% servicos.forEach(s => { %>
+          <div class="servico">
+            <div class="topo-s"><div class="nome-s"><%= s.nome %></div></div>
+            <div class="desc"><%= s.descricao || 'Sem descrição.' %></div>
+            <div class="meta"><span>⏱ <b><%= s.duracao_min %></b> min</span><span>💰 <b>R$ <%= Number(s.preco).toFixed(2).replace('.',',') %></b></span><span>📍 <b><%= s.livres %></b> livres</span></div>
+            <div class="barra"><div style="width:<%= s.carga %>%"></div></div>
+            <div class="carga-txt">Capacidade da semana: <%= s.qtd_agen %>/<%= s.total_horas %> horários</div>
+            <a href="/cliente/agendar/<%= s.id %>" style="text-decoration:none;"><button class="btn-agendar" type="button">Ver horários e agendar</button></a>
+          </div>
+        <% }) %>
+      </div>
+    <% } %>
+    <div class="meus-agendamentos">
+      <h2>Meus agendamentos</h2>
+      <% if (meus.length === 0) { %><div class="vazio">Você ainda não possui agendamentos ativos.</div><% } else { %>
+        <div class="lista-agendamentos">
+          <% meus.forEach(a => { %>
+            <div class="agend">
+              <div class="dados"><div class="ns"><%= a.nome_servico %></div><div class="dh"><%= a.data_fmt %> às <b><%= a.hora %></b></div></div>
+              <span class="status <%= a.status === 'confirmado' ? 'st-confirmado' : 'st-pendente' %>"><%= a.status %></span>
+              <form method="POST" action="/cliente/cancelar/<%= a.id %>" onsubmit="return confirm('Cancelar este agendamento?');"><button type="submit" class="btn-cancelar">Cancelar</button></form>
+            </div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>
+
+=== views/agendar.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= servico.nome %> - Horários</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .voltar { color:var(--cinza); text-decoration:none; font-size:.85rem; transition:.2s; }
+  .voltar:hover { color:var(--branco); }
+  .usuario { display:flex; align-items:center; gap:1rem; }
+  .usuario .nome { font-size:.85rem; font-weight:600; }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:800px; margin:0 auto; padding:2rem 1.5rem; }
+  .cabecalho { margin-bottom:1.8rem; }
+  .cabecalho h1 { font-size:1.5rem; font-weight:700; }
+  .cabecalho p { color:var(--cinza); font-size:.9rem; margin-top:.3rem; }
+  .alerta { background:rgba(220,60,60,.15); border:1px solid rgba(220,60,60,.4); color:#ff9e9e; padding:.8rem 1rem; border-radius:10px; font-size:.85rem; margin-bottom:1.2rem; }
+  .dias { display:flex; flex-direction:column; gap:.8rem; }
+  .dia { background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem; overflow:hidden; }
+  .dia .nome { font-size:.8rem; font-weight:700; color:var(--dourado); margin-bottom:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  .horas { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .hora { padding:.5rem .8rem; border-radius:8px; font-size:.8rem; cursor:pointer; border:1px solid rgba(46,204,113,.4); background:rgba(46,204,113,.1); color:var(--verde); transition:.2s; }
+  .hora:hover { background:rgba(46,204,113,.2); transform:translateY(-2px); }
+  .hora.ocupado { border-color:rgba(139,154,177,.2); background:rgba(139,154,177,.08); color:var(--cinza); cursor:not-allowed; text-decoration:line-through; opacity:.5; }
+  .hora.sel { border-color:var(--dourado); background:rgba(240,165,0,.15); color:var(--dourado); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:.8rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  .legenda { display:flex; gap:1.5rem; margin-top:1.5rem; font-size:.75rem; color:var(--cinza); }
+  .legenda span { display:flex; align-items:center; gap:.4rem; }
+  .legenda .pt { width:10px; height:10px; border-radius:3px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">📅</div><a class="voltar" href="/cliente">← Voltar aos serviços</a></div>
+    <div class="usuario"><div class="nome"><%= usuario.nome %></div><form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form></div>
+  </div>
+  <div class="container">
+    <div class="cabecalho"><h1><%= servico.nome %></h1><p>Duração: <%= servico.duracao_min %> minutos • Preço: R$ <%= Number(servico.preco).toFixed(2).replace('.',',') %></p></div>
+    <% if (query && query.erro === 'ocupado') { %><div class="alerta">Este horário já foi agendado por outro cliente. Escolha outro.</div><% } %>
+    <% if (query && query.erro === '1') { %><div class="alerta">Horário inválido. Verifique os horários cadastrados.</div><% } %>
+    <% const dias = {}; %>
+    <% for (const d in porDia) { dias[d] = porDia[d]; } %>
+    <% const tem = Object.keys(porDia).length > 0; %>
+    <% if (!tem) { %><div class="vazio">Nenhum horário cadastrado para este serviço nas próximas semanas.</div><% } else { %>
+      <div class="dias">
+        <% for (const dia in porDia) { %>
+          <div class="dia"><div class="nome"><%= DIAS[parseInt(dia,10)] %></div><div class="horas">
+            <% porDia[dia].forEach(h => { %>
+              <div class="hora <%= h.estado !== 'livre' ? 'ocupado' : '' %>" data-dia="<%= dia %>" data-data="<%= h.data %>" data-hora="<%= h.hora %>" <%= h.estado !== 'livre' ? '' : 'onclick="sel(this)"' %>><%= h.hora %></div>
+            <% }) %>
+          </div></div>
+        <% } %>
+      </div>
+      <div class="legenda"><span><div class="pt" style="background:var(--verde)"></div> Livre</span><span><div class="pt" style="background:var(--cinza)"></div> Ocupado</span></div>
+      <form id="form-agendar" method="POST" action="/cliente/agendar/<%= servico.id %>" style="display:none;">
+        <input type="hidden" name="data" id="f-data"><input type="hidden" name="hora" id="f-hora">
+      </form>
+    <% } %>
+  </div>
+  <script>
+    function sel(el){
+      document.querySelectorAll('.hora.sel').forEach(x=>x.classList.remove('sel'));
+      el.classList.add('sel');
+      document.getElementById('f-data').value = el.dataset.data;
+      document.getElementById('f-hora').value = el.dataset.hora;
+      const f = document.getElementById('form-agendar');
+      f.style.display = 'block';
+      if (confirm('Confirmar agendamento em ' + el.dataset.hora + ' do dia ' + el.dataset.data + '?')) f.submit();
+    }
+  </script>
+</body>
+</html>
+
+=== views/painel.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo nav { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .topo nav a { color:var(--cinza); text-decoration:none; font-size:.8rem; padding:.5rem .8rem; border-radius:8px; transition:.2s; }
+  .topo nav a:hover { color:var(--branco); background:rgba(62,143,209,.1); }
+  .topo nav a.ativo { color:var(--dourado); background:rgba(240,165,0,.1); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1100px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:2rem; }
+  .secao { margin-bottom:2.5rem; }
+  .secao h2 { font-size:1.1rem; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+  .secao h2 .badge { font-size:.7rem; background:rgba(240,165,0,.15); color:var(--dourado); padding:.2rem .6rem; border-radius:20px; }
+  .lista { display:flex; flex-direction:column; gap:.7rem; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem 1.2rem; flex-wrap:wrap; }
+  .item .dados { flex:1; min-width:180px; }
+  .item .ns { font-weight:700; font-size:.9rem; }
+  .item .info { font-size:.78rem; color:var(--cinza); margin-top:.2rem; line-height:1.4; }
+  .item .info b { color:var(--dourado); }
+  .acoes { display:flex; gap:.5rem; }
+  .btn-c { padding:.5rem .9rem; border:none; border-radius:8px; font-size:.8rem; font-weight:600; cursor:pointer; transition:.2s; }
+  .btn-confirmar { background:rgba(46,204,113,.15); color:var(--verde); border:1px solid rgba(46,204,113,.4); }
+  .btn-confirmar:hover { background:rgba(46,204,113,.25); }
+  .btn-recusar { background:rgba(231,76,60,.1); color:var(--vermelho); border:1px solid rgba(231,76,60,.4); }
+  .btn-recusar:hover { background:rgba(231,76,60,.2); }
+  .st { font-size:.65rem; font-weight:700; padding:.3rem .6rem; border-radius:20px; text-transform:uppercase; }
+  .st-c { background:rgba(46,204,113,.15); color:var(--verde); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  @media(max-width:600px){ .item{flex-direction:column;align-items:flex-start;} .acoes{width:100%;justify-content:flex-end;} }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">⚙️</div><h1 style="font-size:1rem;font-weight:700;">Painel Administrativo</h1></div>
+    <nav><a href="/admin" class="ativo">📊 Painel</a><a href="/admin/servicos">🛠 Serviços</a></nav>
+    <form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form>
+  </div>
+  <div class="container">
+    <div class="titulo">Visão geral dos agendamentos</div>
+    <div class="subtitulo">Pendentes: <%= pendentes.length %> • Confirmados futuros: <%= confirmados.length %></div>
+    <div class="secao">
+      <h2>Pendentes de confirmação <span class="badge"><%= pendentes.length %></span></h2>
+      <% if (pendentes.length === 0) { %><div class="vazio">Nenhum agendamento pendente.</div><% } else { %>
+        <div class="lista">
+          <% pendentes.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b> • <%= a.duracao_min %> min • <%= a.cliente_email %></div></div>
+              <div class="acoes"><form method="POST" action="/admin/agendar/<%= a.id %>/confirmar"><button type="submit" class="btn-c btn-confirmar">Confirmar</button></form><form method="POST" action="/admin/agendar/<%= a.id %>/recusar" onsubmit="return confirm('Recusar este agendamento?');"><button type="submit" class="btn-c btn-recusar">Recusar</button></form></div></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <div class="secao">
+      <h2>Próximos confirmados <span class="badge"><%= confirmados.length %></span></h2>
+      <% if (confirmados.length === 0) { %><div class="vazio">Nenhum agendamento confirmado para datas futuras.</div><% } else { %>
+        <div class="lista">
+          <% confirmados.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b> • <%= a.duracao_min %> min</div></div><span class="st st-c">confirmado</span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <div class="secao">
+      <h2>Histórico recente <span class="badge"><%= historico.length %></span></h2>
+      <% if (historico.length === 0) { %><div class="vazio">Sem histórico.</div><% } else { %>
+        <div class="lista">
+          <% historico.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b></div></div><span class="st st-c"><%= a.status %></span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>
+
+=== views/servicos.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Serviços - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo nav { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .topo nav a { color:var(--cinza); text-decoration:none; font-size:.8rem; padding:.5rem .8rem; border-radius:8px; transition:.2s; }
+  .topo nav a.ativo { color:var(--dourado); background:rgba(240,165,0,.1); }
+  .btn-novo { padding:.5rem 1rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:8px; font-size:.8rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn-novo:hover { filter:brightness(1.1); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1000px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:1.8rem; }
+  .lista { display:flex; flex-direction:column; gap:.8rem; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1.1rem 1.3rem; flex-wrap:wrap; }
+  .item .dados { flex:1; min-width:200px; }
+  .item .nome { font-weight:700; font-size:1rem; }
+  .item .nome .desativado { font-size:.6rem; color:var(--vermelho); background:rgba(231,76,60,.1); padding:.1rem .4rem; border-radius:4px; margin-left:.4rem; vertical-align:middle; }
+  .item .meta { font-size:.78rem; color:var(--cinza); margin-top:.3rem; }
+  .item .meta b { color:var(--branco); }
+  .acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+  .btn-a { padding:.5rem .8rem; border:none; border-radius:8px; font-size:.75rem; font-weight:600; cursor:pointer; transition:.2s; text-decoration:none; display:inline-block; }
+  .btn-horarios { background:rgba(62,143,209,.15); color:var(--azul-claro); border:1px solid rgba(62,143,209,.4); }
+  .btn-horarios:hover { background:rgba(62,143,209,.25); }
+  .btn-editar { background:rgba(240,165,0,.1); color:var(--dourado); border:1px solid rgba(240,165,0,.4); }
+  .btn-editar:hover { background:rgba(240,165,0,.2); }
+  .btn-excluir { background:rgba(231,76,60,.1); color:var(--vermelho); border:1px solid rgba(231,76,60,.4); }
+  .btn-excluir:hover { background:rgba(231,76,60,.2); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">⚙️</div><h1 style="font-size:1rem;font-weight:700;">Gerenciar Serviços</h1></div>
+    <nav><a href="/admin">📊 Painel</a><a href="/admin/servicos" class="ativo">🛠 Serviços</a><a class="btn-novo" href="/admin/servicos/novo">+ Novo serviço</a></nav>
+    <form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form>
+  </div>
+  <div class="container">
+    <div class="titulo">Serviços cadastrados</div>
+    <div class="subtitulo">Cadastra, edita horários e configura os serviços oferecidos.</div>
+    <% if (servicos.length === 0) { %><div class="vazio">Nenhum serviço cadastrado.</div><% } else { %>
+      <div class="lista">
+        <% servicos.forEach(s => { %>
+          <div class="item"><div class="dados"><div class="nome"><%= s.nome %><% if (!s.ativo) { %><span class="desativado">inativo</span><% } %></div><div class="meta"><%= s.duracao_min %> min • R$ <%= Number(s.preco).toFixed(2).replace('.',',') %> • <b><%= s.n_horarios %></b> horários na agenda semanal</div></div>
+            <div class="acoes"><a href="/admin/horarios/<%= s.id %>" class="btn-a btn-horarios">⏰ Horários</a><a href="/admin/servicos/editar/<%= s.id %>" class="btn-a btn-editar">✎ Editar</a><form method="POST" action="/admin/servicos/excluir/<%= s.id %>" onsubmit="return confirm('Desativar este serviço?');"><button type="submit" class="btn-a btn-excluir"><%= s.ativo ? '⊘ Desativar' : '✔ Reativar' %></button></form></div></div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>
+
+=== views/servico_form.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= servico ? 'Editar' : 'Novo' %> serviço</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --branco:#f4f7f9; --cinza:#8b9ab1; --verde:#2ecc71; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .voltar { color:var(--cinza); text-decoration:none; font-size:.85rem; transition:.2s; }
+  .voltar:hover { color:var(--branco); }
+  .container { max-width:550px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.4rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.85rem; margin-bottom:1.8rem; }
+  .campo { margin-bottom:1.2rem; }
+  label { display:block; font-size:.75rem; color:var(--cinza); margin-bottom:.3rem; letter-spacing:.05em; text-transform:uppercase; }
+  input, textarea, select { width:100%; padding:.8rem 1rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:10px; color:var(--branco); font-size:.9rem; transition:.2s; outline:none; font-family:inherit; }
+  textarea { resize:vertical; min-height:70px; }
+  input:focus, textarea:focus, select:focus { border-color:var(--azul-claro); box-shadow:0 0 0 3px rgba(62,143,209,.15); }
+  .linha2 { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .toggle { display:flex; align-items:center; gap:.6rem; cursor:pointer; }
+  .toggle input { width:auto; }
+  .btn { width:100%; padding:.9rem; margin-top:.5rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn:hover { filter:brightness(1.08); transform:translateY(-2px); }
+</style>
+</head>
+<body>
+  <div class="topo"><div class="logo"><div class="ic">🛠</div><h1 style="font-size:1rem;font-weight:700;"><%= servico ? 'Editar serviço' : 'Novo serviço' %></h1></div><a class="voltar" href="/admin/servicos">← Voltar</a></div>
+  <div class="container">
+    <% if (servico) { %>
+      <div class="titulo"><%= servico.nome %></div><div class="subtitulo">Edite os dados do serviço.</div>
+    <% } else { %>
+      <div class="titulo">Novo serviço</div><div class="subtitulo">Preencha os dados do novo serviço.</div>
+    <% } %>
+    <form method="POST" action="<%= servico ? '/admin/servicos/editar/' + servico.id : '/admin/servicos/novo' %>">
+      <div class="campo"><label>Nome</label><input type="text" name="nome" required maxlength="80" value="<%= servico ? servico.nome : '' %>"></div>
+      <div class="campo"><label>Descrição</label><textarea name="descricao" maxlength="300"><%= servico ? servico.descricao || '' : '' %></textarea></div>
+      <div class="linha2">
+        <div class="campo"><label>Duração (min)</label><input type="number" name="duracao_min" required min="5" value="<%= servico ? servico.duracao_min : 60 %>"></div>
+        <div class="campo"><label>Preço (R$)</label><input type="number" name="preco" step="0.01" min="0" value="<%= servico ? servico.preco : 0 %>"></div>
+      </div>
+      <% if (servico) { %><div class="campo"><label>Status</label><div class="toggle"><input type="checkbox" name="ativo" id="ativo" <%= servico.ativo ? 'checked' : '' %>><span style="font-size:.85rem;"><%= servico.ativo ? 'Serviço ativo (visível aos clientes)' : 'Serviço inativo (oculto)' %></span></div></div><% } %>
+      <button class="btn" type="submit"><%= servico ? 'Salvar alterações' : 'Cadastrar serviço' %></button>
+    </form>
+  </div>
+</body>
+</html>
+
+=== views/horarios.html ===
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Horários - <%= servico.nome %></title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .voltar { color:var(--cinza); text-decoration:none; font-size:.85rem; transition:.2s; }
+  .voltar:hover { color:var(--branco); }
+  .container { max-width:900px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.4rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.85rem; margin-bottom:1.8rem; }
+  .gerador { background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.15); border-radius:14px; padding:1.4rem; margin-bottom:2rem; }
+  .gerador h3 { font-size:.9rem; margin-bottom:1rem; color:var(--dourado); }
+  .dias-check { display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1rem; }
+  .dia-cb { padding:.5rem .8rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:8px; cursor:pointer; font-size:.8rem; transition:.2s; }
+  .dia-cb input { position:absolute; opacity:0; width:0; height:0; }
+  .dia-cb.sel { border-color:var(--azul-claro); background:rgba(62,143,209,.15); color:var(--azul-claro); }
+  .parametros { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px,1fr)); gap:.8rem; align-items:end; }
+  .campo label { display:block; font-size:.7rem; color:var(--cinza); margin-bottom:.2rem; }
+  select, input[type=time], input[type=number] { width:100%; padding:.6rem .8rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:8px; color:var(--branco); font-size:.85rem; outline:none; }
+  select option { background:var(--azul-medio); }
+  .btn { padding:.7rem 1.2rem; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); color:var(--branco); border:none; border-radius:8px; font-size:.85rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn:hover { filter:brightness(1.1); }
+  .calendario { display:flex; flex-direction:column; gap:.8rem; }
+  .dia-linha { background:rgba(27,58,92,.4); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem; }
+  .dia-linha h4 { font-size:.8rem; color:var(--dourado); margin-bottom:.7rem; text-transform:uppercase; }
+  .h-slots { display:flex; flex-wrap:wrap; gap:.4rem; }
+  .h-slot { position:relative; }
+  .h-slot span { padding:.4rem .7rem; background:rgba(46,204,113,.1); border:1px solid rgba(46,204,113,.3); border-radius:7px; font-size:.75rem; color:var(--verde); }
+  .h-slot button { position:absolute; top:-4px; right:-4px; width:16px; height:16px; background:var(--vermelho); border:none; border-radius:50%; font-size:.55rem; color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; opacity:.7; transition:.2s; }
+  .h-slot button:hover { opacity:1; transform:scale(1.1); }
+  .vazio { color:var(--cinza); font-size:.8rem; padding:.8rem; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="topo"><div class="logo"><div class="ic">⏰</div><h1 style="font-size:1rem;font-weight:700;">Horários de <%= servico.nome %></h1></div><a class="voltar" href="/admin/servicos">← Voltar</a></div>
+  <div class="container">
+    <div class="titulo">Gerenciamento de agenda semanal</div>
+    <div class="subtitulo">Os horários abaixo serão repetidos toda semana para este serviço. Gerar substitui os horários anteriores.</div>
+    <div class="gerador">
+      <h3>Parâmetros da geração</h3>
+      <div class="dias-check">
+        <% for (let i = 0; i < 7; i++) { %><div class="dia-cb <%= i < 6 ? 'sel' : '' %>" onclick="tgl(this)"><input type="checkbox" name="dias" value="<%= i %>" <%= i < 6 ? 'checked' : '' %>><span><%= DIAS[i].slice(0,3).toUpperCase() %></span></div><% } %>
+      </div>
+      <form method="POST" action="/admin/horarios/<%= servico.id %>/gerar">
+        <div class="parametros">
+          <div class="campo"><label>Início</label><input type="time" name="hora_inicio" required value="08:00"></div>
+          <div class="campo"><label>Fim</label><input type="time" name="hora_fim" required value="18:00"></div>
+          <div class="campo"><label>Passo (min)</label><select name="passo"><option value="15">15</option><option value="30" selected>30</option><option value="45">45</option><option value="60">60</option></select></div>
+          <div class="campo"><label>&nbsp;</label><button type="submit" class="btn" onclick="return confirm('Isto substituirá todos os horários atuais deste serviço. Confirmar?')">⚙ Gerar agenda</button></div>
+        </div>
+      </form>
+    </div>
+    <% if (horarios.length === 0) { %><div class="vazio">Nenhum horário cadastrado. Use o formulário acima para gerar.</div><% } else { %>
+      <div class="calendario">
+        <% const grupos = {}; horarios.forEach(h => { if (!grupos[h.dia_semana]) grupos[h.dia_semana] = []; grupos[h.dia_semana].push(h); }); %>
+        <% for (const d in grupos) { %>
+          <div class="dia-linha"><h4><%= DIAS[parseInt(d,10)] %></h4><div class="h-slots">
+            <% grupos[d].forEach(h => { %><div class="h-slot"><span><%= h.hora %></span><form method="POST" action="/admin/horarios/excluir/<%= h.id %>"><button type="submit" title="Excluir horário">×</button></form></div><% } %>
+          </div></div>
+        <% } %>
+      </div>
+    <% } %>
+  </div>
+  <script>function tgl(el){el.classList.toggle('sel');el.querySelector('input').checked=!el.querySelector('input').checked;}</script>
+</body>
+</html>

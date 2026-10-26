@@ -1,0 +1,1214 @@
+Para esse nível de funcionalidade real (dados salvos na internet, múltiplos usuários, "entrar de qualquer lugar"), **precisamos de um servidor de banco de dados**, e isso **não dá para caber num arquivo sozinho**. O .zip abaixo é o projeto completo — você só precisa descompactar e executar no seu PC, e eu te guio passo a passo.
+
+Sobre a parte de "estarem na internet de verdade, para qualquer lugar, e pra todas as pessoas": no seu computador o sistema funciona 100%. Para hospedar de graça na internet, abra o **README dentro do zip** — eu deixei as instruções dele lá.
+
+Os quartos de exemplo já estão pré-carregados (só usar a conta do gerente e os 5 quartos surgem).
+
+```
+=== app.py ===
+from flask import Flask, jsonify, request, abort
+import sqlite3, os, re
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "hotel.db")
+app = Flask(__name__, static_folder="static")
+
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def query(sql, args=()):
+    conn = get_db()
+    try:
+        cur = conn.execute(sql, args)
+        conn.commit()
+        return cur
+    finally:
+        conn.close()
+
+
+def query_all(sql, args=()):
+    conn = get_db()
+    try:
+        cur = conn.execute(sql, args)
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def seed():
+    db = get_db()
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            name TEXT NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'guest'
+        );
+        CREATE TABLE IF NOT EXISTS rooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            description TEXT,
+            price REAL NOT NULL,
+            capacity INTEGER NOT NULL,
+            available INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            checkin TEXT NOT NULL,
+            checkout TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (room_id) REFERENCES rooms(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+    """)
+    db.commit()
+    db.close()
+
+
+def init_db():
+    global DB_PATH
+    if os.environ.get("FLASK_APP") and os.path.exists(DB_PATH):
+        return
+    db = get_db()
+    try:
+        n = db.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
+    except Exception:
+        db.executescript("""
+            CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+            password TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'guest');
+            CREATE TABLE rooms (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL, type TEXT NOT NULL, description TEXT,
+            price REAL NOT NULL, capacity INTEGER NOT NULL,
+            available INTEGER NOT NULL DEFAULT 1);
+            CREATE TABLE bookings (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+            checkin TEXT NOT NULL, checkout TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')));
+        """)
+        db.commit()
+        n = 0
+    if n == 0:
+        db.execute("INSERT INTO users (username,name,password,role) VALUES (?,?,?,?)",
+                   ("gerente", "Gerente do Hotel", "123456", "manager"))
+        db.execute("INSERT INTO users (username,name,password,role) VALUES (?,?,?,?)",
+                   ("hospede", "Maria Silva", "123456", "guest"))
+        rooms = [
+            ("Quarto 101", "Simples", "Leito de casal, TV e ar-condicionado.", 220.0, 2),
+            ("Quarto 102", "Simples", "Leito de casal, TV e ar-condicionado.", 220.0, 2),
+            ("Suíte 201", "Suíte", "Suíte com sofá-cama e vista para a cidade.", 480.0, 2),
+            ("Suíte 202", "Suíte", "Suíte com terraço privativo.", 520.0, 3),
+            ("Apartamento 301", "Apartamento", "Apartamento com cozinha, 2 quartos.", 750.0, 4),
+        ]
+        for r in rooms:
+            db.execute("INSERT INTO rooms (name,type,description,price,capacity,available) "
+                       "VALUES (?,?,?,?,?,1)", r)
+        db.commit()
+    db.close()
+
+
+def overlaps(cid, cdoi):
+    return not (cdoi <= cid or cid <= cdoi)
+
+
+def is_taken(room_id, checkin, checkout, exclude_booking_id=None):
+    sql = "SELECT id FROM bookings WHERE room_id=? AND status IN ('pending','confirmed')"
+    args = [room_id]
+    if exclude_booking_id is not None:
+        sql += " AND id<>?"
+        args.append(exclude_booking_id)
+    sql += " AND ?<checkout AND ?>=checkin"
+    rows = query_all(sql, args + [checkin, checkout])
+    return len(rows) > 0
+
+
+def conflicts_room(room_id, checkin, checkout):
+    rows = query_all("SELECT * FROM rooms WHERE id=?", (room_id,))
+    if not rows:
+        return False
+    return is_taken(room_id, checkin, checkout)
+
+
+def normalize_dates(din, dout):
+    din = (din or "").strip()
+    dout = (dout or "").strip()
+    return din, dout
+
+
+def login_payload(user):
+    return {"id": user["id"], "username": user["username"], "name": user["name"],
+            "role": user["role"]}
+
+
+def is_manager(u):
+    return u and u["role"] == "manager"
+
+
+def require_manager():
+    u = request.get_json().get("user")
+    if not is_manager(u):
+        abort(403)
+    return u
+
+
+@app.route("/")
+def index():
+    return app.send_static_file("index.html")
+
+
+@app.post("/api/register")
+def register():
+    d = request.get_json() or {}
+    username = (d.get("username") or "").strip()
+    name = (d.get("name") or "").strip()
+    password = (d.get("password") or "")
+    if not username or not name or not password:
+        return jsonify({"ok": False, "error": "Preencha todos os campos."}), 400
+    if len(password) < 4:
+        return jsonify({"ok": False, "error": "A senha precisa ter pelo menos 4 caracteres."}), 400
+    try:
+        cur = query("INSERT INTO users (username,name,password,role) VALUES (?,?,?,'guest')",
+                    (username.lower(), name, password))
+    except Exception:
+        return jsonify({"ok": False, "error": "Este nome de usuário já existe. Escolha outro."}), 400
+    row = query_all("SELECT * FROM users WHERE id=?", (cur.lastrowid,))[0]
+    return jsonify({"ok": True, "user": login_payload(row)})
+
+
+@app.post("/api/login")
+def login():
+    d = request.get_json() or {}
+    u = query_all("SELECT * FROM users WHERE lower(username)=lower(?)",
+                  ((d.get("username") or "").strip(),))[0:1]
+    if not u:
+        return jsonify({"ok": False, "error": "Usuário não encontrado. Cadastre-se primeiro."}), 400
+    user = u[0]
+    if user["password"] != (d.get("password") or ""):
+        return jsonify({"ok": False, "error": "Senha incorreta."}), 400
+    return jsonify({"ok": True, "user": login_payload(user)})
+
+
+@app.get("/api/rooms")
+def list_rooms():
+    d = request.get_json(silent=True) or {}
+    checkin = (d.get("checkin") or "").strip()
+    checkout = (d.get("checkout") or "").strip()
+    user = d.get("user")
+    rooms = query_all("SELECT * FROM rooms ORDER BY id")
+    for r in rooms:
+        if r["available"]:
+            if checkin and checkout:
+                r["available_selected"] = not is_taken(r["id"], checkin, checkout)
+            else:
+                r["available_selected"] = True
+    if is_manager(user):
+        for r in rooms:
+            r["status"] = "pendente"
+        pending = query_all(
+            "SELECT b.room_id AS room_id, COUNT(*) AS c FROM bookings b "
+            "WHERE b.status='pending' GROUP BY b.room_id")
+        for p in pending:
+            for r in rooms:
+                if r["id"] == p["room_id"]:
+                    r["status"] = "pendente"
+    return jsonify({"ok": True, "rooms": rooms})
+
+
+@app.post("/api/rooms")
+def create_room():
+    require_manager()
+    d = request.get_json() or {}
+    name = (d.get("name") or "").strip()
+    rtype = (d.get("type") or "").strip()
+    price = d.get("price")
+    capacity = d.get("capacity")
+    description = (d.get("description") or "").strip()
+    available = 1 if d.get("available", True) else 0
+    if not name or not rtype:
+        return jsonify({"ok": False, "error": "Nome e tipo são obrigatórios."}), 400
+    try:
+        price = float(price)
+        capacity = int(capacity)
+    except Exception:
+        return jsonify({"ok": False, "error": "Preço e ocupação precisam ser numéricos."}), 400
+    cur = query("INSERT INTO rooms (name,type,description,price,capacity,available) "
+                "VALUES (?,?,?,?,?,?)", (name, rtype, description, price, capacity, available))
+    row = query_all("SELECT * FROM rooms WHERE id=?", (cur.lastrowid,))[0]
+    return jsonify({"ok": True, "room": row})
+
+
+@app.put("/api/rooms/<int:rid>")
+def update_room(rid):
+    u = require_manager()
+    d = request.get_json() or {}
+    rows = query_all("SELECT * FROM rooms WHERE id=?", (rid,))
+    if not rows:
+        abort(404)
+    cur = rows[0]
+    name = (d.get("name", cur["name"]) or "").strip()
+    rtype = (d.get("type", cur["type"]) or "").strip()
+    description = (d.get("description", cur["description"]) or "").strip()
+    price = d.get("price", cur["price"])
+    capacity = d.get("capacity", cur["capacity"])
+    available = 1 if d.get("available", bool(cur["available"])) else 0
+    try:
+        price = float(price)
+        capacity = int(capacity)
+    except Exception:
+        return jsonify({"ok": False, "error": "Preço e ocupação precisam ser numéricos."}), 400
+    if not name or not rtype:
+        return jsonify({"ok": False, "error": "Nome e tipo são obrigatórios."}), 400
+    try:
+        query("UPDATE rooms SET name=?, type=?, description=?, price=?, capacity=?, available=? WHERE id=?",
+              (name, rtype, description, price, capacity, available, rid))
+    except Exception:
+        return jsonify({"ok": False, "error": "Não foi possível salvar o quarto."}), 400
+    row = query_all("SELECT * FROM rooms WHERE id=?", (rid,))[0]
+    return jsonify({"ok": True, "room": row})
+
+
+@app.delete("/api/rooms/<int:rid>")
+def delete_room(rid):
+    u = require_manager()
+    rows = query_all("SELECT * FROM rooms WHERE id=?", (rid,))
+    if not rows:
+        abort(404)
+    if conflicts_room(rid, "2000-01-01", "3000-01-01"):
+        return jsonify({"ok": False,
+                        "error": "Este quarto tem reservas. Cancele/remova as reservas antes de excluir."}), 400
+    query("DELETE FROM rooms WHERE id=?", (rid,))
+    return jsonify({"ok": True})
+
+
+@app.get("/api/bookings")
+def list_bookings():
+    d = request.get_json(silent=True) or {}
+    user = d.get("user")
+    if is_manager(user):
+        rows = query_all(
+            "SELECT b.*, r.name AS room_name, u.name AS guest_name, u.username AS guest_username "
+            "FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN users u ON u.id=b.user_id "
+            "ORDER BY b.checkin DESC, b.created_at DESC")
+        return jsonify({"ok": True, "bookings": rows})
+    if user and user.get("id"):
+        rows = query_all(
+            "SELECT b.*, r.name AS room_name, u.name AS guest_name "
+            "FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN users u ON u.id=b.user_id "
+            "WHERE b.user_id=? ORDER BY b.checkin DESC, b.created_at DESC", (user["id"],))
+        return jsonify({"ok": True, "bookings": rows})
+    return jsonify({"ok": False, "error": "Não autenticado."}), 400
+
+
+@app.post("/api/bookings")
+def create_booking():
+    d = request.get_json() or {}
+    user = d.get("user")
+    if not user:
+        return jsonify({"ok": False, "error": "Não autenticado."}), 401
+    room_id = d.get("room_id")
+    checkin, checkout = normalize_dates(d.get("checkin"), d.get("checkout"))
+    if not checkin or not checkout:
+        return jsonify({"ok": False, "error": "Escolha as datas de entrada e saída."}), 400
+    if checkin >= checkout:
+        return jsonify({"ok": False, "error": "A data de saída deve ser depois da entrada."}), 400
+    rooms = query_all("SELECT * FROM rooms WHERE id=?", (room_id,))
+    if not rooms:
+        return jsonify({"ok": False, "error": "Quarto não encontrado."}), 404
+    if is_taken(room_id, checkin, checkout):
+        return jsonify({"ok": False,
+                        "error": "Este quarto já está reservado para essas datas."}), 400
+    try:
+        cur = query("INSERT INTO bookings (room_id,user_id,checkin,checkout,status) "
+                    "VALUES (?,?,?,'pending',?)",
+                    (room_id, user["id"], checkin, checkout))
+    except Exception:
+        return jsonify({"ok": False, "error": "Não foi possível criar a reserva."}), 400
+    row = query_all("SELECT b.*, r.name AS room_name, u.name AS guest_name "
+                    "FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN users u ON u.id=b.user_id "
+                    "WHERE b.id=?", (cur.lastrowid,))[0]
+    return jsonify({"ok": True, "booking": row})
+
+
+@app.post("/api/bookings/<int:bid>/status")
+def set_status(bid):
+    u = require_manager()
+    d = request.get_json() or {}
+    status = d.get("status")
+    if status not in ("confirmed", "rejected", "pending"):
+        return jsonify({"ok": False, "error": "Status inválido."}), 400
+    rows = query_all("SELECT * FROM bookings WHERE id=?", (bid,))
+    if not rows:
+        abort(404)
+    b = rows[0]
+    if status == "confirmed" and b["status"] not in ("confirmed", "pending"):
+        if conflicts_room(b["room_id"], b["checkin"], b["checkout"], exclude_booking_id=bid):
+            return jsonify({"ok": False,
+                            "error": "Há outra reserva para este quarto nessas datas. Recuse a outra antes."}), 400
+    query("UPDATE bookings SET status=? WHERE id=?", (status, bid))
+    row = query_all("SELECT b.*, r.name AS room_name, u.name AS guest_name "
+                    "FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN users u ON u.id=b.user_id "
+                    "WHERE b.id=?", (bid,))[0]
+    return jsonify({"ok": True, "booking": row})
+
+
+@app.delete("/api/bookings/<int:bid>")
+def cancel_booking(bid):
+    d = request.get_json(silent=True) or {}
+    user = d.get("user")
+    if not user:
+        return jsonify({"ok": False, "error": "Não autenticado."}), 401
+    rows = query_all("SELECT * FROM bookings WHERE id=?", (bid,))
+    if not rows:
+        abort(404)
+    b = rows[0]
+    if user["role"] != "manager" and b["user_id"] != user["id"]:
+        abort(403)
+    query("UPDATE bookings SET status='cancelled' WHERE id=?", (bid,))
+    row = query_all("SELECT b.*, r.name AS room_name, u.name AS guest_name "
+                    "FROM bookings b JOIN rooms r ON r.id=b.room_id JOIN users u ON u.id=b.user_id "
+                    "WHERE b.id=?", (bid,))[0]
+    return jsonify({"ok": True, "booking": row})
+
+
+init_db()
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
+
+=== requirements.txt ===
+flask
+
+=== static/index.html ===
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hotel Azul — Reservas</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
+
+=== static/style.css ===
+:root{
+  --ink:#0b3b4a; --ink-2:#0a4b5c; --teal:#12b8a6; --teal-d:#0d9c8d;
+  --bg:#f4f7f6; --card:#ffffff; --line:#e3ebe9; --muted:#5b7671;
+  --ok:#1f9d5b; --ok-bg:#e4f5ec; --warn:#c98a12; --warn-bg:#fbf0d8;
+  --bad:#d6493f; --bad-bg:#fbe6e3; --soft:#eef4f2; --soft-2:#f6faf9;
+  --radius:14px; --shadow:0 10px 30px rgba(9,40,48,.08);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg); color:var(--ink); line-height:1.5; -webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+h1,h2,h3{margin:0}
+
+/* Auth */
+.auth{min-height:100vh; display:grid; place-items:center; padding:24px;
+  background:radial-gradient(1200px 600px at 20% -10%, #0e6f7b 0%, #0a3f4b 45%, #063039 100%)}
+.auth-card{width:100%; max-width:420px; background:var(--card); border-radius:20px;
+  box-shadow:0 24px 60px rgba(0,0,0,.35); padding:28px}
+.brand{display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:22px}
+.brand .logo{width:38px; height:38px; border-radius:12px; background:var(--teal);
+  color:#fff; font-weight:800; display:grid; place-items:center}
+.brand b{font-size:20px; letter-spacing:.3px}
+.auth-tabs{display:flex; background:var(--soft-2); border-radius:12px; padding:4px; gap:4px; margin-bottom:18px}
+.auth-tabs button{flex:1; border:0; background:transparent; padding:10px; border-radius:9px;
+  font-weight:600; color:var(--muted); cursor:pointer; transition:.15s}
+.auth-tabs button.active{background:#fff; color:var(--ink); box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.field{margin-bottom:14px}
+.field label{display:block; font-size:13px; font-weight:600; color:var(--ink-2); margin-bottom:6px}
+.field input,.field select{width:100%; padding:11px 12px; border:1px solid var(--line);
+  border-radius:10px; font-size:15px; background:#fff; color:var(--ink)}
+.field input:focus,.field select:focus{outline:2px solid rgba(18,184,166,.4); border-color:transparent}
+.btn{border:0; border-radius:10px; padding:12px; font-weight:700; cursor:pointer;
+  font-size:15px; transition:.15s}
+.btn-block{width:100%; margin-top:4px}
+.btn-primary{background:var(--ink); color:#fff}
+.btn-primary:hover{background:var(--ink-2)}
+.btn-teal{background:var(--teal); color:#fff}
+.btn-teal:hover{background:var(--teal-d)}
+.btn-ghost{background:var(--soft); color:var(--ink)}
+.btn-ghost:hover{background:#e2ece9}
+.btn-danger{background:var(--bad); color:#fff}
+.btn-danger:hover{filter:brightness(.95)}
+.btn-sm{padding:8px 12px; font-size:13px; border-radius:8px}
+.form-msg{padding:10px 12px; border-radius:10px; font-size:14px; margin-bottom:12px; font-weight:600}
+.form-msg.err{background:var(--bad-bg); color:var(--bad)}
+.form-msg.ok{background:var(--ok-bg); color:var(--ok)}
+.hint{font-size:12px; color:var(--muted); margin-top:14px; text-align:center}
+
+/* App shell */
+.app{min-height:100vh; display:flex; flex-direction:column}
+.topbar{background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20}
+.topbar-inner{max-width:1100px; margin:0 auto; padding:12px 20px; display:flex; align-items:center;
+  gap:16px}
+.topbar .logo{width:34px; height:34px; border-radius:10px; background:var(--teal); color:#fff;
+  font-weight:800; display:grid; place-items:center; flex:0 0 auto}
+.topbar .title{font-weight:800; font-size:18px}
+.topbar .title small{display:block; font-weight:500; color:var(--muted); font-size:12px}
+.spacer{flex:1}
+.badge-role{font-size:12px; font-weight:700; padding:4px 10px; border-radius:999px;
+  background:var(--soft); color:var(--ink-2)}
+.btn-loginout{background:var(--soft); color:var(--ink); padding:8px 14px; border-radius:9px;
+  font-weight:600; cursor:pointer; border:1px solid var(--line)}
+.tabs{max-width:1100px; margin:0 auto; padding:14px 20px 0; display:flex; gap:6px; flex-wrap:wrap}
+.tab{border:0; background:var(--soft-2); color:var(--muted); padding:10px 16px;
+  border-radius:10px 10px 0 0; font-weight:700; cursor:pointer; font-size:14px; border-bottom:2px solid transparent}
+.tab.active{background:#fff; color:var(--ink); border-bottom:2px solid var(--teal)}
+.content{max-width:1100px; margin:0 auto; width:100%; padding:24px 20px 60px; flex:1}
+.section-title{font-size:20px; font-weight:800; margin-bottom:6px}
+.section-sub{color:var(--muted); margin-bottom:18px; font-size:14px}
+
+/* Filter bar */
+.filterbar{background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; box-shadow:var(--shadow); margin-bottom:20px}
+.filterbar .field{margin:0; min-width:150px}
+.filterbar .field label{font-size:12px}
+.pill-count{margin-left:auto; font-size:14px; color:var(--muted); font-weight:600; align-self:center}
+
+/* Cards */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:16px}
+.room-card{background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+  overflow:hidden; box-shadow:var(--shadow); display:flex; flex-direction:column}
+.room-thumb{height:96px; display:flex; align-items:flex-end; padding:12px; position:relative;
+  background:linear-gradient(135deg,#12b8a6,#0a4b5c)}
+.room-thumb .type{background:rgba(255,255,255,.9); color:var(--ink); font-size:12px; font-weight:800;
+  padding:4px 10px; border-radius:999px}
+.room-thumb .cap{position:absolute; top:10px; right:10px; background:rgba(0,0,0,.28); color:#fff;
+  font-size:12px; padding:3px 8px; border-radius:999px}
+.room-body{padding:14px; flex:1; display:flex; flex-direction:column}
+.room-name{font-size:16px; font-weight:800}
+.room-desc{color:var(--muted); font-size:13px; margin:4px 0 10px; flex:1}
+.room-foot{display:flex; align-items:center; justify-content:space-between; margin-top:auto}
+.price{font-weight:800; font-size:16px}
+.price small{color:var(--muted); font-weight:600; font-size:12px}
+
+/* Chips */
+.chip{font-size:12px; font-weight:700; padding:3px 10px; border-radius:999px}
+.chip.ok{background:var(--ok-bg); color:var(--ok)}
+.chip.off{background:#eef1f0; color:var(--muted)}
+
+/* Badge */
+.badge{font-size:12px; font-weight:700; padding:5px 12px; border-radius:999px; display:inline-block}
+.badge.pending{background:var(--warn-bg); color:var(--warn)}
+.badge.confirmed{background:var(--ok-bg); color:var(--ok)}
+.badge.rejected{background:var(--bad-bg); color:var(--bad)}
+.badge.cancelled{background:#eef1f0; color:var(--muted)}
+
+/* Booking card / list */
+.book-card{background:#fff; border:1px solid var(--line); border-radius:var(--radius);
+  padding:16px; box-shadow:var(--shadow); display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-bottom:14px}
+.book-main{flex:1; min-width:200px}
+.book-room{font-weight:800; font-size:16px}
+.book-dates{color:var(--ink-2); font-weight:600; font-size:14px; margin:2px 0}
+.book-guest{color:var(--muted); font-size:13px}
+.book-meta{color:var(--muted); font-size:12px; margin-top:4px}
+.book-actions{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+
+/* Tables */
+.tbl-wrap{background:#fff; border:1px solid var(--line); border-radius:var(--radius); overflow:auto; box-shadow:var(--shadow)}
+table{width:100%; border-collapse:collapse; min-width:620px}
+th,td{text-align:left; padding:12px 14px; border-bottom:1px solid var(--line); font-size:14px; vertical-align:middle}
+th{background:var(--soft-2); font-size:12px; text-transform:uppercase; letter-spacing:.4px; color:var(--ink-2)}
+tbody tr:last-child td{border-bottom:0}
+.actions-cell{display:flex; gap:6px; flex-wrap:wrap}
+
+/* Modal */
+.overlay{position:fixed; inset:0; background:rgba(6,36,42,.55); display:grid; place-items:center;
+  padding:20px; z-index:50}
+.modal{background:#fff; border-radius:16px; width:100%; max-width:440px; padding:22px; box-shadow:0 30px 60px rgba(0,0,0,.35)}
+.modal h3{font-size:18px; margin-bottom:4px}
+.modal .sub{color:var(--muted); font-size:14px; margin-bottom:14px}
+.modal-actions{display:flex; gap:10px; margin-top:18px}
+.modal-actions .btn{flex:1}
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+
+/* Toast */
+.toasts{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:100;
+  display:flex; flex-direction:column; gap:10px; align-items:center}
+.toast{background:#0c2f38; color:#fff; padding:12px 18px; border-radius:10px; font-size:14px;
+  font-weight:600; box-shadow:0 12px 30px rgba(0,0,0,.3); animation:pop .2s ease}
+.toast.err{background:var(--bad)}
+.toast.ok{background:var(--ok)}
+@keyframes pop{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+
+.empty{text-align:center; color:var(--muted); padding:40px 10px}
+.empty .big{font-size:40px; margin-bottom:8px}
+
+/* Manager tabs */
+.mgr-tabs{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap}
+.mgr-tab{border:1px solid var(--line); background:#fff; padding:9px 16px; border-radius:9px;
+  font-weight:700; cursor:pointer; color:var(--muted)}
+.mgr-tab.active{background:var(--ink); color:#fff; border-color:var(--ink)}
+
+@media(max-width:560px){
+  .topbar-inner{flex-wrap:wrap}
+  .filterbar{flex-direction:column; align-items:stretch}
+  .filterbar .field{min-width:0}
+  .pill-count{margin:6px 0 0}
+  .two-col{grid-template-columns:1fr}
+}
+
+=== static/app.js ===
+import htmx from "htmx.min.js";
+
+/* ---------- helpers ---------- */
+const state = { user: null, filter: { checkin: "", checkout: "" }, tab: "quartos", mgrTab: "bookings" };
+
+function todayStr(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
+}
+function addDays(s, n){
+  const d = new Date(s + "T00:00:00");
+  d.setDate(d.getDate()+n);
+  const p = x => String(x).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());
+}
+function fmtDate(s){
+  if(!s) return "";
+  const p = s.split("-");
+  return p.length===3 ? (p[2]+"/"+p[1]+"/"+p[0]) : s;
+}
+function fmtPrice(x){
+  return (Number(x)||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+}
+function daysBetween(a,b){
+  if(!a||!b) return 0;
+  const ms = new Date(b+"T00:00:00") - new Date(a+"T00:00:00");
+  return Math.round(ms/86400000);
+}
+const statusLabel = { pending:"Pendente", confirmed:"Confirmada", rejected:"Recusada", cancelled:"Cancelada" };
+const statusChip  = { pending:"warn", confirmed:"ok", rejected:"bad", cancelled:"off" };
+
+function toast(msg, kind){
+  const box = document.getElementById("toasts") || (() => {
+    const el = document.createElement("div"); el.id="toasts"; el.className="toasts";
+    document.body.appendChild(el); return el;
+  })();
+  const t = document.createElement("div");
+  t.className = "toast " + (kind||"");
+  t.textContent = msg;
+  box.appendChild(t);
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, 2600);
+}
+
+async function api(path, opts={}){
+  const res = await fetch(path, {
+    method: opts.method || "GET",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(opts.body || {})
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || ("Erro " + res.status));
+  return data;
+}
+
+/* ---------- root ---------- */
+const root = document.getElementById("root");
+
+function render(){
+  if(!state.user){ root.innerHTML = authView(); return; }
+  root.innerHTML = appView();
+}
+
+/* ---------- auth ---------- */
+let authMode = "login";
+function authView(){
+  return `
+  <div class="auth">
+    <div class="auth-card">
+      <div class="brand"><div class="logo">H</div><b>Hotel Azul</b></div>
+      <div class="auth-tabs">
+        <button id="t-login" class="${authMode==='login'?'active':''}">Entrar</button>
+        <button id="t-reg" class="${authMode==='reg'?'active':''}">Criar conta</button>
+      </div>
+      <div id="auth-msg"></div>
+      ${authMode==="login" ? `
+        <form id="f-login">
+          <div class="field"><label>Nome de usuário</label><input name="username" autocomplete="username" required></div>
+          <div class="field"><label>Senha</label><input name="password" type="password" autocomplete="current-password" required></div>
+          <button class="btn btn-primary btn-block" type="submit">Entrar</button>
+        </form>` : `
+        <form id="f-reg">
+          <div class="field"><label>Nome de usuário</label><input name="username" autocomplete="username" required></div>
+          <div class="field"><label>Nome completo</label><input name="name" required></div>
+          <div class="field"><label>Senha</label><input name="password" type="password" autocomplete="new-password" required></div>
+          <button class="btn btn-teal btn-block" type="submit">Criar conta de hóspede</button>
+        </form>`}
+      <div class="hint">Os dados ficam salvos no servidor — entre de qualquer lugar.</div>
+    </div>
+  </div>`;
+}
+
+function bindAuth(){
+  const tl = document.getElementById("t-login"), tr = document.getElementById("t-reg");
+  const msg = document.getElementById("auth-msg");
+  const show = (txt, ok) => { msg.innerHTML = txt ? `<div class="form-msg ${ok?"ok":"err"}">${txt}</div>` : ""; };
+  if(tl) tl.onclick = () => { authMode="login"; render(); };
+  if(tr) tr.onclick = () => { authMode="reg"; render(); };
+  const fl = document.getElementById("f-login");
+  if(fl) fl.onsubmit = async e => {
+    e.preventDefault();
+    try{
+      const fd = new FormData(fl);
+      const data = await api("/api/login",{method:"POST",body:{username:fd.get("username"),password:fd.get("password")}});
+      enter(data.user);
+    }catch(err){ show(err.message); }
+  };
+  const fr = document.getElementById("f-reg");
+  if(fr) fr.onsubmit = async e => {
+    e.preventDefault();
+    try{
+      const fd = new FormData(fr);
+      const data = await api("/api/register",{method:"POST",body:{
+        username:fd.get("username"), name:fd.get("name"), password:fd.get("password")}});
+      enter(data.user);
+    }catch(err){ show(err.message); }
+  };
+}
+
+function enter(user){
+  state.user = user;
+  try{ localStorage.setItem("ha_user", JSON.stringify(user)); }catch(e){}
+  state.filter = { checkin:"", checkout:"" };
+  toast("Olá, " + user.name.split(" ")[0] + "!", "ok");
+  render();
+}
+
+function logout(){
+  state.user = null;
+  try{ localStorage.removeItem("ha_user"); }catch(e){}
+  authMode = "login";
+  render();
+}
+
+/* ---------- app shell ---------- */
+function appView(){
+  const isMgr = state.user.role === "manager";
+  const tabs = isMgr
+    ? [{id:"bookings",label:"Reservas"},{id:"rooms",label:"Quartos"}]
+    : [{id:"quartos",label:"Quartos"},{id:"minhas",label:"Minhas reservas"}];
+  const activeTab = isMgr ? state.mgrTab : state.tab;
+  const content = isMgr ? managerView() : guestView();
+  return `
+  <div class="app">
+    <div class="topbar"><div class="topbar-inner">
+      <div class="logo">H</div>
+      <div class="title">Hotel Azul <small>${isMgr ? "Painel do gerente" : "Reservas de hóspede"}</small></div>
+      <div class="spacer"></div>
+      <span class="badge-role">${isMgr?"Gerente":"Hóspede"} · ${state.user.name.split(" ")[0]}</span>
+      <button class="btn-loginout" id="btn-out">Sair</button>
+    </div></div>
+    <div class="tabs">${tabs.map(t=>`<button class="tab ${t.id===activeTab?'active':''}" data-tab="${t.id}">${t.label}</button>`).join("")}</div>
+    <div class="content" id="content"></div>
+  </div>`;
+}
+
+function bindShell(){
+  document.getElementById("btn-out").onclick = logout;
+  document.querySelectorAll(".tab").forEach(b=>{
+    b.onclick = ()=>{
+      const id = b.dataset.tab;
+      if(state.user.role==="manager") state.mgrTab=id; else state.tab=id;
+      render();
+    };
+  });
+  bindContent();
+}
+
+function bindContent(){
+  const isMgr = state.user.role==="manager";
+  if(isMgr){
+    if(state.mgrTab==="bookings") bindManagerBookings();
+    else bindManagerRooms();
+  } else {
+    if(state.tab==="quartos") bindGuestRooms();
+    else bindGuestBookings();
+  }
+}
+
+/* ---------- guest: rooms ---------- */
+function guestView(){
+  if(state.tab==="minhas") return guestBookingsView();
+  const f = state.filter;
+  const valid = !!(f.checkin && f.checkout && f.checkin < f.checkout);
+  const minOut = f.checkin ? addDays(f.checkin,1) : "";
+  return `
+  <h2 class="section-title">Quartos disponíveis</h2>
+  <p class="section-sub">Escolha as datas e reserve um quarto. Você também pode navegar sem datas.</p>
+  <div class="filterbar">
+    <div class="field"><label>Entrada</label><input type="date" id="f-in" value="${f.checkin}" min="${todayStr()}"></div>
+    <div class="field"><label>Saída</label><input type="date" id="f-out" value="${f.checkout}" min="${minOut}"></div>
+    <button class="btn btn-ghost" id="f-clear">Limpar</button>
+    <div class="pill-count" id="pill"></div>
+  </div>
+  <div class="grid" id="rooms-grid"></div>`;
+}
+
+async function bindGuestRooms(){
+  const fin = document.getElementById("f-in");
+  const fout = document.getElementById("f-out");
+  fin.min = todayStr();
+  fin.onchange = async ()=>{ state.filter.checkin = fin.value;
+    if(state.filter.checkout && state.filter.checkout <= fin.value) state.filter.checkout="";
+    fout.min = state.filter.checkin ? addDays(state.filter.checkin,1):""; await loadGuestRooms(); };
+  fout.onchange = async ()=>{ state.filter.checkout = fout.value; await loadGuestRooms(); };
+  document.getElementById("f-clear").onclick = async ()=>{
+    state.filter = {checkin:"",checkout:""}; await loadGuestRooms(); };
+  await loadGuestRooms();
+}
+
+async function loadGuestRooms(){
+  const f = state.filter;
+  const grid = document.getElementById("rooms-grid");
+  const pill = document.getElementById("pill");
+  let rooms;
+  try{ rooms = (await api("/api/rooms",{method:"POST",body:{user:state.user,checkin:f.checkin,checkout:f.checkout}})).rooms; }
+  catch(err){ grid.innerHTML = `<div class="empty"><div class="big">!</div>${err.message}</div>`; return; }
+  const valid = !!(f.checkin && f.checkout && f.checkin < f.checkout);
+  const n = rooms.filter(r=>r.available_selected).length;
+  pill.textContent = valid ? `${n} quarto(s) para ${fmtDate(f.checkin)} – ${fmtDate(f.checkout)}` : "Mostre os quartos selecionando datas acima";
+  if(!rooms.length){ grid.innerHTML = `<div class="empty"><div class="big">🏨</div>Nenhum quarto cadastrado ainda.</div>`; return; }
+  grid.innerHTML = rooms.map(r=>{
+    const off = !r.available;
+    const taken = off || (valid && !r.available_selected);
+    const sub = off ? "Indisponível"
+      : (taken ? "Ocupado nestas datas"
+      : (valid ? "Disponível para suas datas" : "Disponível"));
+    return `
+    <div class="room-card">
+      <div class="room-thumb">
+        <span class="cap">${r.capacity} pessoas</span>
+        <span class="type">${r.type}</span>
+      </div>
+      <div class="room-body">
+        <div class="room-name">${r.name}</div>
+        <div class="room-desc">${r.description||"–"}</div>
+        <span class="chip ${taken?"off":"ok"}" style="margin-bottom:10px">${sub}</span>
+        <div class="room-foot">
+          <div class="price">${fmtPrice(r.price)}<small>/noite</small></div>
+          <button class="btn btn-teal btn-sm" data-book="${r.id}" ${taken?"disabled style='opacity:.45;cursor:not-allowed'":""}>Reservar</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  grid.querySelectorAll("[data-book]").forEach(b=>{
+    b.onclick = ()=>{ const r = rooms.find(x=>x.id==b.dataset.book); openBookingModal(r); };
+  });
+}
+
+function openBookingModal(room){
+  const f = state.filter;
+  let inD = f.checkin || todayStr(), outD = f.checkout || addDays(inD,1);
+  const ov = document.createElement("div");
+  ov.className="overlay";
+  ov.innerHTML = `
+    <div class="modal">
+      <h3>Reservar ${room.name}</h3>
+      <div class="sub">${room.type} · até ${room.capacity} pessoas · ${fmtPrice(room.price)}/noite</div>
+      <div class="two-col">
+        <div class="field"><label>Entrada</label><input type="date" id="m-in" value="${inD}" min="${todayStr()}"></div>
+        <div class="field"><label>Saída</label><input type="date" id="m-out" value="${outD}"></div>
+      </div>
+      <div class="field"><label>Nome do hóspede</label><input id="m-guest" value="${state.user.name}"></div>
+      <div id="m-msg"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="m-cancel">Cancelar</button>
+        <button class="btn btn-teal" id="m-ok">Confirmar reserva</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const mi = ov.querySelector("#m-in"), mo = ov.querySelector("#m-out");
+  mo.min = addDays(mi.value,1);
+  mi.onchange = ()=> mo.min = addDays(mi.value,1);
+  const msg = ov.querySelector("#m-msg");
+  const say = (t,ok)=> msg.innerHTML = t?`<div class="form-msg ${ok?"ok":"err"}">${t}</div>`:"";
+  ov.querySelector("#m-cancel").onclick = ()=> ov.remove();
+  ov.querySelector("#m-ok").onclick = async ()=>{
+    const checkin = mi.value, checkout = mo.value;
+    if(!checkin||!checkout) return say("Escolha as datas.",false);
+    if(checkin>=checkout) return say("Saída deve ser após a entrada.",false);
+    try{
+      await api("/api/bookings",{method:"POST",body:{user:state.user,room_id:room.id,checkin,checkout}});
+      ov.remove();
+      toast("Reserva criada!", "ok");
+      state.tab="minhas"; render();
+    }catch(err){ say(err.message,false); }
+  };
+}
+
+/* ---------- guest: my bookings ---------- */
+function guestBookingsView(){
+  return `
+    <h2 class="section-title">Minhas reservas</h2>
+    <p class="section-sub">Veja e cancele as reservas que você fez.</p>
+    <div id="my-list"></div>`;
+}
+async function bindGuestBookings(){
+  const el = document.getElementById("my-list");
+  let rows;
+  try{ rows = (await api("/api/bookings",{method:"POST",body:{user:state.user}})).bookings; }
+  catch(err){ el.innerHTML = `<div class="empty"><div class="big">!</div>${err.message}</div>`; return; }
+  if(!rows.length){ el.innerHTML = `<div class="empty"><div class="big">🛏️</div>Você ainda não tem reservas. Vá em "Quartos".</div>`; return; }
+  el.innerHTML = rows.map(b=>{
+    const cancellable = (b.status==="pending"||b.status==="confirmed");
+    return `
+    <div class="book-card">
+      <div class="book-main">
+        <div class="book-room">${b.room_name}</div>
+        <div class="book-dates">${fmtDate(b.checkin)} → ${fmtDate(b.checkout)} · ${daysBetween(b.checkin,b.checkout)} noite(s)</div>
+        <div class="book-guest">${b.guest_name}</div>
+        <div class="book-meta">Reservado em ${fmtDate((b.created_at||"").slice(0,10))}</div>
+      </div>
+      <div style="align-self:center"><span class="chip ${statusChip[b.status]}">${statusLabel[b.status]}</span></div>
+      <div class="book-actions">
+        ${cancellable ? `<button class="btn btn-danger btn-sm" data-cancel="${b.id}">Cancelar reserva</button>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll("[data-cancel]").forEach(b=>{
+    b.onclick = async ()=>{
+      if(!confirm("Cancelar esta reserva?")) return;
+      try{
+        await api("/api/bookings/"+b.dataset.cancel+"/status",{method:"DELETE",body:{user:state.user}});
+        toast("Reserva cancelada.", "ok");
+        render();
+      }catch(err){ toast(err.message,"err"); }
+    };
+  });
+}
+
+/* ---------- manager ---------- */
+function managerView(){
+  if(state.mgrTab==="rooms") return managerRoomsView();
+  return managerBookingsView();
+}
+
+function managerBookingsView(){
+  return `
+    <div class="mgr-tabs">
+      <button class="mgr-tab" data-mt="pending" data-filter="pending">Pendentes</button>
+      <button class="mgr-tab" data-mt="all" data-filter="all">Todas</button>
+    </div>
+    <div id="mb-table"></div>`;
+}
+
+let mgrFilter = "pending";
+function bindManagerBookings(){
+  document.querySelectorAll("[data-mt]").forEach(b=>{
+    b.className = "mgr-tab" + (b.dataset.mt===mgrFilter?" active":"");
+    b.onclick = ()=>{ mgrFilter=b.dataset.mt; bindManagerBookings(); };
+  });
+  loadManagerBookings();
+}
+
+async function loadManagerBookings(){
+  document.querySelectorAll("[data-mt]").forEach(b=> b.className = "mgr-tab" + (b.dataset.mt===mgrFilter?" active":""));
+  const el = document.getElementById("mb-table");
+  let rows;
+  try{ rows = (await api("/api/bookings",{method:"POST",body:{user:state.user}})).bookings; }
+  catch(err){ el.innerHTML = `<div class="empty"><div class="big">!</div>${err.message}</div>`; return; }
+  if(mgrFilter==="pending") rows = rows.filter(r=>r.status==="pending");
+  if(!rows.length){ el.innerHTML = `<div class="empty"><div class="big">✅</div>Nenhuma reserva aqui.</div>`; return; }
+  el.innerHTML = `
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>Hóspede</th><th>Quarto</th><th>Datas</th><th>Noites</th><th>Status</th><th>Ações</th>
+      </tr></thead>
+      <tbody>
+      ${rows.map(b=>{
+        const acts = [];
+        if(b.status==="pending"){
+          acts.push(`<button class="btn btn-teal btn-sm" data-act="confirm" data-id="${b.id}">Confirmar</button>`);
+          acts.push(`<button class="btn btn-ghost btn-sm" data-act="reject" data-id="${b.id}">Recusar</button>`);
+        }
+        if(b.status!=="cancelled"){
+          acts.push(`<button class="btn btn-danger btn-sm" data-act="del" data-id="${b.id}">Excluir</button>`);
+        }
+        return `<tr>
+          <td>${b.guest_name}<div style="font-size:12px;color:var(--muted)">${b.guest_username}</div></td>
+          <td>${b.room_name}</td>
+          <td>${fmtDate(b.checkin)} → ${fmtDate(b.checkout)}</td>
+          <td>${daysBetween(b.checkin,b.checkout)}</td>
+          <td><span class="chip ${statusChip[b.status]}">${statusLabel[b.status]}</span></td>
+          <td><div class="actions-cell">${acts.join("")}</div></td>
+        </tr>`;
+      }).join("")}
+      </tbody>
+    </table></div>`;
+  el.querySelectorAll("[data-act]").forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.id, act = btn.dataset.act;
+      try{
+        if(act==="confirm") await api(`/api/bookings/${id}/status`,{method:"POST",body:{user:state.user,status:"confirmed"}});
+        else if(act==="reject") await api(`/api/bookings/${id}/status`,{method:"POST",body:{state,user:state.user,status:"rejected"}});
+        else { if(!confirm("Excluir esta reserva?")) return; await api("/api/bookings/"+id,{method:"DELETE",body:{user:state.user}}); }
+        toast("Atualizado.", "ok");
+        loadManagerBookings();
+      }catch(err){ toast(err.message,"err"); }
+    };
+  });
+}
+
+/* manager rooms */
+let editingRoomId = null;
+function managerRoomsView(){
+  return `
+    <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap">
+      <h2 class="section-title" style="margin:0">Quartos</h2>
+      <div class="spacer"></div>
+      <button class="btn btn-teal btn-sm" id="add-room">+ Novo quarto</button>
+    </div>
+    <div class="tbl-wrap" id="rm-table"></div>`;
+}
+
+function bindManagerRooms(){
+  document.getElementById("add-room").onclick = ()=> openRoomModal(null);
+  loadManagerRooms();
+}
+
+async function loadManagerRooms(){
+  const el = document.getElementById("rm-table");
+  let rooms;
+  try{ rooms = (await api("/api/rooms",{method:"POST",body:{user:state.user}})).rooms; }
+  catch(err){ el.innerHTML = `<div class="empty"><div class="big">!</div>${err.message}</div>`; return; }
+  if(!rooms.length){ el.innerHTML = `<div class="empty"><div class="big">🏨</div>Nenhum quarto. Clique em “Novo quarto”.</div>`; return; }
+  el.innerHTML = `<table>
+    <thead><tr><th>Quarto</th><th>Tipo</th><th>Preço</th><th>Ocup.</th><th>Status</th><th>Ações</th></tr></thead>
+    <tbody>
+    ${rooms.map(r=>`<tr>
+      <td><b>${r.name}</b><div style="font-size:12px;color:var(--muted)">${r.description||"–"}</div></td>
+      <td>${r.type}</td>
+      <td>${fmtPrice(r.price)}/noite</td>
+      <td>${r.capacity}</td>
+      <td>${r.status && r.status!=="pendente" ? `<span class="chip off">Indisponível</span>` : (r.available?`<span class="chip ok">Ativo</span>`:`<span class="chip off">Inativo</span>`)}</td>
+      <td><div class="actions-cell">
+        <button class="btn btn-ghost btn-sm" data-edit="${r.id}">Editar</button>
+        <button class="btn btn-danger btn-sm" data-del="${r.id}">Excluir</button>
+      </div></td>
+    </tr>`).join("")}
+    </tbody></table>`;
+  el.querySelectorAll("[data-edit]").forEach(b=> b.onclick = ()=> openRoomModal(rooms.find(x=>x.id==b.dataset.edit)));
+  el.querySelectorAll("[data-del]").forEach(b=> b.onclick = async ()=>{
+    if(!confirm("Excluir este quarto?")) return;
+    try{ await api("/api/rooms/"+b.dataset.del,{method:"DELETE",body:{user:state.user}}); toast("Quarto excluído.","ok"); loadManagerRooms(); }
+    catch(err){ toast(err.message,"err"); }
+  });
+}
+
+function openRoomModal(room){
+  const ov = document.createElement("div");
+  ov.className="overlay";
+  const isEdit = !!room;
+  ov.innerHTML = `
+    <div class="modal">
+      <h3>${isEdit?"Editar quarto":"Novo quarto"}</h3>
+      <div class="sub">${isEdit?room.name:"Preencha os dados do quarto."}</div>
+      <div class="field"><label>Nome do quarto</label><input id="r-name" value="${isEdit?room.name:""}" required></div>
+      <div class="two-col">
+        <div class="field"><label>Tipo</label>
+          <select id="r-type">
+            ${["Simples","Suíte","Apartamento","Luxo"].map(t=>`<option ${isEdit&&room.type===t?"selected":""}>${t}</option>`).join("")}
+          </select></div>
+        <div class="field"><label>Ocupação (pessoas)</label><input type="number" id="r-cap" min="1" value="${isEdit?room.capacity:2}"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label>Preço por noite (R$)</label><input type="number" step="0.01" id="r-price" value="${isEdit?room.price:""}"></div>
+        <div class="field"><label>Disponível?</label>
+          <select id="r-avail"><option value="1" ${isEdit&&room.available?"selected":""}>Sim</option><option value="0" ${isEdit&&!room.available?"selected":""}>Não</option></select></div>
+      </div>
+      <div class="field"><label>Descrição</label><textarea id="r-desc" rows="2">${isEdit?room.description:""}</textarea></div>
+      <div id="r-msg"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="r-cancel">Cancelar</button>
+        <button class="btn btn-teal" id="r-ok">${isEdit?"Salvar":"Cadastrar"}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const msg = ov.querySelector("#r-msg");
+  const say = (t,ok)=> msg.innerHTML = t?`<div class="form-msg ${ok?"ok":"err"}">${t}</div>`:"";
+  ov.querySelector("#r-cancel").onclick = ()=> ov.remove();
+  ov.querySelector("#r-ok").onclick = async ()=>{
+    const body = {
+      name: ov.querySelector("#r-name").value.trim(),
+      type: ov.querySelector("#r-type").value,
+      capacity: ov.querySelector("#r-cap").value,
+      price: ov.querySelector("#r-price").value,
+      available: ov.querySelector("#r-avail").value==="1",
+      description: ov.querySelector("#r-desc").value.trim()
+    };
+    try{
+      if(isEdit) await api("/api/rooms/"+room.id,{method:"PUT",body:{user:state.user,...body}});
+      else await api("/api/rooms",{method:"POST",body:{user:state.user,...body}});
+      ov.remove(); toast(isEdit?"Quarto atualizado.":"Quarto cadastrado.","ok"); loadManagerRooms();
+    }catch(err){ say(err.message,false); }
+  };
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  try{
+    const u = JSON.parse(localStorage.getItem("ha_user"));
+    if(u && u.id && u.role) state.user = u;
+  }catch(e){}
+  render();
+  if(state.user) bindShell(); else bindAuth();
+}
+boot();
+
+=== static/htmx.min.js ===
+(function(t){var e={version:"1.6.x"},n={};function r(){return{}.toString(t).replace(/^function \w+/,"init")}t.on("htmx:load",function(){n.hx=e,n.HTMLTemplateElement&&(n.HTMLTemplateElement.prototype.content=n.HTMLTemplateElement.prototype.content);try{e.api&&e.api.triggerLoadingChange&&e.api.triggerLoadingChange()}catch(t){}});function o(){return new Promise(function(t){e.api?window.setTimeout(function(){e.api.triggerAfterRequest&&e.api.triggerAfterRequest(),t()},0):t()})}
+/* htmx shim: minimal internal API so the app's fetch usage stays self-contained. */
+e.version="1.6.x";window.htmx=e;
+})();
+
+=== requirements.md ===
+# Instalar e rodar (resumo)
+1. Instale Python (3.8 ou mais novo).
+2. No terminal, na pasta do projeto:
+   - Windows: `pip install flask`
+   - macOS/Linux: `pip3 install flask`
+3. Inicie o servidor:
+   - `python app.py`  (ou `python3 app.py`)
+4. Abra no navegador: http://localhost:5000
+
+Contas de teste:
+- Gerente:  usuário `gerente`, senha `123456`
+- Hóspede:  usuário `hospede`, senha `123456`
+
+=== README.md ===
+# Hotel Azul — Sistema de Reservas
+
+Um site completo para reservas de hotel, com duas áreas:
+- **Hóspede**: vê os quartos disponíveis nas datas escolhidas, faz e consulta/cancela reservas.
+- **Gerente**: cadastra/edita/exclui quartos e confirma/recusa/exclui reservas, vendo tudo.
+
+Os dados ficam salvos no próprio servidor (banco `hotel.db`), então:
+- você entra de qualquer computador/celular e encontra a mesma informação;
+- o que uma pessoa faz aparece para quem precisa ver;
+- fechar e reabrir o site não apaga nada.
+
+---
+
+## 1. Instalar e rodar (no seu computador)
+
+**Pré-requisito:** Python 3.8 ou mais novo. (Se não tiver, baixe em https://www.python.org — durante a instalação, marque a opção “Add Python to PATH”.)
+
+Abra um terminal **na pasta deste projeto** e digite:
+
+```
+pip install flask
+```
+
+Depois inicie o servidor:
+
+```
+python app.py
+```
+
+- No **Windows** talvez precise de `pip3` no lugar de `pip`, e `python3` no lugar de `python`.
+- O terminal ficará preso nesse comando — é normal (o servidor está rodando).
+
+Abra no navegador:
+
+```
+http://localhost:5000
+```
+
+### Contas de teste
+| Papel    | Usuário  | Senha    |
+|----------|----------|----------|
+| Gerente  | `gerente`| `123456` |
+| Hóspede  | `hospede`| `123456` |
+
+> Os 5 quartos de exemplo já vêm criados. Logue como **gerente** para vê-los.
+
+Para parar o servidor: pressione `Ctrl + C` no terminal.
+
+---
+
+## 2. Como usar
+
+**Hóspede**
+1. Crie sua conta (ou use `hospede`/`123456`).
+2. Em **Quartos**, escolha a data de entrada e de saída. Os quartos ocupados nessas datas aparecem como “Ocupado nestas datas”.
+3. Clique em **Reservar** num quarto disponível. A reserva fica *Pendente* até o gerente confirmar.
+4. Em **Minhas reservas**, veja, cancele ou acompanhe o status.
+
+**Gerente**
+1. Logue como `gerente`/`123456`.
+2. Em **Reservas** (aba *Pendentes*), confirme ou recuse cada reserva. Também pode excluir.
+3. Em **Quartos**, cadastre, edite, desative ou exclua quartos.
+
+---
+
+## 3. Publicar na internet para as pessoas (verdadeiro “funcionar na internet”)
+
+No seu PC, `http://localhost:5000` só é visível para você. Para que os hóspedes e o gerente acessem de qualquer lugar, hospede o projeto num serviço **gratuito**. Recomendo dois:
+
+### Opção A — Render (recomendado)
+1. Crie uma conta grátis em https://render.com (com GitHub).
+2. Crie um repositório vazio no GitHub e mande os arquivos deste projeto para ele (`git init; git add .; git commit -m "site"; git remote add origin ...; git push -u origin main`).
+3. No Render, crie um **Web Service** apontando para esse repositório.
+   - *Build Command*: `pip install -r requirements.txt`
+   - *Start Command*: `python app.py`
+   - Crie uma **variável de ambiente** `FLASK_APP=1` (apenas um flag para o banco).
+4. O Render vai te dar um endereço `https://nome-alvo.onrender.com` — esse é o link público do seu hotel.
+
+### Opção B — Railway
+1. Crie conta em https://railway.app (também com GitHub).
+2. “New Project” → “Deploy from GitHub repo” (o mesmo repositório).
+3. Railway detecta Python; ele vai criar o banco por conta própria.
+4. Faça “Generate Domain” para ter um link público.
+
+### Opção C — Tunnelling rápido (para testar agora, sem conta)
+Se só quer ver do celular **agora** (e estiver no mesmo Wi-Fi do seu PC):
+```
+pip install flask_ngrok
+```
+Depois, em `app.py`, após `init_db()` e antes do `if __name__`, adicione:
+```python
+if __name__ == "__main__":
+    from flask_ngrok import run_with_ngrok
+    run_with_ngrok(app)
+```
+Reinicie o `python app.py`. O terminal mostrará uma URL pública — acesse de qualquer lugar. *(Isso é para teste; para uso contínuo, use a Opção A ou B.)*
+
+> Importante: para o “mesmo login de qualquer lugar” funcionar de verdade, todos precisam usar o **mesmo endereço público** e o **mesmo banco**. Os planos gratuitos podem “dormir” quando estão ociosos e, no Render, recomenda-se usar um banco externo (Postgres) para não perder dados — os dados ficam em `hotel.db` por padrão e são recriados se o banco não for persistido.
+
+---
+
+## 4. Estrutura do projeto
+```
+app.py              servidor Python (Flask) + banco SQLite
+requirements.txt    dependências (flask)
+requirements.md     resumo de instalação
+static/
+  index.html        página principal
+  style.css         visual
+  app.js            toda a interface (login, quartos, reservas)
+  htmx.min.js       pequeno shim para manter o app autocontido
+```
+```

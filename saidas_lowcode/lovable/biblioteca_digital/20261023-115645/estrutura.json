@@ -1,0 +1,56 @@
+{
+  "n_arquivos": 100,
+  "tem_backend": true,
+  "tipo_backend": "supabase",
+  "tem_migrations": true,
+  "esquema_por_orm": true,
+  "usa_localstorage": true,
+  "migrations": [
+    "drizzle/migrations/0000_migration.sql"
+  ],
+  "esquema_orm": [
+    "drizzle.config.ts"
+  ],
+  "funcoes_edge_supabase": [],
+  "rotas_api": [],
+  "arquivos_servidor": [],
+  "clientes_supabase": [
+    "src/integrations/supabase/auth-middleware.ts",
+    "src/integrations/supabase/client.server.ts",
+    "src/integrations/supabase/client.ts",
+    "src/integrations/supabase/types.ts"
+  ],
+  "arquivos_localstorage": [
+    "src/integrations/supabase/previewAuthStorage.ts"
+  ],
+  "dependencias_banco": [
+    "@supabase/supabase-js",
+    "drizzle-kit",
+    "drizzle-orm",
+    "postgres"
+  ],
+  "variaveis_no_codigo": [
+    "LOVABLE_CRON_SECRET",
+    "LOVABLE_CRON_SECRET_PREVIOUS",
+    "LOVABLE_DB_MIGRATION_URL",
+    "SUPABASE_PUBLISHABLE_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_URL",
+    "VITE_SUPABASE_PUBLISHABLE_KEY",
+    "VITE_SUPABASE_URL"
+  ],
+  "arquivos_env": {
+    ".env": [
+      "SUPABASE_PROJECT_ID",
+      "SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_URL",
+      "VITE_SUPABASE_PROJECT_ID",
+      "VITE_SUPABASE_PUBLISHABLE_KEY",
+      "VITE_SUPABASE_URL"
+    ]
+  },
+  "variaveis_sensiveis_env": [],
+  "package_json": [
+    "package.json"
+  ]
+}

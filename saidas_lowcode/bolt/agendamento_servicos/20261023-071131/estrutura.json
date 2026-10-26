@@ -1,0 +1,37 @@
+{
+  "n_arquivos": 27,
+  "tem_backend": true,
+  "tipo_backend": "supabase",
+  "tem_migrations": true,
+  "esquema_por_orm": false,
+  "usa_localstorage": false,
+  "migrations": [
+    "supabase/migrations/20261023064108_create_app_schema.sql",
+    "supabase/migrations/20261023064123_create_booking_functions.sql"
+  ],
+  "esquema_orm": [],
+  "funcoes_edge_supabase": [],
+  "rotas_api": [],
+  "arquivos_servidor": [],
+  "clientes_supabase": [
+    "src/lib/supabase.ts"
+  ],
+  "arquivos_localstorage": [],
+  "dependencias_banco": [
+    "@supabase/supabase-js"
+  ],
+  "variaveis_no_codigo": [
+    "VITE_SUPABASE_ANON_KEY",
+    "VITE_SUPABASE_URL"
+  ],
+  "arquivos_env": {
+    ".env": [
+      "VITE_SUPABASE_URL",
+      "VITE_SUPABASE_ANON_KEY"
+    ]
+  },
+  "variaveis_sensiveis_env": [],
+  "package_json": [
+    "package.json"
+  ]
+}

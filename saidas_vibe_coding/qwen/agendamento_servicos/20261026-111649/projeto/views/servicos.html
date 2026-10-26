@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Serviços - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo nav { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .topo nav a { color:var(--cinza); text-decoration:none; font-size:.8rem; padding:.5rem .8rem; border-radius:8px; transition:.2s; }
+  .topo nav a.ativo { color:var(--dourado); background:rgba(240,165,0,.1); }
+  .btn-novo { padding:.5rem 1rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:8px; font-size:.8rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .btn-novo:hover { filter:brightness(1.1); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1000px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:1.8rem; }
+  .lista { display:flex; flex-direction:column; gap:.8rem; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1.1rem 1.3rem; flex-wrap:wrap; }
+  .item .dados { flex:1; min-width:200px; }
+  .item .nome { font-weight:700; font-size:1rem; }
+  .item .nome .desativado { font-size:.6rem; color:var(--vermelho); background:rgba(231,76,60,.1); padding:.1rem .4rem; border-radius:4px; margin-left:.4rem; vertical-align:middle; }
+  .item .meta { font-size:.78rem; color:var(--cinza); margin-top:.3rem; }
+  .item .meta b { color:var(--branco); }
+  .acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+  .btn-a { padding:.5rem .8rem; border:none; border-radius:8px; font-size:.75rem; font-weight:600; cursor:pointer; transition:.2s; text-decoration:none; display:inline-block; }
+  .btn-horarios { background:rgba(62,143,209,.15); color:var(--azul-claro); border:1px solid rgba(62,143,209,.4); }
+  .btn-horarios:hover { background:rgba(62,143,209,.25); }
+  .btn-editar { background:rgba(240,165,0,.1); color:var(--dourado); border:1px solid rgba(240,165,0,.4); }
+  .btn-editar:hover { background:rgba(240,165,0,.2); }
+  .btn-excluir { background:rgba(231,76,60,.1); color:var(--vermelho); border:1px solid rgba(231,76,60,.4); }
+  .btn-excluir:hover { background:rgba(231,76,60,.2); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">⚙️</div><h1 style="font-size:1rem;font-weight:700;">Gerenciar Serviços</h1></div>
+    <nav><a href="/admin">📊 Painel</a><a href="/admin/servicos" class="ativo">🛠 Serviços</a><a class="btn-novo" href="/admin/servicos/novo">+ Novo serviço</a></nav>
+    <form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form>
+  </div>
+  <div class="container">
+    <div class="titulo">Serviços cadastrados</div>
+    <div class="subtitulo">Cadastra, edita horários e configura os serviços oferecidos.</div>
+    <% if (servicos.length === 0) { %><div class="vazio">Nenhum serviço cadastrado.</div><% } else { %>
+      <div class="lista">
+        <% servicos.forEach(s => { %>
+          <div class="item"><div class="dados"><div class="nome"><%= s.nome %><% if (!s.ativo) { %><span class="desativado">inativo</span><% } %></div><div class="meta"><%= s.duracao_min %> min • R$ <%= Number(s.preco).toFixed(2).replace('.',',') %> • <b><%= s.n_horarios %></b> horários na agenda semanal</div></div>
+            <div class="acoes"><a href="/admin/horarios/<%= s.id %>" class="btn-a btn-horarios">⏰ Horários</a><a href="/admin/servicos/editar/<%= s.id %>" class="btn-a btn-editar">✎ Editar</a><form method="POST" action="/admin/servicos/excluir/<%= s.id %>" onsubmit="return confirm('Desativar este serviço?');"><button type="submit" class="btn-a btn-excluir"><%= s.ativo ? '⊘ Desativar' : '✔ Reativar' %></button></form></div></div>
+        <% }) %>
+      </div>
+    <% } %>
+  </div>
+</body>
+</html>
