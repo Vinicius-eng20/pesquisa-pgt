@@ -1,0 +1,119 @@
+---
+# Plano de automacao do OWASP ZAP (Automation Framework) para o experimento do TCC.
+#
+# FLUXO DE USO (por aplicacao):
+#   1. Suba a aplicacao (e o supabase local, se for low-code).
+#   2. No ZAP, abra Manual Explore e navegue TODAS as funcionalidades, com as
+#      duas contas (gerente e cliente), sem clicar em "Sair"/logout.
+#   3. Va na aba "Automation", abra este arquivo, edite APENAS a linha "APP:"
+#      abaixo com o identificador da aplicacao e clique em "Run plan".
+#   4. Ao final, os relatorios <APP>.json e <APP>.html estarao na pasta
+#      definida em reportDir. O resto (ajax spider, varredura ativa, espera do
+#      passive scan e exportacao) e feito por este plano.
+#
+# Convencao do identificador (usada depois pelo consolidar_zap.py):
+#   <grupo>__<fonte>__<dominio>
+#   grupo  = vibe | lowcode
+#   fonte  = deepseek, claude_sonnet, gpt5, gemini_flash, kimi, qwen, bolt, lovable
+#   dominio= restaurante_pedidos, loja_departamentos, ...
+#   Ex.: vibe__deepseek__restaurante_pedidos   lowcode__bolt__restaurante_pedidos
+
+env:
+  contexts:
+    - name: "alvo"
+      urls:
+        - "http://localhost:3000"
+        - "http://localhost:5173"
+        - "http://127.0.0.1:54321"
+      includePaths:
+        - "http://localhost:3000.*"
+        - "http://localhost:5173.*"
+        - "http://127.0.0.1:54321.*"
+      excludePaths:
+        - ".*/logout.*"
+        - ".*/sair.*"
+        - ".*/signout.*"
+        - "https?://.*\\.azureedge\\.net.*"
+        - "https?://.*\\.supabase\\.co.*"
+        - "https?://.*\\.lovable\\.app.*"
+        - "https?://.*\\.bolt\\.new.*"
+  vars:
+    # >>> EDITE SOMENTE ESTA LINHA A CADA APLICACAO <<<
+    APP: "vibe__deepseek__restaurante_pedidos"
+  parameters:
+    failOnError: false
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # Passive scan so no que esta no escopo (corta o ruido do navegador).
+  - type: passiveScan-config
+    parameters:
+      scanOnlyInScope: true
+      enableTags: false
+
+  # Spider tradicional: completa o que o Manual Explore nao alcancou (links).
+  - type: spider
+    parameters:
+      context: "alvo"
+      maxDuration: 3
+      maxDepth: 10
+      maxChildren: 0
+
+  # Ajax spider: essencial para as SPAs (Bolt/Lovable) e paginas com fetch.
+  - type: spiderAjax
+    parameters:
+      context: "alvo"
+      maxDuration: 5
+      browserId: "chrome-headless"
+      numberOfBrowsers: 2
+
+  # Garante que o passive scan terminou antes de prosseguir.
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 10
+
+  # Varredura ativa autenticada: reaproveita os cookies/sessao do Manual
+  # Explore gravados nas requisicoes, entao ataca as rotas como gerente/cliente.
+  - type: activeScan
+    parameters:
+      context: "alvo"
+      policy: "Default Policy"
+      maxScanDurationInMins: 30
+
+  # Relatorio em JSON (dado da pesquisa, lido pelo consolidar_zap.py).
+  - type: report
+    parameters:
+      template: "traditional-json"
+      reportDir: "/home/pgt/Documentos/pesquisa-pgt/relatorios_zap"
+      reportFile: "${APP}"
+      reportTitle: "ZAP - ${APP}"
+      reportDescription: "Varredura automatizada - experimento TCC"
+    risks:
+      - high
+      - medium
+      - low
+      - info
+    confidences:
+      - low
+      - medium
+      - high
+      - confirmed
+
+  # Relatorio em HTML (versao legivel para o apendice).
+  - type: report
+    parameters:
+      template: "traditional-html"
+      reportDir: "/home/pgt/Documentos/pesquisa-pgt/relatorios_zap"
+      reportFile: "${APP}"
+      reportTitle: "ZAP - ${APP}"
+    risks:
+      - high
+      - medium
+      - low
+      - info
+    confidences:
+      - low
+      - medium
+      - high
+      - confirmed
