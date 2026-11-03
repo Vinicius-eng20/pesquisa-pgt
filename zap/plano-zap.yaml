@@ -39,7 +39,7 @@ env:
         - "https?://.*\\.bolt\\.new.*"
   vars:
     # >>> EDITE SOMENTE ESTA LINHA A CADA APLICACAO <<<
-    APP: "vibe__deepseek__restaurante_pedidos"
+    APP: "vibe__deepseek__agendamento_servicos"
   parameters:
     failOnError: false
     failOnWarning: false
@@ -65,7 +65,7 @@ jobs:
     parameters:
       context: "alvo"
       maxDuration: 5
-      browserId: "chrome-headless"
+      browserId: "firefox-headless"
       numberOfBrowsers: 2
 
   # Garante que o passive scan terminou antes de prosseguir.
@@ -85,9 +85,9 @@ jobs:
   - type: report
     parameters:
       template: "traditional-json"
-      reportDir: "/home/pgt/Documentos/pesquisa-pgt/relatorios_zap"
-      reportFile: "${APP}"
-      reportTitle: "ZAP - ${APP}"
+      reportDir: "C:/Users/vini/Documents/tcc_vini/pesquisa-pgt/relatorios_zap"
+      reportFile: ${APP}
+      reportTitle: ZAP - ${APP}
       reportDescription: "Varredura automatizada - experimento TCC"
     risks:
       - high
@@ -104,9 +104,9 @@ jobs:
   - type: report
     parameters:
       template: "traditional-html"
-      reportDir: "/home/pgt/Documentos/pesquisa-pgt/relatorios_zap"
-      reportFile: "${APP}"
-      reportTitle: "ZAP - ${APP}"
+      reportDir: "C:/Users/vini/Documents/tcc_vini/pesquisa-pgt/relatorios_zap"
+      reportFile: ${APP}
+      reportTitle: ZAP - ${APP}
     risks:
       - high
       - medium

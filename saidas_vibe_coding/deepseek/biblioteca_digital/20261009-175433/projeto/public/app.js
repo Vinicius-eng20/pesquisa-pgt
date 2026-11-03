@@ -296,5 +296,3 @@ async function carregarHistorico() {
     document.getElementById('tela-login').style.display = '';
   }
 })();
-
----

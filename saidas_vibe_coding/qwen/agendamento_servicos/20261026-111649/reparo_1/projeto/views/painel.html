@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel - Agenda de Serviços</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .topo nav { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+  .topo nav a { color:var(--cinza); text-decoration:none; font-size:.8rem; padding:.5rem .8rem; border-radius:8px; transition:.2s; }
+  .topo nav a:hover { color:var(--branco); background:rgba(62,143,209,.1); }
+  .topo nav a.ativo { color:var(--dourado); background:rgba(240,165,0,.1); }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:1100px; margin:0 auto; padding:2rem 1.5rem; }
+  .titulo { font-size:1.5rem; font-weight:700; margin-bottom:.3rem; }
+  .subtitulo { color:var(--cinza); font-size:.9rem; margin-bottom:2rem; }
+  .secao { margin-bottom:2.5rem; }
+  .secao h2 { font-size:1.1rem; margin-bottom:1rem; display:flex; align-items:center; gap:.5rem; }
+  .secao h2 .badge { font-size:.7rem; background:rgba(240,165,0,.15); color:var(--dourado); padding:.2rem .6rem; border-radius:20px; }
+  .lista { display:flex; flex-direction:column; gap:.7rem; }
+  .item { display:flex; align-items:center; justify-content:space-between; gap:1rem; background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem 1.2rem; flex-wrap:wrap; }
+  .item .dados { flex:1; min-width:180px; }
+  .item .ns { font-weight:700; font-size:.9rem; }
+  .item .info { font-size:.78rem; color:var(--cinza); margin-top:.2rem; line-height:1.4; }
+  .item .info b { color:var(--dourado); }
+  .acoes { display:flex; gap:.5rem; }
+  .btn-c { padding:.5rem .9rem; border:none; border-radius:8px; font-size:.8rem; font-weight:600; cursor:pointer; transition:.2s; }
+  .btn-confirmar { background:rgba(46,204,113,.15); color:var(--verde); border:1px solid rgba(46,204,113,.4); }
+  .btn-confirmar:hover { background:rgba(46,204,113,.25); }
+  .btn-recusar { background:rgba(231,76,60,.1); color:var(--vermelho); border:1px solid rgba(231,76,60,.4); }
+  .btn-recusar:hover { background:rgba(231,76,60,.2); }
+  .st { font-size:.65rem; font-weight:700; padding:.3rem .6rem; border-radius:20px; text-transform:uppercase; }
+  .st-c { background:rgba(46,204,113,.15); color:var(--verde); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:1rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  @media(max-width:600px){ .item{flex-direction:column;align-items:flex-start;} .acoes{width:100%;justify-content:flex-end;} }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">⚙️</div><h1 style="font-size:1rem;font-weight:700;">Painel Administrativo</h1></div>
+    <nav><a href="/admin" class="ativo">📊 Painel</a><a href="/admin/servicos">🛠 Serviços</a></nav>
+    <form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form>
+  </div>
+  <div class="container">
+    <div class="titulo">Visão geral dos agendamentos</div>
+    <div class="subtitulo">Pendentes: <%= pendentes.length %> • Confirmados futuros: <%= confirmados.length %></div>
+    <div class="secao">
+      <h2>Pendentes de confirmação <span class="badge"><%= pendentes.length %></span></h2>
+      <% if (pendentes.length === 0) { %><div class="vazio">Nenhum agendamento pendente.</div><% } else { %>
+        <div class="lista">
+          <% pendentes.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b> • <%= a.duracao_min %> min • <%= a.cliente_email %></div></div>
+              <div class="acoes"><form method="POST" action="/admin/agendar/<%= a.id %>/confirmar"><button type="submit" class="btn-c btn-confirmar">Confirmar</button></form><form method="POST" action="/admin/agendar/<%= a.id %>/recusar" onsubmit="return confirm('Recusar este agendamento?');"><button type="submit" class="btn-c btn-recusar">Recusar</button></form></div></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <div class="secao">
+      <h2>Próximos confirmados <span class="badge"><%= confirmados.length %></span></h2>
+      <% if (confirmados.length === 0) { %><div class="vazio">Nenhum agendamento confirmado para datas futuras.</div><% } else { %>
+        <div class="lista">
+          <% confirmados.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b> • <%= a.duracao_min %> min</div></div><span class="st st-c">confirmado</span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+    <div class="secao">
+      <h2>Histórico recente <span class="badge"><%= historico.length %></span></h2>
+      <% if (historico.length === 0) { %><div class="vazio">Sem histórico.</div><% } else { %>
+        <div class="lista">
+          <% historico.forEach(a => { %>
+            <div class="item"><div class="dados"><div class="ns"><%= a.nome_servico %> • <%= a.cliente_nome %></div><div class="info"><%= a.data_fmt %> às <b><%= a.hora %></b></div></div><span class="st st-c"><%= a.status %></span></div>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  </div>
+</body>
+</html>

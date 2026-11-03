@@ -1,0 +1,1 @@
+Pasta de saída dos relatórios do ZAP (gerados pelo plano-zap.yaml).

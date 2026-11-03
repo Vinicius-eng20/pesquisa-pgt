@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrar - Agenda de Serviços</title>
+<style>
+  :root {
+    --azul-profundo: #0d1b2a; --azul-medio: #1b3a5c; --azul-claro: #3e8fd1; --dourado: #f0a500; --branco: #f4f7f9; --cinza: #8b9ab1;
+    --sombra: rgba(0,0,0,.35); --raio: 18px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background: var(--azul-profundo); color: var(--branco); min-height:100vh; position:relative; overflow-x:hidden; }
+  body::before { content:''; position:fixed; inset:0; background: radial-gradient(ellipse at top right, rgba(62,143,209,.15), transparent 50%), radial-gradient(ellipse at bottom left, rgba(240,165,0,.08), transparent 40%); pointer-events:none; z-index:0; }
+  .particulas { position:fixed; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+  .particulas span { position:absolute; border-radius:50%; background:var(--azul-claro); opacity:.15; animation:flutuar 12s infinite ease-in-out; }
+  .particulas span:nth-child(1){width:180px;height:180px;top:10%;left:8%;animation-delay:0s;}
+  .particulas span:nth-child(2){width:100px;height:100px;top:60%;left:80%;background:var(--dourado);opacity:.1;animation-delay:2s;animation-duration:15s;}
+  .particulas span:nth-child(3){width:140px;height:140px;top:75%;left:15%;animation-delay:4s;animation-duration:18s;}
+  @keyframes flutuar { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(30px,-40px) scale(1.1);} }
+  .wrap { position:relative; z-index:1; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1.5rem; }
+  .card { width:100%; max-width:440px; background:linear-gradient(160deg, rgba(27,58,92,.9), rgba(13,27,42,.95)); border:1px solid rgba(62,143,209,.2); border-radius:var(--raio); padding:2.5rem; box-shadow:0 30px 80px -20px var(--sombra); backdrop-filter:blur(20px); animation:entrar .6s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes entrar { from{opacity:0;transform:translateY(20px) scale(.97);} to{opacity:1;transform:none;} }
+  .logo { display:flex; align-items:center; gap:.8rem; margin-bottom:2rem; }
+  .logo .ic { width:52px; height:52px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:1.6rem; box-shadow:0 8px 20px rgba(62,143,209,.4); }
+  .logo h1 { font-size:1.2rem; font-weight:700; letter-spacing:.02em; }
+  .logo p { font-size:.75rem; color:var(--cinza); }
+  label { display:block; font-size:.75rem; color:var(--cinza); margin:.9rem 0 .3rem; letter-spacing:.05em; text-transform:uppercase; }
+  input { width:100%; padding:.8rem 1rem; background:rgba(13,27,42,.7); border:1px solid rgba(139,154,177,.2); border-radius:10px; color:var(--branco); font-size:.95rem; transition:.2s; outline:none; }
+  input:focus { border-color:var(--azul-claro); box-shadow:0 0 0 3px rgba(62,143,209,.15); background:rgba(13,27,42,.9); }
+  .btn { width:100%; padding:.9rem; margin-top:1.4rem; background:linear-gradient(135deg, var(--dourado), #c78500); color:var(--azul-profundo); border:none; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; transition:.2s; letter-spacing:.03em; }
+  .btn:hover { transform:translateY(-2px); box-shadow:0 10px 25px rgba(90,50,0,.4); filter:brightness(1.08); }
+  .btn:active { transform:translateY(0); }
+  .link { display:block; text-align:center; margin-top:1.3rem; font-size:.85rem; color:var(--cinza); text-decoration:none; transition:.2s; }
+  .link:hover { color:var(--dourado); }
+  .link span { border-bottom:1px dashed rgba(139,154,177,.4); padding-bottom:1px; }
+  .alerta { background:rgba(220,60,60,.15); border:1px solid rgba(220,60,60,.4); color:#ff9e9e; padding:.7rem 1rem; border-radius:10px; font-size:.85rem; margin-bottom:.5rem; }
+</style>
+</head>
+<body>
+  <div class="particulas"><span></span><span></span><span></span></div>
+  <div class="wrap">
+    <div class="card">
+      <div class="logo"><div class="ic">📅</div><div><h1>Agenda de Serviços</h1><p>Faça seu agendamento</p></div></div>
+      <% if (query && query.erro === '1') { %><div class="alerta">E-mail ou senha incorretos.</div><% } %>
+      <form method="POST" action="/entrar">
+        <label>E-mail</label><input type="email" name="email" required placeholder="seu@email.com">
+        <label>Senha</label><input type="password" name="senha" required placeholder="••••••••">
+        <button class="btn" type="submit">Entrar</button>
+      </form>
+      <a class="link" href="/cadastro">Novo por aqui? <span>Criar conta</span></a>
+    </div>
+  </div>
+</body>
+</html>

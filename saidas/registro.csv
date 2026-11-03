@@ -1,0 +1,2 @@
+data_hora_utc,modelo,modelo_id,provedor,dominio,prompt_versao,rodada,gratuito,tokens_entrada,tokens_saida,tokens_raciocinio,tokens_total,custo_usd,motivo_termino,tentativas_api,duracao_s,duracao_api_s,tokens_por_s,n_arquivos,tem_readme,cercas_removidas,continuacao,reenvio,estado,pasta,erro
+2026-10-26T12:21:43+00:00,qwen,qwen/qwen3.8-27b,Modal,agendamento_servicos,v2,1,False,23494,4935,0,28429,0.01229026,stop,1,33.2,33.2,148.6,11,True,0,,,gerada,saidas_vibe_coding\qwen\agendamento_servicos\20261026-111649\reparo_1,

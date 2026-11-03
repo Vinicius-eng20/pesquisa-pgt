@@ -270,5 +270,3 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.listen(PORTA, () => {
   console.log('Biblioteca Digital rodando em http://localhost:' + PORTA);
 });
-
----

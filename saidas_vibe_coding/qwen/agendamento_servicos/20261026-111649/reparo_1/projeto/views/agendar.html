@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= servico.nome %> - Horários</title>
+<style>
+  :root { --azul-profundo:#0d1b2a; --azul-medio:#1b3a5c; --azul-claro:#3e8fd1; --dourado:#f0a500; --verde:#2ecc71; --branco:#f4f7f9; --cinza:#8b9ab1; --vermelho:#e74c3c; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI', system-ui, sans-serif; background:var(--azul-profundo); color:var(--branco); min-height:100vh; }
+  .topo { position:sticky; top:0; z-index:10; background:rgba(13,27,42,.95); backdrop-filter:blur(15px); border-bottom:1px solid rgba(62,143,209,.15); padding:0 1.5rem; height:64px; display:flex; align-items:center; justify-content:space-between; }
+  .topo .logo { display:flex; align-items:center; gap:.7rem; }
+  .topo .logo .ic { width:40px; height:40px; background:linear-gradient(135deg, var(--azul-claro), var(--azul-medio)); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.2rem; }
+  .voltar { color:var(--cinza); text-decoration:none; font-size:.85rem; transition:.2s; }
+  .voltar:hover { color:var(--branco); }
+  .usuario { display:flex; align-items:center; gap:1rem; }
+  .usuario .nome { font-size:.85rem; font-weight:600; }
+  .sair { padding:.5rem .9rem; background:transparent; border:1px solid rgba(139,154,177,.3); border-radius:8px; color:var(--branco); font-size:.8rem; cursor:pointer; transition:.2s; }
+  .sair:hover { border-color:var(--vermelho); color:var(--vermelho); }
+  .container { max-width:800px; margin:0 auto; padding:2rem 1.5rem; }
+  .cabecalho { margin-bottom:1.8rem; }
+  .cabecalho h1 { font-size:1.5rem; font-weight:700; }
+  .cabecalho p { color:var(--cinza); font-size:.9rem; margin-top:.3rem; }
+  .alerta { background:rgba(220,60,60,.15); border:1px solid rgba(220,60,60,.4); color:#ff9e9e; padding:.8rem 1rem; border-radius:10px; font-size:.85rem; margin-bottom:1.2rem; }
+  .dias { display:flex; flex-direction:column; gap:.8rem; }
+  .dia { background:rgba(27,58,92,.5); border:1px solid rgba(62,143,209,.1); border-radius:12px; padding:1rem; overflow:hidden; }
+  .dia .nome { font-size:.8rem; font-weight:700; color:var(--dourado); margin-bottom:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  .horas { display:flex; flex-wrap:wrap; gap:.5rem; }
+  .hora { padding:.5rem .8rem; border-radius:8px; font-size:.8rem; cursor:pointer; border:1px solid rgba(46,204,113,.4); background:rgba(46,204,113,.1); color:var(--verde); transition:.2s; }
+  .hora:hover { background:rgba(46,204,113,.2); transform:translateY(-2px); }
+  .hora.ocupado { border-color:rgba(139,154,177,.2); background:rgba(139,154,177,.08); color:var(--cinza); cursor:not-allowed; text-decoration:line-through; opacity:.5; }
+  .hora.sel { border-color:var(--dourado); background:rgba(240,165,0,.15); color:var(--dourado); }
+  .vazio { color:var(--cinza); font-size:.85rem; padding:.8rem; text-align:center; border:1px dashed rgba(139,154,177,.2); border-radius:10px; }
+  .legenda { display:flex; gap:1.5rem; margin-top:1.5rem; font-size:.75rem; color:var(--cinza); }
+  .legenda span { display:flex; align-items:center; gap:.4rem; }
+  .legenda .pt { width:10px; height:10px; border-radius:3px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="logo"><div class="ic">📅</div><a class="voltar" href="/cliente">← Voltar aos serviços</a></div>
+    <div class="usuario"><div class="nome"><%= usuario.nome %></div><form method="POST" action="/sair"><button type="submit" class="sair">Sair</button></form></div>
+  </div>
+  <div class="container">
+    <div class="cabecalho"><h1><%= servico.nome %></h1><p>Duração: <%= servico.duracao_min %> minutos • Preço: R$ <%= Number(servico.preco).toFixed(2).replace('.',',') %></p></div>
+    <% if (query && query.erro === 'ocupado') { %><div class="alerta">Este horário já foi agendado por outro cliente. Escolha outro.</div><% } %>
+    <% if (query && query.erro === '1') { %><div class="alerta">Horário inválido. Verifique os horários cadastrados.</div><% } %>
+    <% const dias = {}; %>
+    <% for (const d in porDia) { dias[d] = porDia[d]; } %>
+    <% const tem = Object.keys(porDia).length > 0; %>
+    <% if (!tem) { %><div class="vazio">Nenhum horário cadastrado para este serviço nas próximas semanas.</div><% } else { %>
+      <div class="dias">
+        <% for (const dia in porDia) { %>
+          <div class="dia"><div class="nome"><%= DIAS[parseInt(dia,10)] %></div><div class="horas">
+            <% porDia[dia].forEach(h => { %>
+              <div class="hora <%= h.estado !== 'livre' ? 'ocupado' : '' %>" data-dia="<%= dia %>" data-data="<%= h.data %>" data-hora="<%= h.hora %>" <%= h.estado !== 'livre' ? '' : 'onclick="sel(this)"' %>><%= h.hora %></div>
+            <% }) %>
+          </div></div>
+        <% } %>
+      </div>
+      <div class="legenda"><span><div class="pt" style="background:var(--verde)"></div> Livre</span><span><div class="pt" style="background:var(--cinza)"></div> Ocupado</span></div>
+      <form id="form-agendar" method="POST" action="/cliente/agendar/<%= servico.id %>" style="display:none;">
+        <input type="hidden" name="data" id="f-data"><input type="hidden" name="hora" id="f-hora">
+      </form>
+    <% } %>
+  </div>
+  <script>
+    function sel(el){
+      document.querySelectorAll('.hora.sel').forEach(x=>x.classList.remove('sel'));
+      el.classList.add('sel');
+      document.getElementById('f-data').value = el.dataset.data;
+      document.getElementById('f-hora').value = el.dataset.hora;
+      const f = document.getElementById('form-agendar');
+      f.style.display = 'block';
+      if (confirm('Confirmar agendamento em ' + el.dataset.hora + ' do dia ' + el.dataset.data + '?')) f.submit();
+    }
+  </script>
+</body>
+</html>
