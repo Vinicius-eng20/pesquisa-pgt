@@ -1,0 +1,615 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "seg., 9 nov. 2026 12:32:32",
+	"created": "2026-11-09T15:32:32.089955200Z",
+	"insights":[
+		{
+			"level": "Médio",
+			"reason": "Exceeded Low",
+			"site": "",
+			"key": "insight.memory.usage",
+			"description": "Percentage of memory used",
+			"statistic": "87"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.error",
+			"description": "ZAP errors logged - see the zap.log file for details",
+			"statistic": "2"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "78"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "50"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.3xx",
+			"description": "Percentage of responses with status code 3xx",
+			"statistic": "42"
+		},
+		{
+			"level": "Informações",
+			"reason": "Exceeded Low",
+			"site": "http://localhost:3000",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "7"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.text/css",
+			"description": "Percentage of endpoints with content type text/css",
+			"statistic": "2"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.text/html",
+			"description": "Percentage of endpoints with content type text/html",
+			"statistic": "91"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.text/plain",
+			"description": "Percentage of endpoints with content type text/plain",
+			"statistic": "6"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "78"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "21"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "47"
+		},
+		{
+			"level": "Informações",
+			"reason": "Exceeded Low",
+			"site": "http://localhost:3000",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "14"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "http://localhost:3000",
+			"@host": "localhost",
+			"@port": "3000",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "10202",
+					"alertRef": "10202",
+					"alert": "Aus\u00EAncia de tokens Anti-CSRF",
+					"name": "Aus\u00EAncia de tokens Anti-CSRF",
+					"riskcode": "2",
+					"confidence": "1",
+					"riskdesc": "M\u00E9dio (Baixo)",
+					"desc": "<p>N\u00E3o foram localizados tokens Anti-CSRF no formul\u00E1rio de submiss\u00E3o HTML.</p><p>Uma falsifica\u00E7\u00E3o de solicita\u00E7\u00E3o entre sites (Cross-Site Request Forgery ou simplesmente CSRF)  \u00E9 um ataque que envolve for\u00E7ar a v\u00EDtima a enviar uma solicita\u00E7\u00E3o HTTP a um destino alvo sem seu conhecimento ou inten\u00E7\u00E3o, a fim de realizar uma a\u00E7\u00E3o como a v\u00EDtima. A causa impl\u00EDcita \u00E9 a funcionalidade do aplicativo usando a\u00E7\u00F5es previs\u00EDveis em URLs/formul\u00E1rios, de maneira repet\u00EDvel. A natureza do ataque \u00E9 que o CSRF explora a confian\u00E7a que um site tem em um usu\u00E1rio. Em contrapartida, um ataque do tipo Cross-Site Scripting (XSS) explora a confian\u00E7a que um usu\u00E1rio tem em um site. Como o XSS, os ataques CSRF n\u00E3o s\u00E3o necessariamente entre sites, mas tamb\u00E9m podem ser. A falsifica\u00E7\u00E3o de solicita\u00E7\u00E3o entre sites tamb\u00E9m \u00E9 conhecida por \"CSRF\", \"XSRF\", \"one-click attack\", \"session riding\", \"confused deputy\", e \"sea surf\".</p><p></p><p></p><p>Os ataques CSRF s\u00E3o efetivos em v\u00E1rias situa\u00E7\u00F5es, incluindo:</p><p>* - A v\u00EDtima tem uma sess\u00E3o ativa no site de destino;</p><p>    </p><p>* - A v\u00EDtima est\u00E1 autenticada por meio de autentica\u00E7\u00E3o HTTP no site de destino;</p><p>    </p><p>* - A v\u00EDtima est\u00E1 na mesma rede local do site de destino.</p><p></p><p></p><p>O CSRF era usado principalmente para executar a\u00E7\u00F5es contra um site-alvo usando os privil\u00E9gios da v\u00EDtima, mas t\u00E9cnicas recentes foram descobertas para vazamento de informa\u00E7\u00F5es obtendo acesso \u00E0s respostas. O risco de vazamento/divulga\u00E7\u00E3o n\u00E3o autorizada de informa\u00E7\u00F5es aumenta drasticamente quando o site de destino \u00E9 vulner\u00E1vel a XSS, porque o XSS pode ser usado como uma plataforma para CSRF, permitindo que o ataque opere dentro dos limites da pol\u00EDtica de mesma origem.</p>",
+					"instances":[ 
+						{
+							"id": "2",
+							"uri": "http://localhost:3000/login",
+							"nodeName": "http:\/\/localhost:3000\/login",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<form method=\"post\" action=\"/login\">",
+							"otherinfo": "Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 1: \"email\" \"password\" ].  "
+						},
+						{
+							"id": "7",
+							"uri": "http://localhost:3000/organizer",
+							"nodeName": "http:\/\/localhost:3000\/organizer",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<form class=\"inline-form\" method=\"post\" action=\"/logout\">",
+							"otherinfo": "Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 1: \"\" ].  "
+						},
+						{
+							"id": "9",
+							"uri": "http://localhost:3000/organizer",
+							"nodeName": "http:\/\/localhost:3000\/organizer",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<form method=\"post\" action=\"/organizer/events/1/cancel\" onsubmit=\"return confirm('Cancelar este evento?')\">",
+							"otherinfo": "Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 3: \"\" ].  "
+						},
+						{
+							"id": "8",
+							"uri": "http://localhost:3000/organizer",
+							"nodeName": "http:\/\/localhost:3000\/organizer",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<form method=\"post\" action=\"/organizer/events/2/cancel\" onsubmit=\"return confirm('Cancelar este evento?')\">",
+							"otherinfo": "Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 2: \"\" ].  "
+						},
+						{
+							"id": "11",
+							"uri": "http://localhost:3000/organizer/events/new",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/new",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<form class=\"inline-form\" method=\"post\" action=\"/logout\">",
+							"otherinfo": "Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 1: \"\" ].  "
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p></p><p>Fase: Arquitetura e Design.</p><p>Use uma biblioteca verificada ou framework que n\u00E3o permita que essa vulnerabilidade ocorra, ou forne\u00E7a constru\u00E7\u00F5es/implementa\u00E7\u00F5es que tornem essa vulnerabilidade mais f\u00E1cil de evitar.</p><p>Por exemplo, use pacotes anti-CSRF, como o OWASP CSRFGuard.</p><p></p><p></p><p>Fase: Implementa\u00E7\u00E3o.</p><p>Certifique-se de que seu aplicativo esteja livre de problemas de cross-site scripting (XSS), porque a maioria das defesas CSRF pode ser contornada usando script controlado por invasor.</p><p></p><p></p><p>Fase: Arquitetura e Design.</p><p>Gere um n\u00FAmero arbitr\u00E1rio de uso \u00FAnico e exclusivo (ou Nonce = \"N\" de \"number\" - n\u00FAmero em ingl\u00EAs - e \"once\" de \"uma vez\" tamb\u00E9m em ingl\u00EAs) para cada formul\u00E1rio, coloque o nonce no formul\u00E1rio e verifique-o ao receber o formul\u00E1rio. Certifique-se de que o nonce n\u00E3o seja previs\u00EDvel (CWE-330).</p><p>Observe que isso pode ser contornado usando XSS.</p><p></p><p>Identifique opera\u00E7\u00F5es especialmente perigosas. Quando o usu\u00E1rio realizar uma opera\u00E7\u00E3o perigosa, envie uma solicita\u00E7\u00E3o de confirma\u00E7\u00E3o separada para garantir que o usu\u00E1rio pretendia realizar aquela opera\u00E7\u00E3o.</p><p>Observe que isso pode ser contornado usando XSS.</p><p></p><p>Utilize o controle ESAPI Session Management.</p><p>Este controle inclui um componente para CSRF.</p><p></p><p>N\u00E3o use o m\u00E9todo GET para qualquer solicita\u00E7\u00E3o que acione uma mudan\u00E7a de estado.</p><p></p><p></p><p>Fase: Implementa\u00E7\u00E3o.</p><p>Verifique o cabe\u00E7alho HTTP Referer para ver se a solicita\u00E7\u00E3o foi originada de uma p\u00E1gina esperada. Isso pode interromper funcionalidades leg\u00EDtimas, porque os usu\u00E1rios ou proxies podem ter desativado o envio do Referer por motivos de privacidade.</p>",
+					"otherinfo": "<p>Nenhum token Anti-CSRF conhecido [anticsrf, CSRFToken, __RequestVerificationToken, csrfmiddlewaretoken, authenticity_token, OWASP_CSRFTOKEN, anoncsrf, csrf_token, _csrf, _csrfSecret, __csrf_magic, CSRF, _token, _csrf_token, _csrfToken] foi encontrado nos seguintes formul\u00E1rios HTML: [Form 1: \"email\" \"password\" ].  </p>",
+					"reference": "<p>https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html</p><p>https://cwe.mitre.org/data/definitions/352.html</p>",
+					"cweid": "352",
+					"wascid": "9",
+					"sourceid": "4"
+				},
+				{
+					"pluginid": "10038",
+					"alertRef": "10038-1",
+					"alert": "Content Security Policy (CSP) Header Not Set",
+					"name": "Content Security Policy (CSP) Header Not Set",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft to site defacement or distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page \u2014 covered types are JavaScript, CSS, HTML frames, fonts, images and embeddable objects such as Java applets, ActiveX, audio and video files.</p>",
+					"instances":[ 
+						{
+							"id": "0",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "20",
+							"uri": "http://localhost:3000/events/2",
+							"nodeName": "http:\/\/localhost:3000\/events\/2",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "1",
+							"uri": "http://localhost:3000/login",
+							"nodeName": "http:\/\/localhost:3000\/login",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "6",
+							"uri": "http://localhost:3000/organizer",
+							"nodeName": "http:\/\/localhost:3000\/organizer",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "10",
+							"uri": "http://localhost:3000/organizer/events/new",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/new",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP</p><p>https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html</p><p>https://www.w3.org/TR/CSP/</p><p>https://w3c.github.io/webappsec-csp/</p><p>https://web.dev/articles/csp</p><p>https://caniuse.com/#feat=contentsecuritypolicy</p><p>https://content-security-policy.com/</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10112",
+					"alertRef": "10112",
+					"alert": "Session Management Response Identified",
+					"name": "Session Management Response Identified",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
+					"instances":[ 
+						{
+							"id": "4",
+							"uri": "http://localhost:3000/dashboard",
+							"nodeName": "http:\/\/localhost:3000\/dashboard",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "61",
+							"uri": "http://localhost:3000/my-registrations",
+							"nodeName": "http:\/\/localhost:3000\/my-registrations",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "19",
+							"uri": "http://localhost:3000/organizer",
+							"nodeName": "http:\/\/localhost:3000\/organizer",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "214",
+							"uri": "http://localhost:3000/organizer/events/1/edit",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/1\/edit",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "172",
+							"uri": "http://localhost:3000/organizer/events/2/edit",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/2\/edit",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "215",
+							"uri": "http://localhost:3000/organizer/events/3/edit",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/3\/edit",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "216",
+							"uri": "http://localhost:3000/organizer/events/4/edit",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/4\/edit",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "174",
+							"uri": "http://localhost:3000/organizer/events/new",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/new",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "69",
+							"uri": "http://localhost:3000/organizer/registrations",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "183",
+							"uri": "http://localhost:3000/organizer/registrations/1",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/1",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "186",
+							"uri": "http://localhost:3000/organizer/registrations/1/confirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/1\/confirm",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "189",
+							"uri": "http://localhost:3000/organizer/registrations/1/unconfirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/1\/unconfirm",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "187",
+							"uri": "http://localhost:3000/organizer/registrations/3",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/3",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "190",
+							"uri": "http://localhost:3000/organizer/registrations/3/confirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/3\/confirm",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "192",
+							"uri": "http://localhost:3000/register",
+							"nodeName": "http:\/\/localhost:3000\/register",
+							"method": "GET",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "58",
+							"uri": "http://localhost:3000/events/1/register",
+							"nodeName": "http:\/\/localhost:3000\/events\/1\/register",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "94",
+							"uri": "http://localhost:3000/events/3/register",
+							"nodeName": "http:\/\/localhost:3000\/events\/3\/register",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "113",
+							"uri": "http://localhost:3000/events/4/register",
+							"nodeName": "http:\/\/localhost:3000\/events\/4\/register",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "5",
+							"uri": "http://localhost:3000/login",
+							"nodeName": "http:\/\/localhost:3000\/login ()(email,password)",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "26",
+							"uri": "http://localhost:3000/organizer/events/2/edit",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/2\/edit ()(capacity,description,event_date,location,status,title)",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "14",
+							"uri": "http://localhost:3000/organizer/events/new",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/events\/new ()(capacity,description,event_date,location,title)",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "65",
+							"uri": "http://localhost:3000/organizer/registrations/1/confirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/1\/confirm",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "74",
+							"uri": "http://localhost:3000/organizer/registrations/1/unconfirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/1\/unconfirm",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "141",
+							"uri": "http://localhost:3000/organizer/registrations/3/confirm",
+							"nodeName": "http:\/\/localhost:3000\/organizer\/registrations\/3\/confirm",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						},
+						{
+							"id": "49",
+							"uri": "http://localhost:3000/register",
+							"nodeName": "http:\/\/localhost:3000\/register ()(email,name,password)",
+							"method": "POST",
+							"param": "connect.sid",
+							"attack": "",
+							"evidence": "connect.sid",
+							"otherinfo": "cookie:connect.sid"
+						}
+					],
+					"count": "25",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>cookie:connect.sid</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-mgmt-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "7"
+				},
+				{
+					"pluginid": "10111",
+					"alertRef": "10111",
+					"alert": "Solicita\u00E7\u00E3o de autentica\u00E7\u00E3o identificada",
+					"name": "Solicita\u00E7\u00E3o de autentica\u00E7\u00E3o identificada",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informativo (Alto)",
+					"desc": "<p>A solicita\u00E7\u00E3o em quest\u00E3o foi identificada como uma solicita\u00E7\u00E3o de autentica\u00E7\u00E3o. O campo \"Outras Informa\u00E7\u00F5es\" cont\u00E9m um conjunto de linhas chave=valor que identificam quaisquer campos relevantes. Se a solicita\u00E7\u00E3o estiver em um contexto com um M\u00E9todo de Autentica\u00E7\u00E3o definido como \"Detec\u00E7\u00E3o Autom\u00E1tica\", esta regra alterar\u00E1 a autentica\u00E7\u00E3o para corresponder \u00E0 solicita\u00E7\u00E3o identificada.</p>",
+					"instances":[ 
+						{
+							"id": "3",
+							"uri": "http://localhost:3000/login",
+							"nodeName": "http:\/\/localhost:3000\/login ()(email,password)",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=organizador@eventos.local\npasswordParam=password"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>userParam=email</p><p>userValue=organizador@eventos.local</p><p>passwordParam=password</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/auth-req-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "6"
+				},
+				{
+					"pluginid": "10104",
+					"alertRef": "10104",
+					"alert": "User Agent Fuzzer",
+					"name": "User Agent Fuzzer",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>Check for differences in response based on fuzzed User Agent (eg. mobile sites, access as a Search Engine Crawler). Compares the response statuscode and the hashcode of the response body with the original response.</p>",
+					"instances":[ 
+						{
+							"id": "218",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "217",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "219",
+							"uri": "http://localhost:3000/events/4/register",
+							"nodeName": "http:\/\/localhost:3000\/events\/4\/register",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "3",
+					"systemic": true,
+					"solution": "",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/wstg</p>",
+					"cweid": "0",
+					"wascid": "0",
+					"sourceid": "8843"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

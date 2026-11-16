@@ -1,0 +1,579 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "qui., 12 nov. 2026 12:36:03",
+	"created": "2026-11-12T15:36:03.264619800Z",
+	"insights":[
+		{
+			"level": "Médio",
+			"reason": "Exceeded Low",
+			"site": "",
+			"key": "insight.memory.usage",
+			"description": "Percentage of memory used",
+			"statistic": "80"
+		},
+		{
+			"level": "Médio",
+			"reason": "Exceeded High",
+			"site": "",
+			"key": "insight.network.failure",
+			"description": "Percentage of network failures",
+			"statistic": "51"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.error",
+			"description": "ZAP errors logged - see the zap.log file for details",
+			"statistic": "2"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "772"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "42"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.3xx",
+			"description": "Percentage of responses with status code 3xx",
+			"statistic": "13"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "43"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "45"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.text/html",
+			"description": "Percentage of endpoints with content type text/html",
+			"statistic": "54"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "74"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "25"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "31"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "14"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "https://localhost:3000",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "100"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "https://localhost:3000",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "1"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "https://localhost:3000",
+			"@host": "localhost",
+			"@port": "3000",
+			"@ssl": "true",
+			"alerts": [ 
+			]
+		},
+		{
+			"@name": "http://localhost:3000",
+			"@host": "localhost",
+			"@port": "3000",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "10055",
+					"alertRef": "10055-13",
+					"alert": "CSP: Failure to Define Directive with No Fallback",
+					"name": "CSP: Failure to Define Directive with No Fallback",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>The Content Security Policy fails to define one of the directives that has no fallback. Missing/excluding them is the same as allowing anything.</p>",
+					"instances":[ 
+						{
+							"id": "191",
+							"uri": "http://localhost:3000/api",
+							"nodeName": "http:\/\/localhost:3000\/api",
+							"method": "GET",
+							"param": "Content-Security-Policy",
+							"attack": "",
+							"evidence": "default-src 'none'",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "188",
+							"uri": "http://localhost:3000/api/admin",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin",
+							"method": "GET",
+							"param": "Content-Security-Policy",
+							"attack": "",
+							"evidence": "default-src 'none'",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "189",
+							"uri": "http://localhost:3000/api/admin/usuarios/38db06c19b2d357f768299bc",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/usuarios\/38db06c19b2d357f768299bc",
+							"method": "GET",
+							"param": "Content-Security-Policy",
+							"attack": "",
+							"evidence": "default-src 'none'",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "190",
+							"uri": "http://localhost:3000/robots.txt",
+							"nodeName": "http:\/\/localhost:3000\/robots.txt",
+							"method": "GET",
+							"param": "Content-Security-Policy",
+							"attack": "",
+							"evidence": "default-src 'none'",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						},
+						{
+							"id": "192",
+							"uri": "http://localhost:3000/sitemap.xml",
+							"nodeName": "http:\/\/localhost:3000\/sitemap.xml",
+							"method": "GET",
+							"param": "Content-Security-Policy",
+							"attack": "",
+							"evidence": "default-src 'none'",
+							"otherinfo": "The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is properly configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "<p>The directive(s): frame-ancestors, form-action is/are among the directives that do not fallback to default-src.</p>",
+					"reference": "<p>https://www.w3.org/TR/CSP/</p><p>https://caniuse.com/#search=content+security+policy</p><p>https://content-security-policy.com/</p><p>https://github.com/HtmlUnit/htmlunit-csp</p><p>https://web.dev/articles/csp#resource-options</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "137"
+				},
+				{
+					"pluginid": "10038",
+					"alertRef": "10038-1",
+					"alert": "Content Security Policy (CSP) Header Not Set",
+					"name": "Content Security Policy (CSP) Header Not Set",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft to site defacement or distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page \u2014 covered types are JavaScript, CSS, HTML frames, fonts, images and embeddable objects such as Java applets, ActiveX, audio and video files.</p>",
+					"instances":[ 
+						{
+							"id": "203",
+							"uri": "http://localhost:3000",
+							"nodeName": "http:\/\/localhost:3000",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "1",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP</p><p>https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html</p><p>https://www.w3.org/TR/CSP/</p><p>https://w3c.github.io/webappsec-csp/</p><p>https://web.dev/articles/csp</p><p>https://caniuse.com/#feat=contentsecuritypolicy</p><p>https://content-security-policy.com/</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "111"
+				},
+				{
+					"pluginid": "10106",
+					"alertRef": "10106",
+					"alert": "HTTP Only Site",
+					"name": "HTTP Only Site",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>The site is only served under HTTP and not HTTPS.</p>",
+					"instances":[ 
+						{
+							"id": "251",
+							"uri": "http://localhost:3000/",
+							"nodeName": "https:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "Failed to connect.\nZAP attempted to connect via: https://localhost:3000/"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Configure your web or application server to use SSL (https).</p>",
+					"otherinfo": "<p>Failed to connect.</p><p>ZAP attempted to connect via: https://localhost:3000/</p>",
+					"reference": "<p>https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html</p><p>https://letsencrypt.org/</p>",
+					"cweid": "311",
+					"wascid": "4",
+					"sourceid": "347"
+				},
+				{
+					"pluginid": "10020",
+					"alertRef": "10020-1",
+					"alert": "Missing Anti-clickjacking Header",
+					"name": "Missing Anti-clickjacking Header",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>The response does not protect against 'ClickJacking' attacks. It should include either Content-Security-Policy with 'frame-ancestors' directive or X-Frame-Options.</p>",
+					"instances":[ 
+						{
+							"id": "195",
+							"uri": "http://localhost:3000",
+							"nodeName": "http:\/\/localhost:3000",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "0",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p>Modern Web browsers support the Content-Security-Policy and X-Frame-Options HTTP headers. Ensure one of them is set on all web pages returned by your site/app.</p><p>If you expect the page to be framed only by pages on your server (e.g. it's part of a FRAMESET) then you'll want to use SAMEORIGIN, otherwise if you never expect the page to be framed, you should use DENY. Alternatively consider implementing Content Security Policy's \"frame-ancestors\" directive.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options</p>",
+					"cweid": "1021",
+					"wascid": "15",
+					"sourceid": "111"
+				},
+				{
+					"pluginid": "10037",
+					"alertRef": "10037",
+					"alert": "O servidor vaza informa\u00E7\u00F5es por meio dos campos de cabe\u00E7alho de resposta HTTP \"X-Powered-By\"",
+					"name": "O servidor vaza informa\u00E7\u00F5es por meio dos campos de cabe\u00E7alho de resposta HTTP \"X-Powered-By\"",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>O servidor da web/aplicativo est\u00E1 vazando informa\u00E7\u00F5es por meio de um ou mais cabe\u00E7alhos de resposta HTTP \"X-Powered-By\". O acesso a essas informa\u00E7\u00F5es pode facilitar que os invasores identifiquem outras estruturas/componentes dos quais seu aplicativo da web depende e as vulnerabilidades \u00E0s quais esses componentes podem estar sujeitos.</p>",
+					"instances":[ 
+						{
+							"id": "4",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "17",
+							"uri": "http://localhost:3000/api/admin/despesas-todas",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/despesas-todas",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "16",
+							"uri": "http://localhost:3000/api/admin/resumo",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/resumo",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "15",
+							"uri": "http://localhost:3000/api/categorias",
+							"nodeName": "http:\/\/localhost:3000\/api\/categorias",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "9",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({usuario,senha})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Certifique-se de que seu servidor web, servidor de aplicativos, balanceador de carga, etc. esteja configurado para suprimir cabe\u00E7alhos \"X-Powered-By\".</p>",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework</p><p>https://www.troyhunt.com/shhh-dont-let-your-response-headers/</p>",
+					"cweid": "497",
+					"wascid": "13",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10021",
+					"alertRef": "10021",
+					"alert": "X-Content-Type-Options Header Missing",
+					"name": "X-Content-Type-Options Header Missing",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'. This allows older versions of Internet Explorer and Chrome to perform MIME-sniffing on the response body, potentially causing the response body to be interpreted and displayed as a content type other than the declared content type. Current (early 2014) and legacy versions of Firefox will use the declared content type (if one is set), rather than performing MIME-sniffing.</p>",
+					"instances":[ 
+						{
+							"id": "3",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "14",
+							"uri": "http://localhost:3000/api/admin/despesas-todas",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/despesas-todas",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "11",
+							"uri": "http://localhost:3000/api/admin/resumo",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/resumo",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "12",
+							"uri": "http://localhost:3000/api/categorias",
+							"nodeName": "http:\/\/localhost:3000\/api\/categorias",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "8",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({usuario,senha})",
+							"method": "POST",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.</p><p>If possible, ensure that the end user uses a standards-compliant and modern web browser that does not perform MIME-sniffing at all, or that can be directed by the web application/web server to not perform MIME-sniffing.</p>",
+					"otherinfo": "<p>This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.</p><p>At \"High\" threshold this scan rule will not alert on client or server error responses.</p>",
+					"reference": "<p>https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/compatibility/gg622941(v=vs.85)</p><p>https://owasp.org/www-community/Security_Headers</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10109",
+					"alertRef": "10109",
+					"alert": "Modern Web Application",
+					"name": "Modern Web Application",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The application appears to be a modern web application. If you need to explore it automatically then the Client Spider may well be more effective than the standard one.</p>",
+					"instances":[ 
+						{
+							"id": "2",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<a id=\"toggle-admin\">Sou administrador</a>",
+							"otherinfo": "Links have been found that do not have traditional href attributes, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "13",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script>\r\n    let categorias = [];\r\n    let usuarios = [];\r\n    let despesas = [];\r\n    const BRL = (v) => \"R$ \" + (v || 0).toLocaleString(\"pt-BR\", { minimumFractionDigits: 2, maximumFractionDigits: 2 });\r\n\r\n    function toast(msg, tipo) {\r\n      const el = document.getElementById(\"toast\");\r\n      el.textContent = msg;\r\n      el.className = \"toast \" + tipo;\r\n      setTimeout(() => { el.className = \"toast\"; }, 2500);\r\n    }\r\n\r\n    function carregarTudo() {\r\n      Promise.all([\r\n        fetch(\"/api/admin/resumo\").then(r => r.json()),\r\n        fetch(\"/api/categorias\").then(r => r.json()),\r\n        fetch(\"/api/admin/despesas-todas\").then(r => r.json())\r\n      ]).then(([resumo, cats, desp]) => {\r\n        usuarios = resumo.usuarios;\r\n        categorias = cats.categorias;\r\n        despesas = desp.despesas;\r\n        renderResumo(resumo);\r\n        renderUsuarios();\r\n        renderCats();\r\n        renderDespesas();\r\n      });\r\n    }\r\n\r\n    function renderResumo(r) {\r\n      document.getElementById(\"resumo-admin\").innerHTML = `\r\n        <div class=\"card\"><div class=\"label\">Total geral (todos)</div><div class=\"valor vermelho\">${BRL(r.totalGeral)}</div></div>\r\n        <div class=\"card\"><div class=\"label\">Gasto no m\u00EAs</div><div class=\"valor amarelo\">${BRL(r.totalMesAtual)}</div></div>\r\n        <div class=\"card\"><div class=\"label\">Usu\u00E1rios</div><div class=\"valor azul\">${r.qtdUsuarios}</div></div>\r\n        <div class=\"card\"><div class=\"label\">Gastos registrados</div><div class=\"valor verde\">${r.qtdDespesas}</div></div>\r\n      `;\r\n    }\r\n\r\n    function renderUsuarios() {\r\n      const tbody = document.getElementById(\"tbody-usuarios\");\r\n      const vazio = document.getElementById(\"vazio-usuarios\");\r\n      if (usuarios.length === 0) { tbody.innerHTML = \"\"; vazio.style.display = \"\"; return; }\r\n      vazio.style.display = \"none\";\r\n      tbody.innerHTML = usuarios.map(u => `\r\n        <tr>\r\n          <td><strong>${u.nome}</strong></td>\r\n          <td>${u.usuario}</td>\r\n          <td><span class=\"badge ${u.ativo ? 'ativo' : 'inativo'}\">${u.ativo ? 'Ativo' : 'Desativado'}</span></td>\r\n          <td style=\"text-align:right;font-weight:600\">${BRL(u.total)}</td>\r\n          <td>\r\n            <button class=\"btn-acao\" data-toggle=\"${u.id}\">${u.ativo ? 'Desativar' : 'Reativar'}</button>\r\n            <button class=\"btn-acao pesado\" data-del=\"${u.id}\">Excluir</button>\r\n          </td>\r\n        </tr>\r\n      `).join(\"\");\r\n      tbody.querySelectorAll(\"[data-toggle]\").forEach(b => b.onclick = async () => {\r\n        const r = await fetch(\"/api/admin/usuarios/\" + b.dataset.toggle + \"/toggle\", { method: \"POST\" });\r\n        const d = await r.json();\r\n        if (d.erro) return toast(d.erro, \"erro\");\r\n        toast(d.ativo ? \"Usu\u00E1rio reativado.\" : \"Usu\u00E1rio desativado.\", \"ok\");\r\n        carregarTudo();\r\n      });\r\n      tbody.querySelectorAll(\"[data-del]\").forEach(b => b.onclick = async () => {\r\n        if (!confirm(\"Excluir este usu\u00E1rio e todos os seus gastos?\")) return;\r\n        const r = await fetch(\"/api/admin/usuarios/\" + b.dataset.del, { method: \"DELETE\" });\r\n        const d = await r.json();\r\n        if (d.erro) return toast(d.erro, \"erro\");\r\n        toast(\"Usu\u00E1rio exclu\u00EDdo.\", \"ok\");\r\n        carregarTudo();\r\n      });\r\n    }\r\n\r\n    function renderCats() {\r\n      const tbody = document.getElementById(\"tbody-cats\");\r\n      const vazio = document.getElementById(\"vazio-cats\");\r\n      if (categorias.length === 0) { tbody.innerHTML = \"\"; vazio.style.display = \"\"; return; }\r\n      vazio.style.display = \"none\";\r\n      tbody.innerHTML = categorias.map(c => `\r\n        <tr>\r\n          <td><span class=\"badge-cor\" style=\"background:${c.cor}\"></span>${c.nome}</td>\r\n          <td><span class=\"badge ${c.ativa ? 'ativo' : 'inativo'}\">${c.ativa ? 'Ativa' : 'Desativada'}</span></td>\r\n          <td>\r\n            <button class=\"btn-acao\" data-toggle-cat=\"${c.id}\">${c.ativa ? 'Desativar' : 'Reativar'}</button>\r\n            <button class=\"btn-acao pesado\" data-del-cat=\"${c.id}\">Excluir</button>\r\n          </td>\r\n        </tr>\r\n      `).join(\"\");\r\n      tbody.querySelectorAll(\"[data-toggle-cat]\").forEach(b => b.onclick = async () => {\r\n        const r = await fetch(\"/api/admin/categorias/\" + b.dataset.toggleCat + \"/toggle\", { method: \"POST\" });\r\n        const d = await r.json();\r\n        if (d.erro) return toast(d.erro, \"erro\");\r\n        toast(d.ativa ? \"Categoria reativada.\" : \"Categoria desativada.\", \"ok\");\r\n        carregarTudo();\r\n      });\r\n      tbody.querySelectorAll(\"[data-del-cat]\").forEach(b => b.onclick = async () => {\r\n        if (!confirm(\"Excluir esta categoria? Os gastos j\u00E1 lan\u00E7ados nela ficar\u00E3o 'Sem categoria'.\")) return;\r\n        const r = await fetch(\"/api/admin/categorias/\" + b.dataset.delCat, { method: \"DELETE\" });\r\n        const d = await r.json();\r\n        if (d.erro) return toast(d.erro, \"erro\");\r\n        toast(\"Categoria exclu\u00EDda.\", \"ok\");\r\n        carregarTudo();\r\n      });\r\n    }\r\n\r\n    function renderDespesas() {\r\n      const tbody = document.getElementById(\"tbody-despesas\");\r\n      const vazio = document.getElementById(\"vazio-despesas\");\r\n      if (despesas.length === 0) { tbody.innerHTML = \"\"; vazio.style.display = \"\"; return; }\r\n      vazio.style.display = \"none\";\r\n      tbody.innerHTML = despesas.map(d => `\r\n        <tr>\r\n          <td>${d.dataBR}</td>\r\n          <td>${d.usuario}</td>\r\n          <td>${d.descricao.replace(/</g, \"&lt;\")}</td>\r\n          <td>${d.categoria}</td>\r\n          <td style=\"text-align:right;font-weight:600\">${BRL(d.valor)}</td>\r\n          <td><button class=\"btn-acao pesado\" data-del-desp=\"${d.id}\">\uD83D\uDDD1\uFE0F</button></td>\r\n        </tr>\r\n      `).join(\"\");\r\n      tbody.querySelectorAll(\"[data-del-desp]\").forEach(b => b.onclick = async () => {\r\n        if (!confirm(\"Apagar este gasto?\")) return;\r\n        const r = await fetch(\"/api/admin/despesas/\" + b.dataset.delDesp, { method: \"DELETE\" });\r\n        const d = await r.json();\r\n        if (d.erro) return toast(d.erro, \"erro\");\r\n        toast(\"Gasto apagado.\", \"ok\");\r\n        carregarTudo();\r\n      });\r\n    }\r\n\r\n    document.getElementById(\"btn-add-usuario\").onclick = async () => {\r\n      const nome = document.getElementById(\"nu-nome\").value.trim();\r\n      const usuario = document.getElementById(\"nu-usuario\").value.trim();\r\n      const senha = document.getElementById(\"nu-senha\").value;\r\n      if (!usuario || !senha) return toast(\"Preencha usu\u00E1rio e senha.\", \"erro\");\r\n      const r = await fetch(\"/api/admin/usuarios\", {\r\n        method: \"POST\",\r\n        headers: { \"Content-Type\": \"application/json\" },\r\n        body: JSON.stringify({ nome, usuario, senha })\r\n      });\r\n      const d = await r.json();\r\n      if (d.erro) return toast(d.erro, \"erro\");\r\n      toast(\"Usu\u00E1rio cadastrado! \u2705\", \"ok\");\r\n      document.getElementById(\"nu-nome\").value = \"\";\r\n      document.getElementById(\"nu-usuario\").value = \"\";\r\n      document.getElementById(\"nu-senha\").value = \"\";\r\n      carregarTudo();\r\n    };\r\n\r\n    document.getElementById(\"btn-add-cat\").onclick = async () => {\r\n      const nome = document.getElementById(\"nc-nome\").value.trim();\r\n      const cor = document.getElementById(\"nc-cor\").value;\r\n      if (!nome) return toast(\"D\u00EA um nome.\", \"erro\");\r\n      const r = await fetch(\"/api/admin/categorias\", {\r\n        method: \"POST\",\r\n        headers: { \"Content-Type\": \"application/json\" },\r\n        body: JSON.stringify({ nome, cor })\r\n      });\r\n      const d = await r.json();\r\n      if (d.erro) return toast(d.erro, \"erro\");\r\n      toast(\"Categoria adicionada! \u2705\", \"ok\");\r\n      document.getElementById(\"nc-nome\").value = \"\";\r\n      carregarTudo();\r\n    };\r\n\r\n    document.getElementById(\"btn-sair\").onclick = async () => {\r\n      await fetch(\"/api/logout\", { method: \"POST\" });\r\n      window.location.href = \"/\";\r\n    };\r\n\r\n    document.querySelectorAll(\".tab\").forEach(t => {\r\n      t.onclick = () => {\r\n        document.querySelectorAll(\".tab\").forEach(x => x.classList.remove(\"ativo\"));\r\n        document.querySelectorAll(\".tab-conteudo\").forEach(x => x.classList.remove(\"ativo\"));\r\n        t.classList.add(\"ativo\");\r\n        document.getElementById(\"tab-\" + t.dataset.tab).classList.add(\"ativo\");\r\n      };\r\n    });\r\n\r\n    carregarTudo();\r\n  </script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "79",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script>\r\n    let todasDespesas = [];\r\n    let todasCategorias = [];\r\n    const BRL = (v) => \"R$ \" + (v || 0).toLocaleString(\"pt-BR\", { minimumFractionDigits: 2, maximumFractionDigits: 2 });\r\n\r\n    function toast(msg, tipo) {\r\n      const el = document.getElementById(\"toast\");\r\n      el.textContent = msg;\r\n      el.className = \"toast \" + tipo;\r\n      setTimeout(() => { el.className = \"toast\"; }, 2500);\r\n    }\r\n\r\n    function mesNome(km) {\r\n      const [ano, mes] = km.split(\"-\").map(Number);\r\n      const nomes = [\"janeiro\",\"fevereiro\",\"mar\u00E7o\",\"abril\",\"maio\",\"junho\",\"julho\",\"agosto\",\"setembro\",\"outubro\",\"novembro\",\"dezembro\"];\r\n      return nomes[mes - 1] + \" de \" + ano;\r\n    }\r\n\r\n    async function carregar() {\r\n      const [rResumo, rDesp, rCats] = await Promise.all([\r\n        fetch(\"/api/meu-resumo\").then(r => r.json()),\r\n        fetch(\"/api/minhas-despesas\").then(r => r.json()),\r\n        fetch(\"/api/categorias\").then(r => r.json())\r\n      ]);\r\n      document.getElementById(\"res-total\").textContent = BRL(rResumo.totalGeral);\r\n      document.getElementById(\"res-mes\").textContent = BRL(rResumo.totalMesAtual);\r\n      document.getElementById(\"res-qtd\").textContent = rResumo.qtd;\r\n      const agora = new Date();\r\n      document.getElementById(\"mes-nome\").textContent = mesNome(agora.getFullYear() + \"-\" + String(agora.getMonth() + 1).padStart(2, \"0\"));\r\n      todasDespesas = rDesp.despesas;\r\n      todasCategorias = rCats.categorias.filter(c => c.ativa);\r\n      preencherCategorias();\r\n      preencherFiltroMes();\r\n      render();\r\n    }\r\n\r\n    function preencherCategorias() {\r\n      const sel = document.getElementById(\"novo-cat\");\r\n      sel.innerHTML = '<option value=\"\">Sem categoria</option>';\r\n      todasCategorias.forEach(c => {\r\n        sel.innerHTML += `<option value=\"${c.id}\">${c.nome}</option>`;\r\n      });\r\n      const filt = document.getElementById(\"filtro-cat\");\r\n      const atual = filt.value;\r\n      filt.innerHTML = '<option value=\"\">Todas as categorias</option>';\r\n      todasCategorias.forEach(c => {\r\n        filt.innerHTML += `<option value=\"${c.id}\">${c.nome}</option>`;\r\n      });\r\n      filt.value = atual;\r\n    }\r\n\r\n    function preencherFiltroMes() {\r\n      const meses = {};\r\n      todasDespesas.forEach(d => {\r\n        const [ano, mes] = d.data.slice(0, 7).split(\"-\").map(Number);\r\n        const km = d.data.slice(0, 7);\r\n        if (!meses[km]) meses[km] = mesNome(km);\r\n      });\r\n      const sel = document.getElementById(\"filtro-mes\");\r\n      const atual = sel.value;\r\n      sel.innerHTML = '<option value=\"\">Todos os meses</option>';\r\n      Object.keys(meses).sort().reverse().forEach(km => {\r\n        sel.innerHTML += `<option value=\"${km}\">${meses[km]}</option>`;\r\n      });\r\n      sel.value = atual;\r\n    }\r\n\r\n    function render() {\r\n      const fc = document.getElementById(\"filtro-cat\").value;\r\n      const fm = document.getElementById(\"filtro-mes\").value;\r\n      const lista = todasDespesas.filter(d => {\r\n        if (fc && d.categoriaId !== fc) return false;\r\n        if (fm && d.data.slice(0, 7) !== fm) return false;\r\n        return true;\r\n      });\r\n      const tbody = document.getElementById(\"tbody\");\r\n      const vazio = document.getElementById(\"vazio\");\r\n      if (lista.length === 0) { tbody.innerHTML = \"\"; vazio.style.display = \"\"; return; }\r\n      vazio.style.display = \"none\";\r\n      tbody.innerHTML = lista.map(d => {\r\n        const cor = d.categoria ? (d.categoria.cor || \"#64748b\") : \"#64748b\";\r\n        const nomeCat = d.categoria ? d.categoria.nome : \"Sem categoria\";\r\n        return `<tr>\r\n          <td>${d.dataBR}</td>\r\n          <td>${d.descricao.replace(/</g, \"&lt;\")}</td>\r\n          <td><span class=\"badge-cat\" style=\"background:${cor}33;color:${cor};border:1px solid ${cor}55\">${nomeCat}</span></td>\r\n          <td style=\"text-align:right;font-weight:600\">${BRL(d.valor)}</td>\r\n          <td style=\"text-align:right\"><button class=\"btn-del\" data-id=\"${d.id}\" title=\"Apagar\">\uD83D\uDDD1\uFE0F</button></td>\r\n        </tr>`;\r\n      }).join(\"\");\r\n      tbody.querySelectorAll(\".btn-del\").forEach(b => {\r\n        b.onclick = async () => {\r\n          if (!confirm(\"Apagar este gasto?\")) return;\r\n          const r = await fetch(\"/api/despesas/\" + b.dataset.id, { method: \"DELETE\" });\r\n          const d = await r.json();\r\n          if (d.erro) return toast(d.erro, \"erro\");\r\n          toast(\"Gasto apagado.\", \"ok\");\r\n          carregar();\r\n        };\r\n      });\r\n    }\r\n\r\n    document.getElementById(\"filtro-cat\").onchange = render;\r\n    document.getElementById(\"filtro-mes\").onchange = render;\r\n\r\n    document.getElementById(\"btn-add\").onclick = async () => {\r\n      const desc = document.getElementById(\"novo-desc\").value.trim();\r\n      const valor = document.getElementById(\"novo-valor\").value;\r\n      const data = document.getElementById(\"novo-data\").value;\r\n      const cat = document.getElementById(\"novo-cat\").value;\r\n      if (!desc) return toast(\"Descreva o gasto.\", \"erro\");\r\n      if (!valor || parseFloat(valor) <= 0) return toast(\"Informe um valor v\u00E1lido.\", \"erro\");\r\n      const r = await fetch(\"/api/despesas\", {\r\n        method: \"POST\",\r\n        headers: { \"Content-Type\": \"application/json\" },\r\n        body: JSON.stringify({ descricao: desc, valor: parseFloat(valor), data: data || null, categoriaId: cat || null })\r\n      });\r\n      const d = await r.json();\r\n      if (d.erro) return toast(d.erro, \"erro\");\r\n      toast(\"Gasto adicionado! \u2705\", \"ok\");\r\n      document.getElementById(\"novo-desc\").value = \"\";\r\n      document.getElementById(\"novo-valor\").value = \"\";\r\n      carregar();\r\n    };\r\n\r\n    document.getElementById(\"btn-sair\").onclick = async () => {\r\n      await fetch(\"/api/logout\", { method: \"POST\" });\r\n      window.location.href = \"/\";\r\n    };\r\n\r\n    document.getElementById(\"btn-senha\").onclick = () => document.getElementById(\"modal-senha\").classList.add(\"aberto\");\r\n    document.getElementById(\"btn-cancelar-senha\").onclick = () => document.getElementById(\"modal-senha\").classList.remove(\"aberto\");\r\n    document.getElementById(\"btn-salvar-senha\").onclick = async () => {\r\n      const r = await fetch(\"/api/senha\", {\r\n        method: \"POST\",\r\n        headers: { \"Content-Type\": \"application/json\" },\r\n        body: JSON.stringify({ senhaAtual: document.getElementById(\"senha-atual\").value, senhaNova: document.getElementById(\"senha-nova\").value })\r\n      });\r\n      const d = await r.json();\r\n      if (d.erro) return toast(d.erro, \"erro\");\r\n      toast(\"Senha alterada! \u2705\", \"ok\");\r\n      document.getElementById(\"modal-senha\").classList.remove(\"aberto\");\r\n      document.getElementById(\"senha-atual\").value = \"\";\r\n      document.getElementById(\"senha-nova\").value = \"\";\r\n    };\r\n\r\n    document.getElementById(\"novo-data\").value = new Date().toISOString().slice(0, 10);\r\n    fetch(\"/api/status\").then(r => r.json()).then(d => {\r\n      if (d.nome) document.getElementById(\"user-name\").textContent = d.nome;\r\n    });\r\n    carregar();\r\n  </script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						}
+					],
+					"count": "3",
+					"systemic": true,
+					"solution": "<p>This is an informational alert and so no changes are required.</p>",
+					"otherinfo": "<p>Links have been found that do not have traditional href attributes, which is an indication that this is a modern web application.</p>",
+					"reference": "",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10112",
+					"alertRef": "10112",
+					"alert": "Session Management Response Identified",
+					"name": "Session Management Response Identified",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
+					"instances":[ 
+						{
+							"id": "5",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({usuario,senha})",
+							"method": "POST",
+							"param": "sid",
+							"attack": "",
+							"evidence": "sid",
+							"otherinfo": "cookie:sid"
+						},
+						{
+							"id": "73",
+							"uri": "http://localhost:3000/api/registro",
+							"nodeName": "http:\/\/localhost:3000\/api\/registro ()({nome,usuario,senha})",
+							"method": "POST",
+							"param": "sid",
+							"attack": "",
+							"evidence": "sid",
+							"otherinfo": "cookie:sid"
+						},
+						{
+							"id": "6",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({usuario,senha})",
+							"method": "POST",
+							"param": "sid",
+							"attack": "",
+							"evidence": "sid",
+							"otherinfo": "cookie:sid"
+						},
+						{
+							"id": "74",
+							"uri": "http://localhost:3000/api/registro",
+							"nodeName": "http:\/\/localhost:3000\/api\/registro ()({nome,usuario,senha})",
+							"method": "POST",
+							"param": "sid",
+							"attack": "",
+							"evidence": "sid",
+							"otherinfo": "cookie:sid"
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>cookie:sid</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-mgmt-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "3"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

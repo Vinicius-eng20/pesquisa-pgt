@@ -1,0 +1,15 @@
+﻿alertRef;alerta;risco;cwe;owasp_2025;tipo;n_apps;pct_apps;n_apps_vibe;n_apps_lowcode;pct_apps_vibe;pct_apps_lowcode
+40014-2;Fraqueza de script entre sites (persistente na resposta JSON);Baixo;79;A05;outro;44;62,9;37;7;69,8;41,2
+10054-1;Cookie without SameSite Attribute;Baixo;1275;A01;cookie;32;45,7;32;0;60,4;0,0
+10098;Configuração Incorreta Entre Domínios;Medio;264;;outro;24;34,3;7;17;13,2;100,0
+10096;Divulgação de Data e Hora - Unix;Baixo;497;A01;outro;22;31,4;5;17;9,4;100,0
+120001-1;Information Disclosure - Sensitive Information in Browser localStorage;Baixo;359;A01;outro;20;28,6;4;16;7,5;94,1
+90003;Sub Resource Integrity Attribute Missing;Medio;345;A08;outro;18;25,7;9;9;17,0;52,9
+10202;Ausência de tokens Anti-CSRF;Medio;352;A01;outro;11;15,7;11;0;20,8;0,0
+40018;Injeção SQL;Alto;89;A05;outro;9;12,9;5;4;9,4;23,5
+10106;HTTP Only Site;Medio;311;A06;outro;8;11,4;8;0;15,1;0,0
+120002-1;Information Disclosure - JWT in Browser localStorage;Medio;922;A01;outro;7;10,0;7;0;13,2;0,0
+10017;Cross-Domain JavaScript Source File Inclusion;Baixo;829;A08;outro;3;4,3;3;0;5,7;0,0
+30002;Erro de Formato de String;Medio;134;;outro;1;1,4;1;0;1,9;0,0
+40014-1;Cross Site Scripting (Persistente);Alto;79;A05;outro;1;1,4;1;0;1,9;0,0
+90022;Application Error Disclosure;Baixo;550;A10;outro;1;1,4;1;0;1,9;0,0

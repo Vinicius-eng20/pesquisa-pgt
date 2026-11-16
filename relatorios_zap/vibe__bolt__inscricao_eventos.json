@@ -1,0 +1,1285 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "seg., 16 nov. 2026 05:42:36",
+	"created": "2026-11-16T08:42:36.276352800Z",
+	"insights":[
+		{
+			"level": "Médio",
+			"reason": "Exceeded Low",
+			"site": "",
+			"key": "insight.memory.usage",
+			"description": "Percentage of memory used",
+			"statistic": "91"
+		},
+		{
+			"level": "Médio",
+			"reason": "Exceeded High",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "60"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.error",
+			"description": "ZAP errors logged - see the zap.log file for details",
+			"statistic": "2"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "56"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Exceeded High",
+			"site": "http://localhost:5173",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "53"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "39"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "61"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "60"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.method.HEAD",
+			"description": "Percentage of endpoints with method HEAD",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.method.OPTIONS",
+			"description": "Percentage of endpoints with method OPTIONS",
+			"statistic": "25"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.method.PATCH",
+			"description": "Percentage of endpoints with method PATCH",
+			"statistic": "7"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "5"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "55"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://127.0.0.1:54321",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "2"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.code.1xx",
+			"description": "Percentage of responses with status code 1xx",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "99"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.code.3xx",
+			"description": "Percentage of responses with status code 3xx",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.code.5xx",
+			"description": "Percentage of responses with status code 5xx",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.endpoint.ctype.text/html",
+			"description": "Percentage of endpoints with content type text/html",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.endpoint.ctype.text/javascript",
+			"description": "Percentage of endpoints with content type text/javascript",
+			"statistic": "97"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "100"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:5173",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "1584"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "http://localhost:5173",
+			"@host": "localhost",
+			"@port": "5173",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "6",
+					"alertRef": "6-5",
+					"alert": "Travessia/Passagem de Caminho",
+					"name": "Travessia/Passagem de Caminho",
+					"riskcode": "3",
+					"confidence": "1",
+					"riskdesc": "Alto (Baixo)",
+					"desc": "<p>A t\u00E9cnica de ataque de Travessia/Passagem de Caminho (Path Traversal) permite que um invasor acesse arquivos, diret\u00F3rios e comandos que potencialmente residem fora do diret\u00F3rio raiz do documento da web. Um invasor pode manipular uma URL de forma que o site execute ou revele o conte\u00FAdo de arquivos arbitr\u00E1rios em qualquer lugar do servidor. Qualquer dispositivo que exponha uma interface baseada em HTTP \u00E9 potencialmente vulner\u00E1vel ao Path Traversal.</p><p></p><p>A maioria dos sites restringe o acesso do usu\u00E1rio a uma parte espec\u00EDfica do sistema de arquivos, normalmente chamada de diret\u00F3rio \"raiz do documento web\" ou \"raiz CGI\". Esses diret\u00F3rios cont\u00EAm os arquivos destinados ao acesso do usu\u00E1rio e o execut\u00E1vel necess\u00E1rio para conduzir a funcionalidade da aplica\u00E7\u00E3o web. Para acessar arquivos ou executar comandos em qualquer lugar no sistema de arquivos, os ataques Path Traversal utilizar\u00E3o a capacidade de sequ\u00EAncias de caracteres especiais.</p><p></p><p>O ataque Path Traversal mais b\u00E1sico usa a seq\u00FC\u00EAncia de caracteres especiais \"../\" para alterar a localiza\u00E7\u00E3o do recurso solicitada na URL. Embora a maioria dos servidores web populares impe\u00E7a que essa t\u00E9cnica escape da raiz do documento da web, codifica\u00E7\u00F5es alternativas da sequ\u00EAncia \"../\" podem ajudar a contornar os filtros de seguran\u00E7a. Essas varia\u00E7\u00F5es de m\u00E9todo incluem codifica\u00E7\u00E3o Unicode v\u00E1lida e inv\u00E1lida (\"..%u2216\" ou \"..%c0%af\") do caractere de barra, caracteres de barra invertida (\"..\\\") em servidores baseados em Windows, caracteres codificados por URL \"%2e%2e%2f\") e codifica\u00E7\u00E3o de URL dupla (\"..%255c\") do caractere de barra invertida.</p><p></p><p>Mesmo que o servidor web restrinja adequadamente as tentativas de Path Traversal no caminho da URL, uma aplica\u00E7\u00E3o web em si ainda pode ser vulner\u00E1vel devido ao tratamento impr\u00F3prio de entrada de dados fornecida pelo usu\u00E1rio. Este \u00E9 um problema comum de aplica\u00E7\u00F5es web que usam mecanismos de modelo ou carregam texto est\u00E1tico de arquivos. Em varia\u00E7\u00F5es do ataque, o valor do par\u00E2metro da URL original \u00E9 substitu\u00EDdo pelo nome do arquivo de um dos scripts din\u00E2micos da aplica\u00E7\u00E3o web. Consequentemente, os resultados podem revelar o c\u00F3digo-fonte porque o arquivo \u00E9 interpretado como texto em vez de um script execut\u00E1vel. Essas t\u00E9cnicas geralmente empregam caracteres especiais adicionais, como o ponto (\".\") para revelar a listagem do diret\u00F3rio de trabalho atual ou \"% 00\" caracteres NULL para ignorar verifica\u00E7\u00F5es rudimentares de extens\u00E3o de arquivo.</p>",
+					"instances":[ 
+						{
+							"id": "5548",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-QLCLYZTY.js?v=%2Fchunk-QLCLYZTY.js",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-QLCLYZTY.js (v)",
+							"method": "GET",
+							"param": "v",
+							"attack": "/chunk-QLCLYZTY.js",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5551",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=%2Freact-dom_client.js",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/react-dom_client.js (v)",
+							"method": "GET",
+							"param": "v",
+							"attack": "/react-dom_client.js",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5552",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/react.js?v=%2Freact.js",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/react.js (v)",
+							"method": "GET",
+							"param": "v",
+							"attack": "/react.js",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "3",
+					"systemic": false,
+					"solution": "<p>Presuma que toda a entrada de dados \u00E9 maliciosa. Use uma estrat\u00E9gia de valida\u00E7\u00E3o de entrada \"aceita como boa\", ou seja, use uma lista de permiss\u00F5es de entradas aceit\u00E1veis que estejam estritamente em conformidade com as especifica\u00E7\u00F5es. Rejeite quaisquer entradas que n\u00E3o estejam estritamente de acordo com as especifica\u00E7\u00F5es ou transforme-as em algo que esteja. N\u00E3o confie exclusivamente na procura de entradas maliciosas ou malformadas (ou seja, n\u00E3o confie em uma lista de nega\u00E7\u00E3o). No entanto, as listas de nega\u00E7\u00E3o podem ser \u00FAteis para detectar ataques em potencial ou determinar quais entradas est\u00E3o t\u00E3o malformadas que devem ser rejeitadas imediatamente.</p><p></p><p>Ao executar a valida\u00E7\u00E3o de entradas de dados, considere todas as propriedades potencialmente relevantes, incluindo comprimento, tipo de entrada, a gama completa de valores aceit\u00E1veis, entradas ausentes ou extras, sintaxe, consist\u00EAncia entre campos relacionados e conformidade com as regras de neg\u00F3cios. Como um exemplo de l\u00F3gica de regra de neg\u00F3cios, \"barco\" pode ser sintaticamente v\u00E1lido porque cont\u00E9m apenas caracteres alfanum\u00E9ricos, mas n\u00E3o \u00E9 v\u00E1lido se voc\u00EA estiver esperando cores como \"vermelho\" ou \"azul\".</p><p></p><p>Para nomes de arquivos, use listas de permiss\u00F5es rigorosas que limitam o conjunto de caracteres a ser usado. Se poss\u00EDvel, permita apenas um \u00FAnico caractere \".\" no nome do arquivo para evitar pontos fracos e excluir separadores de diret\u00F3rio, como \"/\". Use uma lista de permiss\u00F5es de extens\u00F5es de arquivo permitidas.</p><p></p><p>Aviso: se voc\u00EA tentar limpar seus dados, fa\u00E7a-o para que o resultado final n\u00E3o esteja em uma forma que pode ser perigosa. Um mecanismo de sanitiza\u00E7\u00E3o pode remover caracteres como '.' e ';' que pode ser necess\u00E1rio para alguns exploits. Um invasor pode tentar enganar o mecanismo de limpeza para \"limpar\" os dados de uma forma perigosa. Suponha que o invasor injete um '.' dentro de um nome de arquivo (por exemplo, \"sensi.tiveFile\") e o mecanismo de limpeza remova o caractere resultando em um nome de arquivo v\u00E1lido, \"sensitiveFile\". Se os dados de entrada agora forem considerados seguros, o arquivo pode estar comprometido. </p><p></p><p>As entradas de dados devem ser decodificadas e canonizadas para a representa\u00E7\u00E3o interna atual da aplica\u00E7\u00E3o antes de serem validadas. Certifique-se de que sua aplica\u00E7\u00E3o n\u00E3o decodifique a mesma entrada duas vezes. Esses erros podem ser usados para contornar os esquemas de lista de permiss\u00F5es, introduzindo entradas perigosas ap\u00F3s terem sido verificados.</p><p></p><p>Use uma fun\u00E7\u00E3o de canoniza\u00E7\u00E3o de caminho embutida (como por exemplo realpath() em C) que produz a vers\u00E3o can\u00F4nica do nome do caminho, que remove efetivamente sequ\u00EAncias \"..\" e links simb\u00F3licos.</p><p></p><p>Execute seu c\u00F3digo usando os privil\u00E9gios mais baixos poss\u00EDveis para realizar as tarefas necess\u00E1rias. Se poss\u00EDvel, crie contas isoladas com privil\u00E9gios limitados que ser\u00E3o usados apenas para uma \u00FAnica tarefa. Dessa forma, um ataque bem-sucedido n\u00E3o dar\u00E1 ao invasor acesso imediato ao restante do software ou ao seu ambiente. Por exemplo, os aplicativos de banco de dados raramente precisam ser executados como administrador de banco de dados, especialmente nas opera\u00E7\u00F5es do dia a dia.</p><p></p><p>Havendo um conjunto de objetos aceit\u00E1veis, limitados ou conhecidos como nomes de arquivos ou URLs, crie um mapeamento de um conjunto de valores de entrada fixos (como IDs num\u00E9ricos) para os nomes de arquivos ou URLs reais e rejeite quaisquer outras entradas.</p><p></p><p>Execute seu c\u00F3digo em uma \"jail\" ou ambiente sandbox similar que imponha limites estritos entre o processo e o sistema operacional. Isso pode restringir efetivamente quais arquivos podem ser acessados em um determinado diret\u00F3rio ou quais comandos podem ser executados por seu software.</p><p></p><p>Exemplos em n\u00EDvel de sistemas operacionais incluem Chroot Jail do Unix, AppArmor e SELinux. Em geral, c\u00F3digo gerenciado pode fornecer alguma prote\u00E7\u00E3o. Por exemplo, java.io.FilePermission no Java SecurityManager permite especificar restri\u00E7\u00F5es nas opera\u00E7\u00F5es de arquivo.</p><p></p><p>Essa pode n\u00E3o ser uma solu\u00E7\u00E3o vi\u00E1vel e apenas limita o impacto no sistema operacional; o restante de seu aplicativo ainda pode estar sujeito a comprometimento.</p><p></p>",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/www-community/attacks/Path_Traversal</p><p>https://cwe.mitre.org/data/definitions/22.html</p>",
+					"cweid": "22",
+					"wascid": "33",
+					"sourceid": "8194"
+				},
+				{
+					"pluginid": "10038",
+					"alertRef": "10038-1",
+					"alert": "Content Security Policy (CSP) Header Not Set",
+					"name": "Content Security Policy (CSP) Header Not Set",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft to site defacement or distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page \u2014 covered types are JavaScript, CSS, HTML frames, fonts, images and embeddable objects such as Java applets, ActiveX, audio and video files.</p>",
+					"instances":[ 
+						{
+							"id": "3812",
+							"uri": "http://localhost:5173",
+							"nodeName": "http:\/\/localhost:5173",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "13",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "3820",
+							"uri": "http://localhost:5173/robots.txt",
+							"nodeName": "http:\/\/localhost:5173\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "3822",
+							"uri": "http://localhost:5173/sitemap.xml",
+							"nodeName": "http:\/\/localhost:5173\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP</p><p>https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html</p><p>https://www.w3.org/TR/CSP/</p><p>https://w3c.github.io/webappsec-csp/</p><p>https://web.dev/articles/csp</p><p>https://caniuse.com/#feat=contentsecuritypolicy</p><p>https://content-security-policy.com/</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "3455"
+				},
+				{
+					"pluginid": "10020",
+					"alertRef": "10020-1",
+					"alert": "Missing Anti-clickjacking Header",
+					"name": "Missing Anti-clickjacking Header",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>The response does not protect against 'ClickJacking' attacks. It should include either Content-Security-Policy with 'frame-ancestors' directive or X-Frame-Options.</p>",
+					"instances":[ 
+						{
+							"id": "3811",
+							"uri": "http://localhost:5173",
+							"nodeName": "http:\/\/localhost:5173",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "12",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "3816",
+							"uri": "http://localhost:5173/robots.txt",
+							"nodeName": "http:\/\/localhost:5173\/robots.txt",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "3818",
+							"uri": "http://localhost:5173/sitemap.xml",
+							"nodeName": "http:\/\/localhost:5173\/sitemap.xml",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "4",
+					"systemic": true,
+					"solution": "<p>Modern Web browsers support the Content-Security-Policy and X-Frame-Options HTTP headers. Ensure one of them is set on all web pages returned by your site/app.</p><p>If you expect the page to be framed only by pages on your server (e.g. it's part of a FRAMESET) then you'll want to use SAMEORIGIN, otherwise if you never expect the page to be framed, you should use DENY. Alternatively consider implementing Content Security Policy's \"frame-ancestors\" directive.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options</p>",
+					"cweid": "1021",
+					"wascid": "15",
+					"sourceid": "3455"
+				},
+				{
+					"pluginid": "120001",
+					"alertRef": "120001-1",
+					"alert": "Information Disclosure - Sensitive Information in Browser localStorage",
+					"name": "Information Disclosure - Sensitive Information in Browser localStorage",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>Sensitive Information appears to have been stored in browser localStorage. This can violate PCI and most organizational compliance policies.</p><p>For more details see the Client tabs - this information was set directly in the browser and will therefore not necessarily appear in this form in any HTTP(S) messages.</p>",
+					"instances":[ 
+						{
+							"id": "1431",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "sb-127-auth-token",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "The following data (key=value) was set which matches the pattern for email addresses: sb-127-auth-token={\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiI0NTkzZGRlMC05MTE1LTQxNjMtYTlmYi1lYzRiNzJmOTFiZmEiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk0ODIwNzk3LCJpYXQiOjE3OTQ4MTcxOTcsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiYWRtaW4iLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInN1YiI6IjQ1OTNkZGUwLTkxMTUtNDE2My1hOWZiLWVjNGI3MmY5MWJmYSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzk0ODE3MTk3fV0sInNlc3Npb25faWQiOiI5MWYzZjE1OS03NzFiLTRmOTktOTNkNS1iZjg2YmRmYmY1YzciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.Lj0aEBWQYJyuxMVFzrZ-PpAFW6y2XZTQ98UuStZpfVaDTQbmvFUH5DgGZLn5K-L8K-UewsS5cnZduyONEn596Q\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1794820797,\"refresh_token\":\"xtgxysssx52r\",\"user\":{\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"admin@admin.com\",\"email_confirmed_at\":\"2026-11-16T08:19:57.202521527Z\",\"phone\":\"\",\"last_sign_in_at\":\"2026-11-16T08:19:57.281165522Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"identities\":[{\"identity_id\":\"c2d96858-6a8b-4f35-bdf4-3188d7f8377b\",\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"user_id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"identity_data\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"provider\":\"email\",\"last_sign_in_at\":\"2026-11-16T08:19:57.082983617Z\",\"created_at\":\"2026-11-16T08:19:57.083159Z\",\"updated_at\":\"2026-11-16T08:19:57.083159Z\",\"email\":\"admin@admin.com\"}],\"created_at\":\"2026-11-16T08:19:56.730333Z\",\"updated_at\":\"2026-11-16T08:19:57.538739Z\",\"is_anonymous\":false}}\nNote that alerts will only be raised once for each URL  key."
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Do not store sensitive information in browser storage. </p>",
+					"otherinfo": "<p>The following data (key=value) was set which matches the pattern for email addresses: sb-127-auth-token={\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiI0NTkzZGRlMC05MTE1LTQxNjMtYTlmYi1lYzRiNzJmOTFiZmEiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk0ODIwNzk3LCJpYXQiOjE3OTQ4MTcxOTcsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiYWRtaW4iLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInN1YiI6IjQ1OTNkZGUwLTkxMTUtNDE2My1hOWZiLWVjNGI3MmY5MWJmYSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzk0ODE3MTk3fV0sInNlc3Npb25faWQiOiI5MWYzZjE1OS03NzFiLTRmOTktOTNkNS1iZjg2YmRmYmY1YzciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.Lj0aEBWQYJyuxMVFzrZ-PpAFW6y2XZTQ98UuStZpfVaDTQbmvFUH5DgGZLn5K-L8K-UewsS5cnZduyONEn596Q\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1794820797,\"refresh_token\":\"xtgxysssx52r\",\"user\":{\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"admin@admin.com\",\"email_confirmed_at\":\"2026-11-16T08:19:57.202521527Z\",\"phone\":\"\",\"last_sign_in_at\":\"2026-11-16T08:19:57.281165522Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"identities\":[{\"identity_id\":\"c2d96858-6a8b-4f35-bdf4-3188d7f8377b\",\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"user_id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"identity_data\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"provider\":\"email\",\"last_sign_in_at\":\"2026-11-16T08:19:57.082983617Z\",\"created_at\":\"2026-11-16T08:19:57.083159Z\",\"updated_at\":\"2026-11-16T08:19:57.083159Z\",\"email\":\"admin@admin.com\"}],\"created_at\":\"2026-11-16T08:19:56.730333Z\",\"updated_at\":\"2026-11-16T08:19:57.538739Z\",\"is_anonymous\":false}}</p><p>Note that alerts will only be raised once for each URL  key.</p>",
+					"reference": "",
+					"cweid": "359",
+					"wascid": "13",
+					"sourceid": "38"
+				},
+				{
+					"pluginid": "10021",
+					"alertRef": "10021",
+					"alert": "X-Content-Type-Options Header Missing",
+					"name": "X-Content-Type-Options Header Missing",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'. This allows older versions of Internet Explorer and Chrome to perform MIME-sniffing on the response body, potentially causing the response body to be interpreted and displayed as a content type other than the declared content type. Current (early 2014) and legacy versions of Firefox will use the declared content type (if one is set), rather than performing MIME-sniffing.</p>",
+					"instances":[ 
+						{
+							"id": "15",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "18",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=558c6147",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/react-dom_client.js (v)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "17",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/react.js?v=1c35c3f2",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/react.js (v)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "19",
+							"uri": "http://localhost:5173/node_modules/vite/dist/client/env.mjs",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/vite\/dist\/client\/env.mjs",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "16",
+							"uri": "http://localhost:5173/src/main.tsx",
+							"nodeName": "http:\/\/localhost:5173\/src\/main.tsx",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.</p><p>If possible, ensure that the end user uses a standards-compliant and modern web browser that does not perform MIME-sniffing at all, or that can be directed by the web application/web server to not perform MIME-sniffing.</p>",
+					"otherinfo": "<p>This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.</p><p>At \"High\" threshold this scan rule will not alert on client or server error responses.</p>",
+					"reference": "<p>https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/compatibility/gg622941(v=vs.85)</p><p>https://owasp.org/www-community/Security_Headers</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "38"
+				},
+				{
+					"pluginid": "10027",
+					"alertRef": "10027",
+					"alert": "Divulga\u00E7\u00E3o de Informa\u00E7\u00F5es - Coment\u00E1rios Suspeitos",
+					"name": "Divulga\u00E7\u00E3o de Informa\u00E7\u00F5es - Coment\u00E1rios Suspeitos",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The response appears to contain suspicious comments which may help an attacker.</p>",
+					"instances":[ 
+						{
+							"id": "27",
+							"uri": "http://localhost:5173/@react-refresh",
+							"nodeName": "http:\/\/localhost:5173\/@react-refresh",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "// TODO: rename these field",
+							"otherinfo": "The following pattern was used: \\bTODO\\b and was detected in likely comment: \"// TODO: rename these fields to something more meaningful.\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "25",
+							"uri": "http://localhost:5173/@react-refresh",
+							"nodeName": "http:\/\/localhost:5173\/@react-refresh",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "ogic is copy-pasted from similar logic in th",
+							"otherinfo": "The following pattern was used: \\bFROM\\b and was detected 2 times, the first in likely comment: \"// This logic is copy-pasted from similar logic in the DevTools backend.\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "645",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "   * @param options.db.schema You can swit",
+							"otherinfo": "The following pattern was used: \\bDB\\b and was detected in likely comment: \"/**\n   * Create a new client for use in the browser.\n   * @param supabaseUrl The unique Supabase URL which is supplied when you \", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "658",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "  * Match only rows where `column` is equal t",
+							"otherinfo": "The following pattern was used: \\bWHERE\\b and was detected 22 times, the first in likely comment: \"/**\n       * Match only rows where `column` is equal to `value`.\n       *\n       * To check if the value of `column` is NULL, yo\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "652",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "*\n   * Unsubscribes from server events, and ",
+							"otherinfo": "The following pattern was used: \\bFROM\\b and was detected 14 times, the first in likely comment: \"/**\n   * Leaves the channel.\n   *\n   * Unsubscribes from server events, and instructs channel to terminate on server.\n   * Trigg\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "653",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "// TODO: Add back shouldThr",
+							"otherinfo": "The following pattern was used: \\bTODO\\b and was detected in likely comment: \"// TODO: Add back shouldThrowOnError once we figure out the typings\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "642",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "// User Admin API",
+							"otherinfo": "The following pattern was used: \\bADMIN\\b and was detected in likely comment: \"// User Admin API\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "651",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "all\n       * with `.select()`.\n       *\n      ",
+							"otherinfo": "The following pattern was used: \\bSELECT\\b and was detected 4 times, the first in likely comment: \"/**\n       * Perform an INSERT into the table or view.\n       *\n       * By default, inserted rows are not returned. To return i\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "649",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "backs to react to a user joining or leaving ",
+							"otherinfo": "The following pattern was used: \\bUSER\\b and was detected 24 times, the first in likely comment: \"/**\n   * Used to sync a diff of presence join and leave events from the\n   * server, as they happen.\n   *\n   * Like `syncState`,\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "647",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/@supabase_supabase-js.js?v=012c85cb",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/@supabase_supabase-js.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "s an error with the query, throwOnError will ",
+							"otherinfo": "The following pattern was used: \\bQUERY\\b and was detected 19 times, the first in likely comment: \"/**\n       * If there's an error with the query, throwOnError will reject the promise by\n       * throwing the error instead of \", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "46",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-5UNF2M6Z.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-5UNF2M6Z.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "which is confusing. TODO: Expose pendingStat",
+							"otherinfo": "The following pattern was used: \\bTODO\\b and was detected in likely comment: \"/**\n           * Sets a subset of the state. This only exists because _pendingState is\n           * internal. This provides a me\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1633",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": " in raw wheel delta where one",
+							"otherinfo": "The following pattern was used: \\bWHERE\\b and was detected 2 times, the first in likely comment: \"// Browsers without \"deltaMode\" is reporting in raw wheel delta where one\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1630",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": " is not updated if `select.multiple` is",
+							"otherinfo": "The following pattern was used: \\bSELECT\\b and was detected 3 times, the first in likely comment: \"// Note: `option.selected` is not updated if `select.multiple` is\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1629",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": " tags come from the user-provided type:",
+							"otherinfo": "The following pattern was used: \\bUSER\\b and was detected 4 times, the first in likely comment: \"// The display name for this tags come from the user-provided type:\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1632",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "// TODO: This prevents the ",
+							"otherinfo": "The following pattern was used: \\bTODO\\b and was detected 17 times, the first in likely comment: \"// TODO: This prevents the assignment of defaultValue to regular\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1628",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "ng that most of the bugs that would trigger",
+							"otherinfo": "The following pattern was used: \\bBUGS\\b and was detected in likely comment: \"// now I'll disable the warning that most of the bugs that would trigger\", see evidence field for the suspicious comment/snippet."
+						},
+						{
+							"id": "1631",
+							"uri": "http://localhost:5173/node_modules/.vite/deps/chunk-F4Q3UX4K.js?v=12308f75",
+							"nodeName": "http:\/\/localhost:5173\/node_modules\/.vite\/deps\/chunk-F4Q3UX4K.js (v)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "se that prevents it from being written to th",
+							"otherinfo": "The following pattern was used: \\bFROM\\b and was detected in likely comment: \"// Note: there is a special case that prevents it from being written to the DOM\", see evidence field for the suspicious comment/snippet."
+						}
+					],
+					"count": "17",
+					"systemic": false,
+					"solution": "<p>Remova todos os coment\u00E1rios que retornam informa\u00E7\u00F5es que podem ajudar um invasor e corrigir quaisquer problemas subjacentes aos quais eles se referem.</p>",
+					"otherinfo": "<p>The following pattern was used: \\bTODO\\b and was detected in likely comment: \"// TODO: rename these fields to something more meaningful.\", see evidence field for the suspicious comment/snippet.</p>",
+					"reference": "",
+					"cweid": "615",
+					"wascid": "13",
+					"sourceid": "42"
+				},
+				{
+					"pluginid": "120000",
+					"alertRef": "120000-1",
+					"alert": "Information Disclosure - Information in Browser localStorage",
+					"name": "Information Disclosure - Information in Browser localStorage",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informativo (Alto)",
+					"desc": "<p>Information was stored in browser localStorage.</p><p>This is not unusual or necessarily unsafe - this informational alert has been raised to help you get a better understanding of what this app is doing. For more details see the Client tabs - this information was set directly in the browser and will therefore not necessarily appear in this form in any HTTP(S) messages.</p>",
+					"instances":[ 
+						{
+							"id": "1427",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "sb-127-auth-token",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "The following data (key=value) was set: sb-127-auth-token={\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiI0NTkzZGRlMC05MTE1LTQxNjMtYTlmYi1lYzRiNzJmOTFiZmEiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk0ODIwNzk3LCJpYXQiOjE3OTQ4MTcxOTcsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiYWRtaW4iLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInN1YiI6IjQ1OTNkZGUwLTkxMTUtNDE2My1hOWZiLWVjNGI3MmY5MWJmYSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzk0ODE3MTk3fV0sInNlc3Npb25faWQiOiI5MWYzZjE1OS03NzFiLTRmOTktOTNkNS1iZjg2YmRmYmY1YzciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.Lj0aEBWQYJyuxMVFzrZ-PpAFW6y2XZTQ98UuStZpfVaDTQbmvFUH5DgGZLn5K-L8K-UewsS5cnZduyONEn596Q\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1794820797,\"refresh_token\":\"xtgxysssx52r\",\"user\":{\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"admin@admin.com\",\"email_confirmed_at\":\"2026-11-16T08:19:57.202521527Z\",\"phone\":\"\",\"last_sign_in_at\":\"2026-11-16T08:19:57.281165522Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"identities\":[{\"identity_id\":\"c2d96858-6a8b-4f35-bdf4-3188d7f8377b\",\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"user_id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"identity_data\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"provider\":\"email\",\"last_sign_in_at\":\"2026-11-16T08:19:57.082983617Z\",\"created_at\":\"2026-11-16T08:19:57.083159Z\",\"updated_at\":\"2026-11-16T08:19:57.083159Z\",\"email\":\"admin@admin.com\"}],\"created_at\":\"2026-11-16T08:19:56.730333Z\",\"updated_at\":\"2026-11-16T08:19:57.538739Z\",\"is_anonymous\":false}}\nNote that this alert will only be raised once for each URL  key."
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>This is an informational alert and no action is necessary. </p>",
+					"otherinfo": "<p>The following data (key=value) was set: sb-127-auth-token={\"access_token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiI0NTkzZGRlMC05MTE1LTQxNjMtYTlmYi1lYzRiNzJmOTFiZmEiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzk0ODIwNzk3LCJpYXQiOjE3OTQ4MTcxOTcsImVtYWlsIjoiYWRtaW5AYWRtaW4uY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJlbWFpbCI6ImFkbWluQGFkbWluLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoiYWRtaW4iLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInN1YiI6IjQ1OTNkZGUwLTkxMTUtNDE2My1hOWZiLWVjNGI3MmY5MWJmYSJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzk0ODE3MTk3fV0sInNlc3Npb25faWQiOiI5MWYzZjE1OS03NzFiLTRmOTktOTNkNS1iZjg2YmRmYmY1YzciLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.Lj0aEBWQYJyuxMVFzrZ-PpAFW6y2XZTQ98UuStZpfVaDTQbmvFUH5DgGZLn5K-L8K-UewsS5cnZduyONEn596Q\",\"token_type\":\"bearer\",\"expires_in\":3600,\"expires_at\":1794820797,\"refresh_token\":\"xtgxysssx52r\",\"user\":{\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"aud\":\"authenticated\",\"role\":\"authenticated\",\"email\":\"admin@admin.com\",\"email_confirmed_at\":\"2026-11-16T08:19:57.202521527Z\",\"phone\":\"\",\"last_sign_in_at\":\"2026-11-16T08:19:57.281165522Z\",\"app_metadata\":{\"provider\":\"email\",\"providers\":[\"email\"]},\"user_metadata\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"identities\":[{\"identity_id\":\"c2d96858-6a8b-4f35-bdf4-3188d7f8377b\",\"id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"user_id\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\",\"identity_data\":{\"email\":\"admin@admin.com\",\"email_verified\":true,\"name\":\"admin\",\"phone_verified\":false,\"sub\":\"4593dde0-9115-4163-a9fb-ec4b72f91bfa\"},\"provider\":\"email\",\"last_sign_in_at\":\"2026-11-16T08:19:57.082983617Z\",\"created_at\":\"2026-11-16T08:19:57.083159Z\",\"updated_at\":\"2026-11-16T08:19:57.083159Z\",\"email\":\"admin@admin.com\"}],\"created_at\":\"2026-11-16T08:19:56.730333Z\",\"updated_at\":\"2026-11-16T08:19:57.538739Z\",\"is_anonymous\":false}}</p><p>Note that this alert will only be raised once for each URL  key.</p>",
+					"reference": "",
+					"cweid": "359",
+					"wascid": "13",
+					"sourceid": "38"
+				},
+				{
+					"pluginid": "10024",
+					"alertRef": "10024",
+					"alert": "Information Disclosure - Sensitive Information in URL",
+					"name": "Information Disclosure - Sensitive Information in URL",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>A solicita\u00E7\u00E3o parecia conter informa\u00E7\u00F5es confidenciais vazadas no URL. Isso pode violar a PCI e a maioria das pol\u00EDticas de conformidade organizacional. Voc\u00EA pode configurar a lista de strings para esta verifica\u00E7\u00E3o para adicionar ou remover valores espec\u00EDficos para seu ambiente.</p>",
+					"instances":[ 
+						{
+							"id": "11",
+							"uri": "http://localhost:5173/?token=BWtxyes9VM9j",
+							"nodeName": "http:\/\/localhost:5173\/ (token)",
+							"method": "GET",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: token\ntoken"
+						}
+					],
+					"count": "1",
+					"systemic": true,
+					"solution": "<p>N\u00E3o passe informa\u00E7\u00F5es confidenciais em URIs.</p>",
+					"otherinfo": "<p>The URL contains potentially sensitive information. The following string was found via the pattern: token</p><p>token</p>",
+					"reference": "",
+					"cweid": "598",
+					"wascid": "13",
+					"sourceid": "35"
+				},
+				{
+					"pluginid": "10109",
+					"alertRef": "10109",
+					"alert": "Modern Web Application",
+					"name": "Modern Web Application",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The application appears to be a modern web application. If you need to explore it automatically then the Client Spider may well be more effective than the standard one.</p>",
+					"instances":[ 
+						{
+							"id": "3813",
+							"uri": "http://localhost:5173",
+							"nodeName": "http:\/\/localhost:5173",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$RefreshReg$ = () => {};\nwindow.$RefreshSig$ = () => (type) => type;</script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "14",
+							"uri": "http://localhost:5173/",
+							"nodeName": "http:\/\/localhost:5173\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$RefreshReg$ = () => {};\nwindow.$RefreshSig$ = () => (type) => type;</script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "3824",
+							"uri": "http://localhost:5173/robots.txt",
+							"nodeName": "http:\/\/localhost:5173\/robots.txt",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$RefreshReg$ = () => {};\nwindow.$RefreshSig$ = () => (type) => type;</script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "3826",
+							"uri": "http://localhost:5173/sitemap.xml",
+							"nodeName": "http:\/\/localhost:5173\/sitemap.xml",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script type=\"module\">import { injectIntoGlobalHook } from \"/@react-refresh\";\ninjectIntoGlobalHook(window);\nwindow.$RefreshReg$ = () => {};\nwindow.$RefreshSig$ = () => (type) => type;</script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						}
+					],
+					"count": "4",
+					"systemic": true,
+					"solution": "<p>This is an informational alert and so no changes are required.</p>",
+					"otherinfo": "<p>No links have been found while there are scripts, which is an indication that this is a modern web application.</p>",
+					"reference": "",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "3455"
+				}
+			]
+		},
+		{
+			"@name": "http://127.0.0.1:54321",
+			"@host": "127.0.0.1",
+			"@port": "54321",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "6",
+					"alertRef": "6-5",
+					"alert": "Travessia/Passagem de Caminho",
+					"name": "Travessia/Passagem de Caminho",
+					"riskcode": "3",
+					"confidence": "1",
+					"riskdesc": "Alto (Baixo)",
+					"desc": "<p>A t\u00E9cnica de ataque de Travessia/Passagem de Caminho (Path Traversal) permite que um invasor acesse arquivos, diret\u00F3rios e comandos que potencialmente residem fora do diret\u00F3rio raiz do documento da web. Um invasor pode manipular uma URL de forma que o site execute ou revele o conte\u00FAdo de arquivos arbitr\u00E1rios em qualquer lugar do servidor. Qualquer dispositivo que exponha uma interface baseada em HTTP \u00E9 potencialmente vulner\u00E1vel ao Path Traversal.</p><p></p><p>A maioria dos sites restringe o acesso do usu\u00E1rio a uma parte espec\u00EDfica do sistema de arquivos, normalmente chamada de diret\u00F3rio \"raiz do documento web\" ou \"raiz CGI\". Esses diret\u00F3rios cont\u00EAm os arquivos destinados ao acesso do usu\u00E1rio e o execut\u00E1vel necess\u00E1rio para conduzir a funcionalidade da aplica\u00E7\u00E3o web. Para acessar arquivos ou executar comandos em qualquer lugar no sistema de arquivos, os ataques Path Traversal utilizar\u00E3o a capacidade de sequ\u00EAncias de caracteres especiais.</p><p></p><p>O ataque Path Traversal mais b\u00E1sico usa a seq\u00FC\u00EAncia de caracteres especiais \"../\" para alterar a localiza\u00E7\u00E3o do recurso solicitada na URL. Embora a maioria dos servidores web populares impe\u00E7a que essa t\u00E9cnica escape da raiz do documento da web, codifica\u00E7\u00F5es alternativas da sequ\u00EAncia \"../\" podem ajudar a contornar os filtros de seguran\u00E7a. Essas varia\u00E7\u00F5es de m\u00E9todo incluem codifica\u00E7\u00E3o Unicode v\u00E1lida e inv\u00E1lida (\"..%u2216\" ou \"..%c0%af\") do caractere de barra, caracteres de barra invertida (\"..\\\") em servidores baseados em Windows, caracteres codificados por URL \"%2e%2e%2f\") e codifica\u00E7\u00E3o de URL dupla (\"..%255c\") do caractere de barra invertida.</p><p></p><p>Mesmo que o servidor web restrinja adequadamente as tentativas de Path Traversal no caminho da URL, uma aplica\u00E7\u00E3o web em si ainda pode ser vulner\u00E1vel devido ao tratamento impr\u00F3prio de entrada de dados fornecida pelo usu\u00E1rio. Este \u00E9 um problema comum de aplica\u00E7\u00F5es web que usam mecanismos de modelo ou carregam texto est\u00E1tico de arquivos. Em varia\u00E7\u00F5es do ataque, o valor do par\u00E2metro da URL original \u00E9 substitu\u00EDdo pelo nome do arquivo de um dos scripts din\u00E2micos da aplica\u00E7\u00E3o web. Consequentemente, os resultados podem revelar o c\u00F3digo-fonte porque o arquivo \u00E9 interpretado como texto em vez de um script execut\u00E1vel. Essas t\u00E9cnicas geralmente empregam caracteres especiais adicionais, como o ponto (\".\") para revelar a listagem do diret\u00F3rio de trabalho atual ou \"% 00\" caracteres NULL para ignorar verifica\u00E7\u00F5es rudimentares de extens\u00E3o de arquivo.</p>",
+					"instances":[ 
+						{
+							"id": "5542",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=%2Fevents&id=eq.785a57a1-35c7-45ab-bf3d-647286bfab33",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (id,select)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/events",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5547",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=%2Fevents&organizer_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,organizer_id,select)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/events",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5543",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=%2Fevents&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/events",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5546",
+							"uri": "http://127.0.0.1:54321/rest/v1/profiles?select=%2Fprofiles&id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/profiles (id,select)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/profiles",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5545",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=%2Fregistrations&event_id=eq.c6e3551a-e6b5-45fc-bca5-5cc28280f3e0&order=created_at.desc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,order,select)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/registrations",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5544",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=%2Fregistrations&event_id=eq.785a57a1-35c7-45ab-bf3d-647286bfab33&status=neq.cancelled",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,select,status)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/registrations",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5550",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=%2Fregistrations&event_id=eq.785a57a1-35c7-45ab-bf3d-647286bfab33&user_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,select,user_id)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/registrations",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5549",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=%2Fregistrations&user_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=created_at.desc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (order,select,user_id)",
+							"method": "GET",
+							"param": "select",
+							"attack": "/registrations",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5541",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=%2Fregistrations&event_id=eq.785a57a1-35c7-45ab-bf3d-647286bfab33&status=neq.cancelled",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,select,status)",
+							"method": "HEAD",
+							"param": "select",
+							"attack": "/registrations",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "9",
+					"systemic": false,
+					"solution": "<p>Presuma que toda a entrada de dados \u00E9 maliciosa. Use uma estrat\u00E9gia de valida\u00E7\u00E3o de entrada \"aceita como boa\", ou seja, use uma lista de permiss\u00F5es de entradas aceit\u00E1veis que estejam estritamente em conformidade com as especifica\u00E7\u00F5es. Rejeite quaisquer entradas que n\u00E3o estejam estritamente de acordo com as especifica\u00E7\u00F5es ou transforme-as em algo que esteja. N\u00E3o confie exclusivamente na procura de entradas maliciosas ou malformadas (ou seja, n\u00E3o confie em uma lista de nega\u00E7\u00E3o). No entanto, as listas de nega\u00E7\u00E3o podem ser \u00FAteis para detectar ataques em potencial ou determinar quais entradas est\u00E3o t\u00E3o malformadas que devem ser rejeitadas imediatamente.</p><p></p><p>Ao executar a valida\u00E7\u00E3o de entradas de dados, considere todas as propriedades potencialmente relevantes, incluindo comprimento, tipo de entrada, a gama completa de valores aceit\u00E1veis, entradas ausentes ou extras, sintaxe, consist\u00EAncia entre campos relacionados e conformidade com as regras de neg\u00F3cios. Como um exemplo de l\u00F3gica de regra de neg\u00F3cios, \"barco\" pode ser sintaticamente v\u00E1lido porque cont\u00E9m apenas caracteres alfanum\u00E9ricos, mas n\u00E3o \u00E9 v\u00E1lido se voc\u00EA estiver esperando cores como \"vermelho\" ou \"azul\".</p><p></p><p>Para nomes de arquivos, use listas de permiss\u00F5es rigorosas que limitam o conjunto de caracteres a ser usado. Se poss\u00EDvel, permita apenas um \u00FAnico caractere \".\" no nome do arquivo para evitar pontos fracos e excluir separadores de diret\u00F3rio, como \"/\". Use uma lista de permiss\u00F5es de extens\u00F5es de arquivo permitidas.</p><p></p><p>Aviso: se voc\u00EA tentar limpar seus dados, fa\u00E7a-o para que o resultado final n\u00E3o esteja em uma forma que pode ser perigosa. Um mecanismo de sanitiza\u00E7\u00E3o pode remover caracteres como '.' e ';' que pode ser necess\u00E1rio para alguns exploits. Um invasor pode tentar enganar o mecanismo de limpeza para \"limpar\" os dados de uma forma perigosa. Suponha que o invasor injete um '.' dentro de um nome de arquivo (por exemplo, \"sensi.tiveFile\") e o mecanismo de limpeza remova o caractere resultando em um nome de arquivo v\u00E1lido, \"sensitiveFile\". Se os dados de entrada agora forem considerados seguros, o arquivo pode estar comprometido. </p><p></p><p>As entradas de dados devem ser decodificadas e canonizadas para a representa\u00E7\u00E3o interna atual da aplica\u00E7\u00E3o antes de serem validadas. Certifique-se de que sua aplica\u00E7\u00E3o n\u00E3o decodifique a mesma entrada duas vezes. Esses erros podem ser usados para contornar os esquemas de lista de permiss\u00F5es, introduzindo entradas perigosas ap\u00F3s terem sido verificados.</p><p></p><p>Use uma fun\u00E7\u00E3o de canoniza\u00E7\u00E3o de caminho embutida (como por exemplo realpath() em C) que produz a vers\u00E3o can\u00F4nica do nome do caminho, que remove efetivamente sequ\u00EAncias \"..\" e links simb\u00F3licos.</p><p></p><p>Execute seu c\u00F3digo usando os privil\u00E9gios mais baixos poss\u00EDveis para realizar as tarefas necess\u00E1rias. Se poss\u00EDvel, crie contas isoladas com privil\u00E9gios limitados que ser\u00E3o usados apenas para uma \u00FAnica tarefa. Dessa forma, um ataque bem-sucedido n\u00E3o dar\u00E1 ao invasor acesso imediato ao restante do software ou ao seu ambiente. Por exemplo, os aplicativos de banco de dados raramente precisam ser executados como administrador de banco de dados, especialmente nas opera\u00E7\u00F5es do dia a dia.</p><p></p><p>Havendo um conjunto de objetos aceit\u00E1veis, limitados ou conhecidos como nomes de arquivos ou URLs, crie um mapeamento de um conjunto de valores de entrada fixos (como IDs num\u00E9ricos) para os nomes de arquivos ou URLs reais e rejeite quaisquer outras entradas.</p><p></p><p>Execute seu c\u00F3digo em uma \"jail\" ou ambiente sandbox similar que imponha limites estritos entre o processo e o sistema operacional. Isso pode restringir efetivamente quais arquivos podem ser acessados em um determinado diret\u00F3rio ou quais comandos podem ser executados por seu software.</p><p></p><p>Exemplos em n\u00EDvel de sistemas operacionais incluem Chroot Jail do Unix, AppArmor e SELinux. Em geral, c\u00F3digo gerenciado pode fornecer alguma prote\u00E7\u00E3o. Por exemplo, java.io.FilePermission no Java SecurityManager permite especificar restri\u00E7\u00F5es nas opera\u00E7\u00F5es de arquivo.</p><p></p><p>Essa pode n\u00E3o ser uma solu\u00E7\u00E3o vi\u00E1vel e apenas limita o impacto no sistema operacional; o restante de seu aplicativo ainda pode estar sujeito a comprometimento.</p><p></p>",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/www-community/attacks/Path_Traversal</p><p>https://cwe.mitre.org/data/definitions/22.html</p>",
+					"cweid": "22",
+					"wascid": "33",
+					"sourceid": "7998"
+				},
+				{
+					"pluginid": "10098",
+					"alertRef": "10098",
+					"alert": "Configura\u00E7\u00E3o Incorreta Entre Dom\u00EDnios",
+					"name": "Configura\u00E7\u00E3o Incorreta Entre Dom\u00EDnios",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>Web browser data loading may be possible, due to a Cross Origin Resource Sharing (CORS) misconfiguration on the web server.</p>",
+					"instances":[ 
+						{
+							"id": "2",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "1585",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "0",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "1590",
+							"uri": "http://127.0.0.1:54321/rest/v1/profiles?select=*&id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/profiles (id,select)",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "1589",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Certifique-se de que dados confidenciais n\u00E3o estejam dispon\u00EDveis de maneira n\u00E3o autenticada (usando uma lista branca/de permiss\u00F5es de endere\u00E7os IP, por exemplo). Configure o cabe\u00E7alho HTTP \"Access-Control-Allow-Origin\" para um conjunto mais restritivo de dom\u00EDnios ou remova todos os cabe\u00E7alhos CORS inteiramente, para permitir que o navegador web aplique a Same Origin Policy (SOP) de uma maneira mais restritiva.</p>",
+					"otherinfo": "<p>A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP.</p>",
+					"reference": "<p>https://vulncat.fortify.com/en/detail?category=HTML5&subcategory=Overly%20Permissive%20CORS%20Policy</p>",
+					"cweid": "264",
+					"wascid": "14",
+					"sourceid": "5"
+				},
+				{
+					"pluginid": "10096",
+					"alertRef": "10096",
+					"alert": "Divulga\u00E7\u00E3o de Data e Hora - Unix",
+					"name": "Divulga\u00E7\u00E3o de Data e Hora - Unix",
+					"riskcode": "1",
+					"confidence": "1",
+					"riskdesc": "Baixo (Baixo)",
+					"desc": "<p>A timestamp was disclosed by the application/web server. - Unix</p>",
+					"instances":[ 
+						{
+							"id": "1601",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "1794820797",
+							"otherinfo": "1794820797, which evaluates to: 2026-11-16 06:19:57."
+						},
+						{
+							"id": "3317",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "1794820937",
+							"otherinfo": "1794820937, which evaluates to: 2026-11-16 06:22:17."
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p>Confirme manualmente se os dados do carimbo de data/hora n\u00E3o s\u00E3o confidenciais e se os dados n\u00E3o podem ser agregados para divulgar padr\u00F5es explor\u00E1veis.</p>",
+					"otherinfo": "<p>1794820797, which evaluates to: 2026-11-16 06:19:57.</p>",
+					"reference": "<p>https://cwe.mitre.org/data/definitions/200.html</p>",
+					"cweid": "497",
+					"wascid": "13",
+					"sourceid": "1613"
+				},
+				{
+					"pluginid": "10036",
+					"alertRef": "10036-2",
+					"alert": "Server Leaks Version Information via \"Server\" HTTP Response Header Field",
+					"name": "Server Leaks Version Information via \"Server\" HTTP Response Header Field",
+					"riskcode": "1",
+					"confidence": "3",
+					"riskdesc": "Baixo (Alto)",
+					"desc": "<p>The web/application server is leaking version information via the \"Server\" HTTP response header. Access to such information may facilitate attackers identifying other vulnerabilities your web/application server is subject to.</p>",
+					"instances":[ 
+						{
+							"id": "3",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "postgrest/16.5",
+							"otherinfo": ""
+						},
+						{
+							"id": "1604",
+							"uri": "http://127.0.0.1:54321/rest/v1/profiles?select=*&id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/profiles (id,select)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "postgrest/16.5",
+							"otherinfo": ""
+						},
+						{
+							"id": "1587",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "kong/2.8.1",
+							"otherinfo": ""
+						},
+						{
+							"id": "1",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "kong/2.8.1",
+							"otherinfo": ""
+						},
+						{
+							"id": "1595",
+							"uri": "http://127.0.0.1:54321/rest/v1/profiles?select=*&id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/profiles (id,select)",
+							"method": "OPTIONS",
+							"param": "",
+							"attack": "",
+							"evidence": "kong/2.8.1",
+							"otherinfo": ""
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to suppress the \"Server\" header or provide generic details.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://httpd.apache.org/docs/current/mod/core.html#servertokens</p><p>https://learn.microsoft.com/en-us/previous-versions/msp-n-p/ff648552(v=pandp.10)</p><p>https://www.troyhunt.com/shhh-dont-let-your-response-headers/</p>",
+					"cweid": "497",
+					"wascid": "13",
+					"sourceid": "5"
+				},
+				{
+					"pluginid": "10021",
+					"alertRef": "10021",
+					"alert": "X-Content-Type-Options Header Missing",
+					"name": "X-Content-Type-Options Header Missing",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'. This allows older versions of Internet Explorer and Chrome to perform MIME-sniffing on the response body, potentially causing the response body to be interpreted and displayed as a content type other than the declared content type. Current (early 2014) and legacy versions of Firefox will use the declared content type (if one is set), rather than performing MIME-sniffing.</p>",
+					"instances":[ 
+						{
+							"id": "1667",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&organizer_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,organizer_id,select)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "4",
+							"uri": "http://127.0.0.1:54321/rest/v1/events?select=*&status=eq.open&order=date.asc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/events (order,select,status)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "1608",
+							"uri": "http://127.0.0.1:54321/rest/v1/profiles?select=*&id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/profiles (id,select)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "1615",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=id%2Cevent_id%2Cuser_id%2Cstatus%2Ccreated_at%2Cevents%21inner%28id%2Ctitle%2Cdate%2Clocation%2Cstatus%29&user_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=created_at.desc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (order,select,user_id)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "1606",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.</p><p>If possible, ensure that the end user uses a standards-compliant and modern web browser that does not perform MIME-sniffing at all, or that can be directed by the web application/web server to not perform MIME-sniffing.</p>",
+					"otherinfo": "<p>This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.</p><p>At \"High\" threshold this scan rule will not alert on client or server error responses.</p>",
+					"reference": "<p>https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/compatibility/gg622941(v=vs.85)</p><p>https://owasp.org/www-community/Security_Headers</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "1636"
+				},
+				{
+					"pluginid": "10024",
+					"alertRef": "10024",
+					"alert": "Information Disclosure - Sensitive Information in URL",
+					"name": "Information Disclosure - Sensitive Information in URL",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>A solicita\u00E7\u00E3o parecia conter informa\u00E7\u00F5es confidenciais vazadas no URL. Isso pode violar a PCI e a maioria das pol\u00EDticas de conformidade organizacional. Voc\u00EA pode configurar a lista de strings para esta verifica\u00E7\u00E3o para adicionar ou remover valores espec\u00EDficos para seu ambiente.</p>",
+					"instances":[ 
+						{
+							"id": "3352",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=*&event_id=eq.c6e3551a-e6b5-45fc-bca5-5cc28280f3e0&user_id=eq.578df2ec-243a-456c-8c44-1ef7bc14dea2",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,select,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						},
+						{
+							"id": "1612",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=id%2Cevent_id%2Cuser_id%2Cstatus%2Ccreated_at%2Cevents%21inner%28id%2Ctitle%2Cdate%2Clocation%2Cstatus%29&user_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=created_at.desc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (order,select,user_id)",
+							"method": "GET",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						},
+						{
+							"id": "3343",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=*&event_id=eq.c6e3551a-e6b5-45fc-bca5-5cc28280f3e0&user_id=eq.578df2ec-243a-456c-8c44-1ef7bc14dea2",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (event_id,select,user_id)",
+							"method": "OPTIONS",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						},
+						{
+							"id": "1611",
+							"uri": "http://127.0.0.1:54321/rest/v1/registrations?select=id%2Cevent_id%2Cuser_id%2Cstatus%2Ccreated_at%2Cevents%21inner%28id%2Ctitle%2Cdate%2Clocation%2Cstatus%29&user_id=eq.4593dde0-9115-4163-a9fb-ec4b72f91bfa&order=created_at.desc",
+							"nodeName": "http:\/\/127.0.0.1:54321\/rest\/v1\/registrations (order,select,user_id)",
+							"method": "OPTIONS",
+							"param": "user_id",
+							"attack": "",
+							"evidence": "user_id",
+							"otherinfo": "The URL contains potentially sensitive information. The following string was found via the pattern: user\nuser_id"
+						}
+					],
+					"count": "4",
+					"systemic": true,
+					"solution": "<p>N\u00E3o passe informa\u00E7\u00F5es confidenciais em URIs.</p>",
+					"otherinfo": "<p>The URL contains potentially sensitive information. The following string was found via the pattern: user</p><p>user_id</p>",
+					"reference": "",
+					"cweid": "598",
+					"wascid": "13",
+					"sourceid": "3243"
+				},
+				{
+					"pluginid": "10112",
+					"alertRef": "10112",
+					"alert": "Session Management Response Identified",
+					"name": "Session Management Response Identified",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informativo (Alto)",
+					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
+					"instances":[ 
+						{
+							"id": "1592",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "access_token",
+							"attack": "",
+							"evidence": "access_token",
+							"otherinfo": "json:access_token"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>json:access_token</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-mgmt-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "1613"
+				},
+				{
+					"pluginid": "10104",
+					"alertRef": "10104",
+					"alert": "User Agent Fuzzer",
+					"name": "User Agent Fuzzer",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>Check for differences in response based on fuzzed User Agent (eg. mobile sites, access as a Search Engine Crawler). Compares the response statuscode and the hashcode of the response body with the original response.</p>",
+					"instances":[ 
+						{
+							"id": "5555",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5554",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "5553",
+							"uri": "http://127.0.0.1:54321/auth/v1/signup",
+							"nodeName": "http:\/\/127.0.0.1:54321\/auth\/v1\/signup ()({email,password,data:{name},gotrue_meta_security:{},code_challenge,code_challenge_method})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "3",
+					"systemic": true,
+					"solution": "",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/wstg</p>",
+					"cweid": "0",
+					"wascid": "0",
+					"sourceid": "69261"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

@@ -1,0 +1,9 @@
+﻿grupo;fonte;previstas;testadas;endpoints_mediana;endpoints_min;endpoints_max;pct_5xx_mediana
+Vibe coding;Claude Sonnet 4.5;10;10;26,0;16,0;40,0;0,0
+Vibe coding;DeepSeek V4.1 Flash;10;10;30,0;17,0;60,0;0,0
+Vibe coding;Gemini 3.8 Flash;10;10;46,0;26,0;87,0;2,0
+Vibe coding;GPT-5.5;10;10;46,5;33,0;167,0;0,0
+Vibe coding;Kimi K3;10;8;35,5;18,0;89,0;1,0
+Vibe coding;Qwen3.8 27B;10;5;26,0;19,0;33,0;0,0
+Low-code;Bolt.new;10;8;1583,0;1578,0;1592,0;1,0
+Low-code;Lovable;10;9;247,0;235,0;253,0;3,0

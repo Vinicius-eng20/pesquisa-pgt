@@ -40,3 +40,5 @@ Thumbs.db
 __pycache__/
 *.py[codz]
 *$py.class
+# Area de trabalho do Supabase local usada pelo subir (docker/lowcode)
+docker/lowcode/supabase_trabalho/

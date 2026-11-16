@@ -1,0 +1,703 @@
+{
+	"@programName": "ZAP",
+	"@version": "2.17.0",
+	"@generated": "qua., 11 nov. 2026 16:34:36",
+	"created": "2026-11-11T19:34:36.098548700Z",
+	"insights":[
+		{
+			"level": "Alto",
+			"reason": "Exceeded High",
+			"site": "",
+			"key": "insight.memory.usage",
+			"description": "Percentage of memory used",
+			"statistic": "98"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.error",
+			"description": "ZAP errors logged - see the zap.log file for details",
+			"statistic": "6"
+		},
+		{
+			"level": "Baixo",
+			"reason": "Atenção",
+			"site": "",
+			"key": "insight.log.warn",
+			"description": "ZAP warnings logged - see the zap.log file for details",
+			"statistic": "25"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.2xx",
+			"description": "Percentage of responses with status code 2xx",
+			"statistic": "60"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.code.3xx",
+			"description": "Percentage of responses with status code 3xx",
+			"statistic": "1"
+		},
+		{
+			"level": "Informações",
+			"reason": "Exceeded Low",
+			"site": "http://localhost:3000",
+			"key": "insight.code.4xx",
+			"description": "Percentage of responses with status code 4xx",
+			"statistic": "23"
+		},
+		{
+			"level": "Informações",
+			"reason": "Exceeded Low",
+			"site": "http://localhost:3000",
+			"key": "insight.code.5xx",
+			"description": "Percentage of responses with status code 5xx",
+			"statistic": "15"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.application/json",
+			"description": "Percentage of endpoints with content type application/json",
+			"statistic": "52"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.ctype.text/html",
+			"description": "Percentage of endpoints with content type text/html",
+			"statistic": "47"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.GET",
+			"description": "Percentage of endpoints with method GET",
+			"statistic": "66"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.POST",
+			"description": "Percentage of endpoints with method POST",
+			"statistic": "7"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.method.PUT",
+			"description": "Percentage of endpoints with method PUT",
+			"statistic": "26"
+		},
+		{
+			"level": "Informações",
+			"reason": "Informativo",
+			"site": "http://localhost:3000",
+			"key": "insight.endpoint.total",
+			"description": "Count of total endpoints",
+			"statistic": "42"
+		},
+		{
+			"level": "Informações",
+			"reason": "Exceeded Low",
+			"site": "http://localhost:3000",
+			"key": "insight.response.slow",
+			"description": "Percentage of slow responses",
+			"statistic": "33"
+		}
+	],
+	"site":[ 
+		{
+			"@name": "http://localhost:3000",
+			"@host": "localhost",
+			"@port": "3000",
+			"@ssl": "false",
+			"alerts": [ 
+				{
+					"pluginid": "10098",
+					"alertRef": "10098",
+					"alert": "Configura\u00E7\u00E3o Incorreta Entre Dom\u00EDnios",
+					"name": "Configura\u00E7\u00E3o Incorreta Entre Dom\u00EDnios",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>Web browser data loading may be possible, due to a Cross Origin Resource Sharing (CORS) misconfiguration on the web server.</p>",
+					"instances":[ 
+						{
+							"id": "2",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "20",
+							"uri": "http://localhost:3000/api/admin/contracts",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/contracts",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "7",
+							"uri": "http://localhost:3000/api/admin/services?status=",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/services (status)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "17",
+							"uri": "http://localhost:3000/api/admin/users",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/users",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						},
+						{
+							"id": "6",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "Access-Control-Allow-Origin: *",
+							"otherinfo": "A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Certifique-se de que dados confidenciais n\u00E3o estejam dispon\u00EDveis de maneira n\u00E3o autenticada (usando uma lista branca/de permiss\u00F5es de endere\u00E7os IP, por exemplo). Configure o cabe\u00E7alho HTTP \"Access-Control-Allow-Origin\" para um conjunto mais restritivo de dom\u00EDnios ou remova todos os cabe\u00E7alhos CORS inteiramente, para permitir que o navegador web aplique a Same Origin Policy (SOP) de uma maneira mais restritiva.</p>",
+					"otherinfo": "<p>A configura\u00E7\u00E3o incorreta do CORS no servidor da web permite solicita\u00E7\u00F5es de leitura entre dom\u00EDnios de dom\u00EDnios arbitr\u00E1rios de terceiros, usando APIs n\u00E3o autenticadas neste dom\u00EDnio. No entanto, as implementa\u00E7\u00F5es do navegador da Web n\u00E3o permitem que terceiros arbitr\u00E1rios leiam a resposta de APIs autenticadas. Isso reduz o risco um pouco. Essa configura\u00E7\u00E3o incorreta pode ser usada por um invasor para acessar dados que est\u00E3o dispon\u00EDveis de maneira n\u00E3o autenticada, mas que usam alguma outra forma de seguran\u00E7a, como lista de permiss\u00F5es de endere\u00E7os IP.</p>",
+					"reference": "<p>https://vulncat.fortify.com/en/detail?category=HTML5&subcategory=Overly%20Permissive%20CORS%20Policy</p>",
+					"cweid": "264",
+					"wascid": "14",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10038",
+					"alertRef": "10038-1",
+					"alert": "Content Security Policy (CSP) Header Not Set",
+					"name": "Content Security Policy (CSP) Header Not Set",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>Content Security Policy (CSP) is an added layer of security that helps to detect and mitigate certain types of attacks, including Cross Site Scripting (XSS) and data injection attacks. These attacks are used for everything from data theft to site defacement or distribution of malware. CSP provides a set of standard HTTP headers that allow website owners to declare approved sources of content that browsers should be allowed to load on that page \u2014 covered types are JavaScript, CSS, HTML frames, fonts, images and embeddable objects such as Java applets, ActiveX, audio and video files.</p>",
+					"instances":[ 
+						{
+							"id": "1",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "265",
+							"uri": "http://localhost:3000/api/admin/services/1",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/services\/1",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "2",
+					"systemic": true,
+					"solution": "<p>Ensure that your web server, application server, load balancer, etc. is configured to set the Content-Security-Policy header.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP</p><p>https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html</p><p>https://www.w3.org/TR/CSP/</p><p>https://w3c.github.io/webappsec-csp/</p><p>https://web.dev/articles/csp</p><p>https://caniuse.com/#feat=contentsecuritypolicy</p><p>https://content-security-policy.com/</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "120002",
+					"alertRef": "120002-1",
+					"alert": "Information Disclosure - JWT in Browser localStorage",
+					"name": "Information Disclosure - JWT in Browser localStorage",
+					"riskcode": "2",
+					"confidence": "3",
+					"riskdesc": "M\u00E9dio (Alto)",
+					"desc": "<p>JWT was stored in browser localStorage.</p><p>This is dangerous because data stored in localStorage does not expire. .</p>",
+					"instances":[ 
+						{
+							"id": "16",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "token",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "The following JWT was set:\nKey: token\nHeader: {\"alg\":\"HS256\",\"typ\":\"JWT\"}\nPayload: {\"id\":1,\"email\":\"admin@marketplace.com\",\"role\":\"admin\",\"iat\":1794424299}\nSignature: f3b17761f52a2ca06c6743106091293b0b570d361f8acd9e7664993c4c349cfb\nNote that this alert will only be raised once for each URL  key."
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>This is an informational alert and no action is necessary. </p>",
+					"otherinfo": "<p>The following JWT was set:</p><p>Key: token</p><p>Header: {\"alg\":\"HS256\",\"typ\":\"JWT\"}</p><p>Payload: {\"id\":1,\"email\":\"admin@marketplace.com\",\"role\":\"admin\",\"iat\":1794424299}</p><p>Signature: f3b17761f52a2ca06c6743106091293b0b570d361f8acd9e7664993c4c349cfb</p><p>Note that this alert will only be raised once for each URL  key.</p>",
+					"reference": "<p>https://www.zaproxy.org/blog/2020-09-03-zap-jwt-scanner/</p>",
+					"cweid": "922",
+					"wascid": "13",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10020",
+					"alertRef": "10020-1",
+					"alert": "Missing Anti-clickjacking Header",
+					"name": "Missing Anti-clickjacking Header",
+					"riskcode": "2",
+					"confidence": "2",
+					"riskdesc": "M\u00E9dio (M\u00E9dio)",
+					"desc": "<p>The response does not protect against 'ClickJacking' attacks. It should include either Content-Security-Policy with 'frame-ancestors' directive or X-Frame-Options.</p>",
+					"instances":[ 
+						{
+							"id": "257",
+							"uri": "http://localhost:3000",
+							"nodeName": "http:\/\/localhost:3000",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "0",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "x-frame-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "2",
+					"systemic": true,
+					"solution": "<p>Modern Web browsers support the Content-Security-Policy and X-Frame-Options HTTP headers. Ensure one of them is set on all web pages returned by your site/app.</p><p>If you expect the page to be framed only by pages on your server (e.g. it's part of a FRAMESET) then you'll want to use SAMEORIGIN, otherwise if you never expect the page to be framed, you should use DENY. Alternatively consider implementing Content Security Policy's \"frame-ancestors\" directive.</p>",
+					"otherinfo": "",
+					"reference": "<p>https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options</p>",
+					"cweid": "1021",
+					"wascid": "15",
+					"sourceid": "99"
+				},
+				{
+					"pluginid": "40014",
+					"alertRef": "40014-2",
+					"alert": "Fraqueza de script entre sites (persistente na resposta JSON)",
+					"name": "Fraqueza de script entre sites (persistente na resposta JSON)",
+					"riskcode": "1",
+					"confidence": "1",
+					"riskdesc": "Baixo (Baixo)",
+					"desc": "<p>Um ataque XSS foi encontrado em uma resposta JSON, isso pode deixar os consumidores de conte\u00FAdo vulner\u00E1veis a ataques se eles n\u00E3o manipularem os dados (resposta) de forma adequada.</p>",
+					"instances":[ 
+						{
+							"id": "431",
+							"uri": "http://localhost:3000/api/my-services",
+							"nodeName": "http:\/\/localhost:3000\/api\/my-services",
+							"method": "GET",
+							"param": "category",
+							"attack": "<script>alert(1);</script>",
+							"evidence": "",
+							"otherinfo": "Raised with LOW confidence as the Content-Type is not HTML."
+						},
+						{
+							"id": "430",
+							"uri": "http://localhost:3000/api/my-services",
+							"nodeName": "http:\/\/localhost:3000\/api\/my-services",
+							"method": "GET",
+							"param": "title",
+							"attack": "<script>alert(1);</script>",
+							"evidence": "",
+							"otherinfo": "Raised with LOW confidence as the Content-Type is not HTML."
+						}
+					],
+					"count": "2",
+					"systemic": false,
+					"solution": "<p></p><p>Fase: Arquitetura e Design.</p><p>Use uma biblioteca verificada ou framework que n\u00E3o permita que essa vulnerabilidade ocorra, ou forne\u00E7a constru\u00E7\u00F5es/implementa\u00E7\u00F5es que tornem essa vulnerabilidade mais f\u00E1cil de evitar.</p><p>Exemplos de bibliotecas e frameworks que facilitam a gera\u00E7\u00E3o de sa\u00EDda codificada adequadamente incluem a biblioteca Anti-XSS da Microsoft, o m\u00F3dulo de codifica\u00E7\u00E3o OWASP ESAPI e o Apache Wicket.</p><p></p><p></p><p>Fases: Implementa\u00E7\u00E3o | Arquitetura e Design.</p><p>Compreenda o contexto no qual seus dados ser\u00E3o usados e a codifica\u00E7\u00E3o que ser\u00E1 esperada. Isso \u00E9 especialmente importante ao transmitir dados entre componentes diferentes ou ao gerar sa\u00EDdas que podem conter v\u00E1rias codifica\u00E7\u00F5es ao mesmo tempo, como p\u00E1ginas da web ou mensagens de e-mail com v\u00E1rias partes. Estude todos os protocolos de comunica\u00E7\u00E3o e representa\u00E7\u00F5es de dados esperados para determinar as estrat\u00E9gias de codifica\u00E7\u00E3o necess\u00E1rias.</p><p>Para quaisquer dados que ser\u00E3o enviados para outra p\u00E1gina da web, especialmente quaisquer dados recebidos de entradas externas, use a codifica\u00E7\u00E3o apropriada em todos os caracteres n\u00E3o alfanum\u00E9ricos.</p><p>Consulte a P\u00E1gina de Dicas de Preven\u00E7\u00E3o de XSS para obter mais detalhes sobre os tipos de codifica\u00E7\u00E3o e escape que s\u00E3o necess\u00E1rios.</p><p></p><p></p><p>Fase: Arquitetura e Design.</p><p>Para todas as verifica\u00E7\u00F5es de seguran\u00E7a realizadas no lado do cliente, certifique-se de que essas verifica\u00E7\u00F5es sejam duplicadas no lado do servidor, a fim de evitar a CWE-602. Invasores podem ignorar as verifica\u00E7\u00F5es do lado do cliente, modificando os valores ap\u00F3s a realiza\u00E7\u00E3o das verifica\u00E7\u00F5es ou alterando o cliente para remover as verifica\u00E7\u00F5es do lado do cliente completamente. Em seguida, esses valores modificados poderiam ser enviados ao servidor.</p><p></p><p>Se dispon\u00EDvel, use mecanismos estruturados que imp\u00F5em automaticamente a separa\u00E7\u00E3o entre dados e c\u00F3digo. Esses mecanismos podem ser capazes de fornecer cita\u00E7\u00E3o, codifica\u00E7\u00E3o e valida\u00E7\u00E3o relevantes automaticamente, em vez de depender do desenvolvedor para fornecer esse recurso em cada ponto onde a sa\u00EDda \u00E9 gerada.</p><p></p><p></p><p>Fase: Implementa\u00E7\u00E3o.</p><p>Para cada p\u00E1gina web gerada, use e especifique uma codifica\u00E7\u00E3o de caracteres, como ISO-8859-1 ou UTF-8. Quando uma codifica\u00E7\u00E3o n\u00E3o \u00E9 especificada, o navegador pode escolher uma codifica\u00E7\u00E3o diferente, tentando adivinhar por elimina\u00E7\u00E3o qual codifica\u00E7\u00E3o est\u00E1 realmente sendo usada pela p\u00E1gina da web. Isso pode fazer com que o navegador da web trate certas sequ\u00EAncias como especiais, abrindo o cliente para ataques XSS sutis. Consulte a CWE-116 para obter mais informa\u00E7\u00F5es sobre mitiga\u00E7\u00F5es relacionadas \u00E0 codifica\u00E7\u00E3o/escape.</p><p></p><p>Para ajudar a mitigar os ataques XSS contra cookie de sess\u00E3o do usu\u00E1rio, defina o cookie de sess\u00E3o como HttpOnly. Em navegadores que suportam o recurso HttpOnly (como vers\u00F5es mais recentes do Internet Explorer e Firefox), esse atributo pode impedir que o cookie de sess\u00E3o do usu\u00E1rio seja acess\u00EDvel a scripts mal-intencionados do lado do cliente que usam document.cookie. Esta n\u00E3o \u00E9 uma solu\u00E7\u00E3o completa, j\u00E1 que HttpOnly n\u00E3o \u00E9 compat\u00EDvel com todos os navegadores. Mais importante ainda, XMLHTTPRequest e outras poderosas tecnologias de navegadores fornecem acesso de leitura a cabe\u00E7alhos HTTP, incluindo o cabe\u00E7alho Set-Cookie no qual o sinalizador HttpOnly \u00E9 definido.</p><p></p><p>Presuma que toda a entrada de dados \u00E9 maliciosa. Use uma estrat\u00E9gia de valida\u00E7\u00E3o de entrada \"aceita como boa\", ou seja, use uma lista de permiss\u00F5es de entradas aceit\u00E1veis que estejam estritamente em conformidade com as especifica\u00E7\u00F5es. Rejeite quaisquer entradas que n\u00E3o estejam estritamente de acordo com as especifica\u00E7\u00F5es ou transforme-as em algo que esteja. N\u00E3o confie exclusivamente na procura de entradas maliciosas ou malformadas (ou seja, n\u00E3o confie em uma lista de nega\u00E7\u00E3o). No entanto, as listas de nega\u00E7\u00E3o podem ser \u00FAteis para detectar ataques em potencial ou determinar quais entradas est\u00E3o t\u00E3o malformadas que devem ser rejeitadas imediatamente.</p><p></p><p>Ao executar a valida\u00E7\u00E3o de entradas de dados, considere todas as propriedades potencialmente relevantes, incluindo comprimento, tipo de entrada, a gama completa de valores aceit\u00E1veis, entradas ausentes ou extras, sintaxe, consist\u00EAncia entre campos relacionados e conformidade com as regras de neg\u00F3cios. Como um exemplo de l\u00F3gica de regra de neg\u00F3cios, \"barco\" pode ser sintaticamente v\u00E1lido porque cont\u00E9m apenas caracteres alfanum\u00E9ricos, mas n\u00E3o \u00E9 v\u00E1lido se voc\u00EA estiver esperando cores como \"vermelho\" ou \"azul\".</p><p></p><p>Certifique-se de realizar a valida\u00E7\u00E3o de entrada em interfaces bem definidas dentro do aplicativo. Isso ajudar\u00E1 a proteger o aplicativo, mesmo se um componente for reutilizado ou movido para outro lugar.</p><p>\t</p>",
+					"otherinfo": "<p>Raised with LOW confidence as the Content-Type is not HTML.</p>",
+					"reference": "<p>https://owasp.org/www-community/attacks/xss/</p><p>https://cwe.mitre.org/data/definitions/79.html</p>",
+					"cweid": "79",
+					"wascid": "8",
+					"sourceid": "1560"
+				},
+				{
+					"pluginid": "10037",
+					"alertRef": "10037",
+					"alert": "O servidor vaza informa\u00E7\u00F5es por meio dos campos de cabe\u00E7alho de resposta HTTP \"X-Powered-By\"",
+					"name": "O servidor vaza informa\u00E7\u00F5es por meio dos campos de cabe\u00E7alho de resposta HTTP \"X-Powered-By\"",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>O servidor da web/aplicativo est\u00E1 vazando informa\u00E7\u00F5es por meio de um ou mais cabe\u00E7alhos de resposta HTTP \"X-Powered-By\". O acesso a essas informa\u00E7\u00F5es pode facilitar que os invasores identifiquem outras estruturas/componentes dos quais seu aplicativo da web depende e as vulnerabilidades \u00E0s quais esses componentes podem estar sujeitos.</p>",
+					"instances":[ 
+						{
+							"id": "5",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "22",
+							"uri": "http://localhost:3000/api/admin/contracts",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/contracts",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "11",
+							"uri": "http://localhost:3000/api/admin/services?status=",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/services (status)",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "19",
+							"uri": "http://localhost:3000/api/admin/users",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/users",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						},
+						{
+							"id": "10",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "",
+							"attack": "",
+							"evidence": "X-Powered-By: Express",
+							"otherinfo": ""
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Certifique-se de que seu servidor web, servidor de aplicativos, balanceador de carga, etc. esteja configurado para suprimir cabe\u00E7alhos \"X-Powered-By\".</p>",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/01-Information_Gathering/08-Fingerprint_Web_Application_Framework</p><p>https://www.troyhunt.com/shhh-dont-let-your-response-headers/</p>",
+					"cweid": "497",
+					"wascid": "13",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10021",
+					"alertRef": "10021",
+					"alert": "X-Content-Type-Options Header Missing",
+					"name": "X-Content-Type-Options Header Missing",
+					"riskcode": "1",
+					"confidence": "2",
+					"riskdesc": "Baixo (M\u00E9dio)",
+					"desc": "<p>The Anti-MIME-Sniffing header X-Content-Type-Options was not set to 'nosniff'. This allows older versions of Internet Explorer and Chrome to perform MIME-sniffing on the response body, potentially causing the response body to be interpreted and displayed as a content type other than the declared content type. Current (early 2014) and legacy versions of Firefox will use the declared content type (if one is set), rather than performing MIME-sniffing.</p>",
+					"instances":[ 
+						{
+							"id": "4",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "21",
+							"uri": "http://localhost:3000/api/admin/contracts",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/contracts",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "9",
+							"uri": "http://localhost:3000/api/admin/services?status=",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/services (status)",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "18",
+							"uri": "http://localhost:3000/api/admin/users",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/users",
+							"method": "GET",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						},
+						{
+							"id": "8",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "x-content-type-options",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.\nAt \"High\" threshold this scan rule will not alert on client or server error responses."
+						}
+					],
+					"count": "5",
+					"systemic": true,
+					"solution": "<p>Ensure that the application/web server sets the Content-Type header appropriately, and that it sets the X-Content-Type-Options header to 'nosniff' for all web pages.</p><p>If possible, ensure that the end user uses a standards-compliant and modern web browser that does not perform MIME-sniffing at all, or that can be directed by the web application/web server to not perform MIME-sniffing.</p>",
+					"otherinfo": "<p>This issue still applies to error type pages (401, 403, 500, etc.) as those pages are often still affected by injection issues, in which case there is still concern for browsers sniffing pages away from their actual content type.</p><p>At \"High\" threshold this scan rule will not alert on client or server error responses.</p>",
+					"reference": "<p>https://learn.microsoft.com/en-us/previous-versions/windows/internet-explorer/ie-developer/compatibility/gg622941(v=vs.85)</p><p>https://owasp.org/www-community/Security_Headers</p>",
+					"cweid": "693",
+					"wascid": "15",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "120000",
+					"alertRef": "120000-1",
+					"alert": "Information Disclosure - Information in Browser localStorage",
+					"name": "Information Disclosure - Information in Browser localStorage",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informativo (Alto)",
+					"desc": "<p>Information was stored in browser localStorage.</p><p>This is not unusual or necessarily unsafe - this informational alert has been raised to help you get a better understanding of what this app is doing. For more details see the Client tabs - this information was set directly in the browser and will therefore not necessarily appear in this form in any HTTP(S) messages.</p>",
+					"instances":[ 
+						{
+							"id": "15",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "token",
+							"attack": "",
+							"evidence": "",
+							"otherinfo": "The following data (key=value) was set: token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJhZG1pbkBtYXJrZXRwbGFjZS5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3OTQ0MjQyOTl9.87F3YfUqLKBsZ0MQYJEpOwtXDTYfis2edmSZPEw0nPs\nNote that this alert will only be raised once for each URL  key."
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>This is an informational alert and no action is necessary. </p>",
+					"otherinfo": "<p>The following data (key=value) was set: token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJhZG1pbkBtYXJrZXRwbGFjZS5jb20iLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3OTQ0MjQyOTl9.87F3YfUqLKBsZ0MQYJEpOwtXDTYfis2edmSZPEw0nPs</p><p>Note that this alert will only be raised once for each URL  key.</p>",
+					"reference": "",
+					"cweid": "359",
+					"wascid": "13",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10109",
+					"alertRef": "10109",
+					"alert": "Modern Web Application",
+					"name": "Modern Web Application",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The application appears to be a modern web application. If you need to explore it automatically then the Client Spider may well be more effective than the standard one.</p>",
+					"instances":[ 
+						{
+							"id": "3",
+							"uri": "http://localhost:3000/",
+							"nodeName": "http:\/\/localhost:3000\/",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script>\r\n        // Estado global\r\n        let currentUser = null;\r\n        let currentTab = 'browse';\r\n\r\n        // Utilit\u00E1rios\r\n        const api = {\r\n            async request(endpoint, options = {}) {\r\n                const token = localStorage.getItem('token');\r\n                const headers = {\r\n                    'Content-Type': 'application/json',\r\n                    ...(token && { 'Authorization': `Bearer ${token}` }),\r\n                    ...options.headers\r\n                };\r\n\r\n                const response = await fetch(`/api${endpoint}`, {\r\n                    ...options,\r\n                    headers\r\n                });\r\n\r\n                if (!response.ok) {\r\n                    const error = await response.json();\r\n                    throw new Error(error.error || 'Erro na requisi\u00E7\u00E3o');\r\n                }\r\n\r\n                return response.json();\r\n            },\r\n\r\n            get(endpoint) { return this.request(endpoint); },\r\n            post(endpoint, data) { return this.request(endpoint, { method: 'POST', body: JSON.stringify(data) }); },\r\n            put(endpoint, data) { return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data) }); },\r\n            delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); }\r\n        };\r\n\r\n        function showToast(message, type = 'success') {\r\n            const toast = document.getElementById('toast');\r\n            toast.textContent = message;\r\n            toast.className = `toast ${type}`;\r\n            toast.style.display = 'block';\r\n            setTimeout(() => toast.style.display = 'none', 3000);\r\n        }\r\n\r\n        function formatCurrency(value) {\r\n            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);\r\n        }\r\n\r\n        function formatDate(dateString) {\r\n            return new Date(dateString).toLocaleDateString('pt-BR');\r\n        }\r\n\r\n        // Templates\r\n        const templates = {\r\n            auth: () => `\r\n                <div class=\"auth-container\">\r\n                    <h2 class=\"text-center mb-2\">Bem-vindo ao FreelaHub</h2>\r\n                    <div class=\"tabs\" style=\"border-bottom: none; margin-bottom: 1rem;\">\r\n                        <button class=\"tab active\" onclick=\"switchAuthTab('login')\">Entrar</button>\r\n                        <button class=\"tab\" onclick=\"switchAuthTab('register')\">Cadastrar</button>\r\n                    </div>\r\n                    \r\n                    <div id=\"login-form\">\r\n                        <div class=\"form-group\">\r\n                            <label>Email</label>\r\n                            <input type=\"email\" id=\"login-email\" placeholder=\"seu@email.com\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Senha</label>\r\n                            <input type=\"password\" id=\"login-password\" placeholder=\"******\">\r\n                        </div>\r\n                        <button class=\"btn btn-primary\" style=\"width: 100%;\" onclick=\"login()\">Entrar</button>\r\n                    </div>\r\n\r\n                    <div id=\"register-form\" class=\"hidden\">\r\n                        <div class=\"form-group\">\r\n                            <label>Nome Completo</label>\r\n                            <input type=\"text\" id=\"register-name\" placeholder=\"Seu nome\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Email</label>\r\n                            <input type=\"email\" id=\"register-email\" placeholder=\"seu@email.com\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Senha</label>\r\n                            <input type=\"password\" id=\"register-password\" placeholder=\"M\u00EDnimo 6 caracteres\">\r\n                        </div>\r\n                        <button class=\"btn btn-primary\" style=\"width: 100%;\" onclick=\"register()\">Criar Conta</button>\r\n                    </div>\r\n                </div>\r\n            `,\r\n\r\n            header: () => `\r\n                <header>\r\n                    <div class=\"container header-content\">\r\n                        <a href=\"#\" class=\"logo\" onclick=\"setTab('browse')\">FreelaHub</a>\r\n                        <div class=\"nav-links\">\r\n                            <span style=\"font-size: 0.875rem; color: var(--secondary);\">\r\n                                Ol\u00E1, ${currentUser.name} ${currentUser.role === 'admin' ? '(Admin)' : ''}\r\n                            </span>\r\n                            <button class=\"btn btn-outline btn-sm\" onclick=\"logout()\">Sair</button>\r\n                        </div>\r\n                    </div>\r\n                </header>\r\n            `,\r\n\r\n            userDashboard: () => `\r\n                ${templates.header()}\r\n                <div class=\"container dashboard\">\r\n                    <div class=\"tabs\">\r\n                        <button class=\"tab ${currentTab === 'browse' ? 'active' : ''}\" onclick=\"setTab('browse')\">Explorar Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'my-services' ? 'active' : ''}\" onclick=\"setTab('my-services')\">Meus Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'my-contracts' ? 'active' : ''}\" onclick=\"setTab('my-contracts')\">Meus Contratos</button>\r\n                    </div>\r\n\r\n                    <div id=\"tab-browse\" class=\"tab-content ${currentTab === 'browse' ? 'active' : ''}\">\r\n                        <div class=\"filters\">\r\n                            <select id=\"category-filter\" onchange=\"loadServices()\">\r\n                                <option value=\"\">Todas as categorias</option>\r\n                                <option value=\"design\">Design</option>\r\n                                <option value=\"development\">Desenvolvimento</option>\r\n                                <option value=\"marketing\">Marketing</option>\r\n                                <option value=\"writing\">Reda\u00E7\u00E3o</option>\r\n                                <option value=\"translation\">Tradu\u00E7\u00E3o</option>\r\n                                <option value=\"video\">V\u00EDdeo/\u00C1udio</option>\r\n                                <option value=\"other\">Outros</option>\r\n                            </select>\r\n                            <input type=\"text\" id=\"search-input\" placeholder=\"Buscar servi\u00E7os...\" onkeyup=\"debounceSearch()\">\r\n                        </div>\r\n                        <div id=\"services-grid\" class=\"grid\">\r\n                            <div class=\"loading\">Carregando servi\u00E7os...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-my-services\" class=\"tab-content ${currentTab === 'my-services' ? 'active' : ''}\">\r\n                        <button class=\"btn btn-primary mb-2\" onclick=\"openServiceModal()\">+ Novo Servi\u00E7o</button>\r\n                        <div id=\"my-services-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-my-contracts\" class=\"tab-content ${currentTab === 'my-contracts' ? 'active' : ''}\">\r\n                        <div id=\"contracts-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n                </div>\r\n\r\n                <!-- Modal de Servi\u00E7o -->\r\n                <div id=\"service-modal\" class=\"modal\">\r\n                    <div class=\"modal-content\">\r\n                        <div class=\"modal-header\">\r\n                            <h3 id=\"modal-title\">Novo Servi\u00E7o</h3>\r\n                            <button class=\"close\" onclick=\"closeModal()\">&times;</button>\r\n                        </div>\r\n                        <form id=\"service-form\" onsubmit=\"saveService(event)\">\r\n                            <input type=\"hidden\" id=\"service-id\">\r\n                            <div class=\"form-group\">\r\n                                <label>T\u00EDtulo do Servi\u00E7o</label>\r\n                                <input type=\"text\" id=\"service-title\" required minlength=\"3\">\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Categoria</label>\r\n                                <select id=\"service-category\" required>\r\n                                    <option value=\"\">Selecione...</option>\r\n                                    <option value=\"design\">Design</option>\r\n                                    <option value=\"development\">Desenvolvimento</option>\r\n                                    <option value=\"marketing\">Marketing</option>\r\n                                    <option value=\"writing\">Reda\u00E7\u00E3o</option>\r\n                                    <option value=\"translation\">Tradu\u00E7\u00E3o</option>\r\n                                    <option value=\"video\">V\u00EDdeo/\u00C1udio</option>\r\n                                    <option value=\"other\">Outros</option>\r\n                                </select>\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Pre\u00E7o (R$)</label>\r\n                                <input type=\"number\" id=\"service-price\" step=\"0.01\" min=\"0\" required>\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Descri\u00E7\u00E3o</label>\r\n                                <textarea id=\"service-description\" rows=\"4\" required minlength=\"10\"></textarea>\r\n                            </div>\r\n                            <div class=\"flex gap-2\">\r\n                                <button type=\"submit\" class=\"btn btn-primary\">Salvar</button>\r\n                                <button type=\"button\" class=\"btn btn-outline\" onclick=\"closeModal()\">Cancelar</button>\r\n                            </div>\r\n                        </form>\r\n                    </div>\r\n                </div>\r\n            `,\r\n\r\n            adminDashboard: () => `\r\n                ${templates.header()}\r\n                <div class=\"container dashboard\">\r\n                    <div class=\"tabs\">\r\n                        <button class=\"tab ${currentTab === 'admin-services' ? 'active' : ''}\" onclick=\"setTab('admin-services')\">Modera\u00E7\u00E3o de Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'admin-users' ? 'active' : ''}\" onclick=\"setTab('admin-users')\">Usu\u00E1rios</button>\r\n                        <button class=\"tab ${currentTab === 'admin-contracts' ? 'active' : ''}\" onclick=\"setTab('admin-contracts')\">Todos os Contratos</button>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-services\" class=\"tab-content ${currentTab === 'admin-services' ? 'active' : ''}\">\r\n                        <div class=\"filters\">\r\n                            <select id=\"admin-status-filter\" onchange=\"loadAdminServices()\">\r\n                                <option value=\"\">Todos os status</option>\r\n                                <option value=\"pending\">Pendentes</option>\r\n                                <option value=\"approved\">Aprovados</option>\r\n                                <option value=\"rejected\">Rejeitados</option>\r\n                                <option value=\"removed\">Removidos</option>\r\n                            </select>\r\n                        </div>\r\n                        <div id=\"admin-services-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-users\" class=\"tab-content ${currentTab === 'admin-users' ? 'active' : ''}\">\r\n                        <div id=\"admin-users-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-contracts\" class=\"tab-content ${currentTab === 'admin-contracts' ? 'active' : ''}\">\r\n                        <div id=\"admin-contracts-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n                </div>\r\n            `\r\n        };\r\n\r\n        // Fun\u00E7\u00F5es de Autentica\u00E7\u00E3o\r\n        function switchAuthTab(tab) {\r\n            document.querySelectorAll('.auth-container .tab').forEach(t => t.classList.remove('active'));\r\n            event.target.classList.add('active');\r\n            \r\n            if (tab === 'login') {\r\n                document.getElementById('login-form').classList.remove('hidden');\r\n                document.getElementById('register-form').classList.add('hidden');\r\n            } else {\r\n                document.getElementById('login-form').classList.add('hidden');\r\n                document.getElementById('register-form').classList.remove('hidden');\r\n            }\r\n        }\r\n\r\n        async function login() {\r\n            const email = document.getElementById('login-email').value;\r\n            const password = document.getElementById('login-password').value;\r\n\r\n            try {\r\n                const data = await api.post('/login', { email, password });\r\n                localStorage.setItem('token', data.token);\r\n                currentUser = data.user;\r\n                renderApp();\r\n                showToast('Login realizado com sucesso!');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function register() {\r\n            const name = document.getElementById('register-name').value;\r\n            const email = document.getElementById('register-email').value;\r\n            const password = document.getElementById('register-password').value;\r\n\r\n            try {\r\n                const data = await api.post('/register', { name, email, password });\r\n                localStorage.setItem('token', data.token);\r\n                currentUser = data.user;\r\n                renderApp();\r\n                showToast('Conta criada com sucesso!');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        function logout() {\r\n            localStorage.removeItem('token');\r\n            currentUser = null;\r\n            currentTab = 'browse';\r\n            renderApp();\r\n        }\r\n\r\n        // Navega\u00E7\u00E3o\r\n        function setTab(tab) {\r\n            currentTab = tab;\r\n            renderApp();\r\n        }\r\n\r\n        // Renderiza\u00E7\u00E3o Principal\r\n        function renderApp() {\r\n            const app = document.getElementById('app');\r\n            \r\n            if (!currentUser) {\r\n                app.innerHTML = templates.auth();\r\n                return;\r\n            }\r\n\r\n            if (currentUser.role === 'admin') {\r\n                app.innerHTML = templates.adminDashboard();\r\n                if (currentTab === 'admin-services') loadAdminServices();\r\n                else if (currentTab === 'admin-users') loadAdminUsers();\r\n                else if (currentTab === 'admin-contracts') loadAdminContracts();\r\n                else setTab('admin-services');\r\n            } else {\r\n                app.innerHTML = templates.userDashboard();\r\n                if (currentTab === 'browse') loadServices();\r\n                else if (currentTab === 'my-services') loadMyServices();\r\n                else if (currentTab === 'my-contracts') loadMyContracts();\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es de Servi\u00E7os (Usu\u00E1rio)\r\n        let searchTimeout;\r\n        function debounceSearch() {\r\n            clearTimeout(searchTimeout);\r\n            searchTimeout = setTimeout(loadServices, 500);\r\n        }\r\n\r\n        async function loadServices() {\r\n            const category = document.getElementById('category-filter')?.value || '';\r\n            const search = document.getElementById('search-input')?.value || '';\r\n            \r\n            try {\r\n                const services = await api.get(`/services?category=${category}&search=${search}`);\r\n                const container = document.getElementById('services-grid');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum servi\u00E7o encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">${escapeHtml(service.provider_name)} \u2022 ${formatDate(service.created_at)}</div>\r\n                            </div>\r\n                            <span class=\"badge badge-info\">${formatCurrency(service.price)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); font-size: 0.875rem; margin-bottom: 1rem;\">\r\n                            ${escapeHtml(service.description).substring(0, 150)}${service.description.length > 150 ? '...' : ''}\r\n                        </p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span class=\"badge badge-success\">${getCategoryLabel(service.category)}</span>\r\n                            ${service.user_id !== currentUser.id ? \r\n                                `<button class=\"btn btn-primary btn-sm\" onclick=\"hireService(${service.id})\">Contratar</button>` : \r\n                                '<span style=\"font-size: 0.875rem; color: var(--secondary);\">Seu servi\u00E7o</span>'\r\n                            }\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadMyServices() {\r\n            try {\r\n                const services = await api.get('/my-services');\r\n                const container = document.getElementById('my-services-list');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Voc\u00EA ainda n\u00E3o publicou nenhum servi\u00E7o</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">Criado em ${formatDate(service.created_at)}</div>\r\n                            </div>\r\n                            <span class=\"badge ${getStatusBadgeClass(service.status)}\">${getStatusLabel(service.status)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); margin-bottom: 1rem;\">${escapeHtml(service.description)}</p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600; color: var(--primary);\">${formatCurrency(service.price)}</span>\r\n                            <div class=\"flex gap-2\">\r\n                                <button class=\"btn btn-outline btn-sm\" onclick='editService(${JSON.stringify(service)})'>Editar</button>\r\n                                <button class=\"btn btn-danger btn-sm\" onclick=\"deleteService(${service.id})\">Excluir</button>\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        function openServiceModal(service = null) {\r\n            const modal = document.getElementById('service-modal');\r\n            const form = document.getElementById('service-form');\r\n            const title = document.getElementById('modal-title');\r\n            \r\n            if (service) {\r\n                title.textContent = 'Editar Servi\u00E7o';\r\n                document.getElementById('service-id').value = service.id;\r\n                document.getElementById('service-title').value = service.title;\r\n                document.getElementById('service-category').value = service.category;\r\n                document.getElementById('service-price').value = service.price;\r\n                document.getElementById('service-description').value = service.description;\r\n            } else {\r\n                title.textContent = 'Novo Servi\u00E7o';\r\n                form.reset();\r\n                document.getElementById('service-id').value = '';\r\n            }\r\n            \r\n            modal.classList.add('active');\r\n        }\r\n\r\n        function editService(service) {\r\n            openServiceModal(service);\r\n        }\r\n\r\n        function closeModal() {\r\n            document.getElementById('service-modal').classList.remove('active');\r\n        }\r\n\r\n        async function saveService(event) {\r\n            event.preventDefault();\r\n            \r\n            const id = document.getElementById('service-id').value;\r\n            const data = {\r\n                title: document.getElementById('service-title').value,\r\n                category: document.getElementById('service-category').value,\r\n                price: parseFloat(document.getElementById('service-price').value),\r\n                description: document.getElementById('service-description').value\r\n            };\r\n\r\n            try {\r\n                if (id) {\r\n                    await api.put(`/services/${id}`, data);\r\n                    showToast('Servi\u00E7o atualizado com sucesso!');\r\n                } else {\r\n                    await api.post('/services', data);\r\n                    showToast('Servi\u00E7o criado com sucesso! Aguardando aprova\u00E7\u00E3o.');\r\n                }\r\n                closeModal();\r\n                loadMyServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function deleteService(id) {\r\n            if (!confirm('Tem certeza que deseja excluir este servi\u00E7o?')) return;\r\n            \r\n            try {\r\n                await api.delete(`/services/${id}`);\r\n                showToast('Servi\u00E7o exclu\u00EDdo com sucesso!');\r\n                loadMyServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function hireService(serviceId) {\r\n            if (!confirm('Deseja contratar este servi\u00E7o?')) return;\r\n            \r\n            try {\r\n                await api.post('/contracts', { service_id: serviceId });\r\n                showToast('Servi\u00E7o contratado com sucesso!');\r\n                setTab('my-contracts');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es de Contratos\r\n        async function loadMyContracts() {\r\n            try {\r\n                const contracts = await api.get('/my-contracts');\r\n                const container = document.getElementById('contracts-list');\r\n                \r\n                if (contracts.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Voc\u00EA n\u00E3o possui contratos</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = contracts.map(contract => {\r\n                    const isClient = contract.client_id === currentUser.id;\r\n                    const otherParty = isClient ? contract.provider_name : contract.client_name;\r\n                    const role = isClient ? 'Contratante' : 'Prestador';\r\n                    \r\n                    return `\r\n                        <div class=\"card\">\r\n                            <div class=\"card-header\">\r\n                                <div>\r\n                                    <div class=\"card-title\">${escapeHtml(contract.service_title)}</div>\r\n                                    <div class=\"card-meta\">\r\n                                        ${role} \u2022 Com ${escapeHtml(otherParty)} \u2022 Iniciado em ${formatDate(contract.created_at)}\r\n                                    </div>\r\n                                </div>\r\n                                <span class=\"badge ${contract.status === 'active' ? 'badge-success' : 'badge-secondary'}\">\r\n                                    ${contract.status === 'active' ? 'Ativo' : contract.status === 'completed' ? 'Conclu\u00EDdo' : 'Cancelado'}\r\n                                </span>\r\n                            </div>\r\n                            <div class=\"flex justify-between items-center\">\r\n                                <span style=\"font-weight: 600;\">${formatCurrency(contract.price)}</span>\r\n                                ${contract.status === 'active' ? `\r\n                                    <div class=\"flex gap-2\">\r\n                                        <button class=\"btn btn-success btn-sm\" onclick=\"updateContractStatus(${contract.id}, 'completed')\">Concluir</button>\r\n                                        <button class=\"btn btn-danger btn-sm\" onclick=\"updateContractStatus(${contract.id}, 'cancelled')\">Cancelar</button>\r\n                                    </div>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    `;\r\n                }).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function updateContractStatus(id, status) {\r\n            const action = status === 'completed' ? 'concluir' : 'cancelar';\r\n            if (!confirm(`Deseja realmente ${action} este contrato?`)) return;\r\n            \r\n            try {\r\n                await api.put(`/contracts/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadMyContracts();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es Administrativas\r\n        async function loadAdminServices() {\r\n            const status = document.getElementById('admin-status-filter')?.value || '';\r\n            \r\n            try {\r\n                const services = await api.get(`/admin/services?status=${status}`);\r\n                const container = document.getElementById('admin-services-list');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum servi\u00E7o encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">\r\n                                    Por ${escapeHtml(service.provider_name)} (${service.provider_email}) \u2022 \r\n                                    ${formatDate(service.created_at)}\r\n                                </div>\r\n                            </div>\r\n                            <span class=\"badge ${getStatusBadgeClass(service.status)}\">${getStatusLabel(service.status)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); margin-bottom: 1rem;\">${escapeHtml(service.description)}</p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600;\">${formatCurrency(service.price)}</span>\r\n                            <div class=\"flex gap-2\">\r\n                                ${service.status === 'pending' ? `\r\n                                    <button class=\"btn btn-success btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'approved')\">Aprovar</button>\r\n                                    <button class=\"btn btn-danger btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'rejected')\">Rejeitar</button>\r\n                                ` : ''}\r\n                                ${service.status === 'approved' ? `\r\n                                    <button class=\"btn btn-danger btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'removed')\">Remover</button>\r\n                                ` : ''}\r\n                                ${service.status === 'removed' || service.status === 'rejected' ? `\r\n                                    <button class=\"btn btn-success btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'approved')\">Restaurar</button>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function updateServiceStatus(id, status) {\r\n            try {\r\n                await api.put(`/admin/services/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadAdminServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadAdminUsers() {\r\n            try {\r\n                const users = await api.get('/admin/users');\r\n                const container = document.getElementById('admin-users-list');\r\n                \r\n                container.innerHTML = users.map(user => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(user.name)} ${user.role === 'admin' ? '(Admin)' : ''}</div>\r\n                                <div class=\"card-meta\">\r\n                                    ${user.email} \u2022 Membro desde ${formatDate(user.created_at)}\r\n                                </div>\r\n                                <div style=\"font-size: 0.875rem; color: var(--secondary); margin-top: 0.5rem;\">\r\n                                    ${user.services_count} servi\u00E7os \u2022 ${user.contracts_count} contratos\r\n                                </div>\r\n                            </div>\r\n                            <div class=\"flex gap-2 items-center\">\r\n                                <span class=\"badge ${user.status === 'active' ? 'badge-success' : 'badge-danger'}\">\r\n                                    ${user.status === 'active' ? 'Ativo' : 'Suspenso'}\r\n                                </span>\r\n                                ${user.id !== currentUser.id ? `\r\n                                    <button class=\"btn ${user.status === 'active' ? 'btn-danger' : 'btn-success'} btn-sm\" \r\n                                            onclick=\"toggleUserStatus(${user.id}, '${user.status === 'active' ? 'suspended' : 'active'}')\">\r\n                                        ${user.status === 'active' ? 'Suspender' : 'Reativar'}\r\n                                    </button>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function toggleUserStatus(id, status) {\r\n            const action = status === 'suspended' ? 'suspender' : 'reativar';\r\n            if (!confirm(`Deseja realmente ${action} este usu\u00E1rio?`)) return;\r\n            \r\n            try {\r\n                await api.put(`/admin/users/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadAdminUsers();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadAdminContracts() {\r\n            try {\r\n                const contracts = await api.get('/admin/contracts');\r\n                const container = document.getElementById('admin-contracts-list');\r\n                \r\n                if (contracts.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum contrato encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = contracts.map(contract => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(contract.service_title)}</div>\r\n                                <div class=\"card-meta\">\r\n                                    ${escapeHtml(contract.client_name)} \u2192 ${escapeHtml(contract.provider_name)}\r\n                                </div>\r\n                            </div>\r\n                            <span class=\"badge ${contract.status === 'active' ? 'badge-success' : 'badge-secondary'}\">\r\n                                ${contract.status === 'active' ? 'Ativo' : contract.status === 'completed' ? 'Conclu\u00EDdo' : 'Cancelado'}\r\n                            </span>\r\n                        </div>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600;\">${formatCurrency(contract.price)}</span>\r\n                            <span style=\"font-size: 0.875rem; color: var(--secondary);\">${formatDate(contract.created_at)}</span>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Utilit\u00E1rios auxiliares\r\n        function escapeHtml(text) {\r\n            const div = document.createElement('div');\r\n            div.textContent = text;\r\n            return div.innerHTML;\r\n        }\r\n\r\n        function getCategoryLabel(category) {\r\n            const labels = {\r\n                design: 'Design',\r\n                development: 'Desenvolvimento',\r\n                marketing: 'Marketing',\r\n                writing: 'Reda\u00E7\u00E3o',\r\n                translation: 'Tradu\u00E7\u00E3o',\r\n                video: 'V\u00EDdeo/\u00C1udio',\r\n                other: 'Outros'\r\n            };\r\n            return labels[category] || category;\r\n        }\r\n\r\n        function getStatusLabel(status) {\r\n            const labels = {\r\n                pending: 'Pendente',\r\n                approved: 'Aprovado',\r\n                rejected: 'Rejeitado',\r\n                removed: 'Removido',\r\n                active: 'Ativo',\r\n                completed: 'Conclu\u00EDdo',\r\n                cancelled: 'Cancelado'\r\n            };\r\n            return labels[status] || status;\r\n        }\r\n\r\n        function getStatusBadgeClass(status) {\r\n            const classes = {\r\n                pending: 'badge-warning',\r\n                approved: 'badge-success',\r\n                rejected: 'badge-danger',\r\n                removed: 'badge-danger',\r\n                active: 'badge-success',\r\n                completed: 'badge-info',\r\n                cancelled: 'badge-danger'\r\n            };\r\n            return classes[status] || 'badge-secondary';\r\n        }\r\n\r\n        // Inicializa\u00E7\u00E3o\r\n        async function init() {\r\n            const token = localStorage.getItem('token');\r\n            if (token) {\r\n                try {\r\n                    // Validar token fazendo uma requisi\u00E7\u00E3o qualquer\r\n                    await api.get('/my-services');\r\n                    // Se n\u00E3o der erro, decodificar o token para pegar info do usu\u00E1rio\r\n                    const payload = JSON.parse(atob(token.split('.')[1]));\r\n                    currentUser = {\r\n                        id: payload.id,\r\n                        email: payload.email,\r\n                        role: payload.role,\r\n                        name: payload.name || payload.email.split('@')[0]\r\n                    };\r\n                } catch (error) {\r\n                    localStorage.removeItem('token');\r\n                }\r\n            }\r\n            renderApp();\r\n        }\r\n\r\n        init();\r\n    </script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						},
+						{
+							"id": "281",
+							"uri": "http://localhost:3000/api/admin/services/1",
+							"nodeName": "http:\/\/localhost:3000\/api\/admin\/services\/1",
+							"method": "GET",
+							"param": "",
+							"attack": "",
+							"evidence": "<script>\r\n        // Estado global\r\n        let currentUser = null;\r\n        let currentTab = 'browse';\r\n\r\n        // Utilit\u00E1rios\r\n        const api = {\r\n            async request(endpoint, options = {}) {\r\n                const token = localStorage.getItem('token');\r\n                const headers = {\r\n                    'Content-Type': 'application/json',\r\n                    ...(token && { 'Authorization': `Bearer ${token}` }),\r\n                    ...options.headers\r\n                };\r\n\r\n                const response = await fetch(`/api${endpoint}`, {\r\n                    ...options,\r\n                    headers\r\n                });\r\n\r\n                if (!response.ok) {\r\n                    const error = await response.json();\r\n                    throw new Error(error.error || 'Erro na requisi\u00E7\u00E3o');\r\n                }\r\n\r\n                return response.json();\r\n            },\r\n\r\n            get(endpoint) { return this.request(endpoint); },\r\n            post(endpoint, data) { return this.request(endpoint, { method: 'POST', body: JSON.stringify(data) }); },\r\n            put(endpoint, data) { return this.request(endpoint, { method: 'PUT', body: JSON.stringify(data) }); },\r\n            delete(endpoint) { return this.request(endpoint, { method: 'DELETE' }); }\r\n        };\r\n\r\n        function showToast(message, type = 'success') {\r\n            const toast = document.getElementById('toast');\r\n            toast.textContent = message;\r\n            toast.className = `toast ${type}`;\r\n            toast.style.display = 'block';\r\n            setTimeout(() => toast.style.display = 'none', 3000);\r\n        }\r\n\r\n        function formatCurrency(value) {\r\n            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);\r\n        }\r\n\r\n        function formatDate(dateString) {\r\n            return new Date(dateString).toLocaleDateString('pt-BR');\r\n        }\r\n\r\n        // Templates\r\n        const templates = {\r\n            auth: () => `\r\n                <div class=\"auth-container\">\r\n                    <h2 class=\"text-center mb-2\">Bem-vindo ao FreelaHub</h2>\r\n                    <div class=\"tabs\" style=\"border-bottom: none; margin-bottom: 1rem;\">\r\n                        <button class=\"tab active\" onclick=\"switchAuthTab('login')\">Entrar</button>\r\n                        <button class=\"tab\" onclick=\"switchAuthTab('register')\">Cadastrar</button>\r\n                    </div>\r\n                    \r\n                    <div id=\"login-form\">\r\n                        <div class=\"form-group\">\r\n                            <label>Email</label>\r\n                            <input type=\"email\" id=\"login-email\" placeholder=\"seu@email.com\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Senha</label>\r\n                            <input type=\"password\" id=\"login-password\" placeholder=\"******\">\r\n                        </div>\r\n                        <button class=\"btn btn-primary\" style=\"width: 100%;\" onclick=\"login()\">Entrar</button>\r\n                    </div>\r\n\r\n                    <div id=\"register-form\" class=\"hidden\">\r\n                        <div class=\"form-group\">\r\n                            <label>Nome Completo</label>\r\n                            <input type=\"text\" id=\"register-name\" placeholder=\"Seu nome\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Email</label>\r\n                            <input type=\"email\" id=\"register-email\" placeholder=\"seu@email.com\">\r\n                        </div>\r\n                        <div class=\"form-group\">\r\n                            <label>Senha</label>\r\n                            <input type=\"password\" id=\"register-password\" placeholder=\"M\u00EDnimo 6 caracteres\">\r\n                        </div>\r\n                        <button class=\"btn btn-primary\" style=\"width: 100%;\" onclick=\"register()\">Criar Conta</button>\r\n                    </div>\r\n                </div>\r\n            `,\r\n\r\n            header: () => `\r\n                <header>\r\n                    <div class=\"container header-content\">\r\n                        <a href=\"#\" class=\"logo\" onclick=\"setTab('browse')\">FreelaHub</a>\r\n                        <div class=\"nav-links\">\r\n                            <span style=\"font-size: 0.875rem; color: var(--secondary);\">\r\n                                Ol\u00E1, ${currentUser.name} ${currentUser.role === 'admin' ? '(Admin)' : ''}\r\n                            </span>\r\n                            <button class=\"btn btn-outline btn-sm\" onclick=\"logout()\">Sair</button>\r\n                        </div>\r\n                    </div>\r\n                </header>\r\n            `,\r\n\r\n            userDashboard: () => `\r\n                ${templates.header()}\r\n                <div class=\"container dashboard\">\r\n                    <div class=\"tabs\">\r\n                        <button class=\"tab ${currentTab === 'browse' ? 'active' : ''}\" onclick=\"setTab('browse')\">Explorar Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'my-services' ? 'active' : ''}\" onclick=\"setTab('my-services')\">Meus Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'my-contracts' ? 'active' : ''}\" onclick=\"setTab('my-contracts')\">Meus Contratos</button>\r\n                    </div>\r\n\r\n                    <div id=\"tab-browse\" class=\"tab-content ${currentTab === 'browse' ? 'active' : ''}\">\r\n                        <div class=\"filters\">\r\n                            <select id=\"category-filter\" onchange=\"loadServices()\">\r\n                                <option value=\"\">Todas as categorias</option>\r\n                                <option value=\"design\">Design</option>\r\n                                <option value=\"development\">Desenvolvimento</option>\r\n                                <option value=\"marketing\">Marketing</option>\r\n                                <option value=\"writing\">Reda\u00E7\u00E3o</option>\r\n                                <option value=\"translation\">Tradu\u00E7\u00E3o</option>\r\n                                <option value=\"video\">V\u00EDdeo/\u00C1udio</option>\r\n                                <option value=\"other\">Outros</option>\r\n                            </select>\r\n                            <input type=\"text\" id=\"search-input\" placeholder=\"Buscar servi\u00E7os...\" onkeyup=\"debounceSearch()\">\r\n                        </div>\r\n                        <div id=\"services-grid\" class=\"grid\">\r\n                            <div class=\"loading\">Carregando servi\u00E7os...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-my-services\" class=\"tab-content ${currentTab === 'my-services' ? 'active' : ''}\">\r\n                        <button class=\"btn btn-primary mb-2\" onclick=\"openServiceModal()\">+ Novo Servi\u00E7o</button>\r\n                        <div id=\"my-services-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-my-contracts\" class=\"tab-content ${currentTab === 'my-contracts' ? 'active' : ''}\">\r\n                        <div id=\"contracts-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n                </div>\r\n\r\n                <!-- Modal de Servi\u00E7o -->\r\n                <div id=\"service-modal\" class=\"modal\">\r\n                    <div class=\"modal-content\">\r\n                        <div class=\"modal-header\">\r\n                            <h3 id=\"modal-title\">Novo Servi\u00E7o</h3>\r\n                            <button class=\"close\" onclick=\"closeModal()\">&times;</button>\r\n                        </div>\r\n                        <form id=\"service-form\" onsubmit=\"saveService(event)\">\r\n                            <input type=\"hidden\" id=\"service-id\">\r\n                            <div class=\"form-group\">\r\n                                <label>T\u00EDtulo do Servi\u00E7o</label>\r\n                                <input type=\"text\" id=\"service-title\" required minlength=\"3\">\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Categoria</label>\r\n                                <select id=\"service-category\" required>\r\n                                    <option value=\"\">Selecione...</option>\r\n                                    <option value=\"design\">Design</option>\r\n                                    <option value=\"development\">Desenvolvimento</option>\r\n                                    <option value=\"marketing\">Marketing</option>\r\n                                    <option value=\"writing\">Reda\u00E7\u00E3o</option>\r\n                                    <option value=\"translation\">Tradu\u00E7\u00E3o</option>\r\n                                    <option value=\"video\">V\u00EDdeo/\u00C1udio</option>\r\n                                    <option value=\"other\">Outros</option>\r\n                                </select>\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Pre\u00E7o (R$)</label>\r\n                                <input type=\"number\" id=\"service-price\" step=\"0.01\" min=\"0\" required>\r\n                            </div>\r\n                            <div class=\"form-group\">\r\n                                <label>Descri\u00E7\u00E3o</label>\r\n                                <textarea id=\"service-description\" rows=\"4\" required minlength=\"10\"></textarea>\r\n                            </div>\r\n                            <div class=\"flex gap-2\">\r\n                                <button type=\"submit\" class=\"btn btn-primary\">Salvar</button>\r\n                                <button type=\"button\" class=\"btn btn-outline\" onclick=\"closeModal()\">Cancelar</button>\r\n                            </div>\r\n                        </form>\r\n                    </div>\r\n                </div>\r\n            `,\r\n\r\n            adminDashboard: () => `\r\n                ${templates.header()}\r\n                <div class=\"container dashboard\">\r\n                    <div class=\"tabs\">\r\n                        <button class=\"tab ${currentTab === 'admin-services' ? 'active' : ''}\" onclick=\"setTab('admin-services')\">Modera\u00E7\u00E3o de Servi\u00E7os</button>\r\n                        <button class=\"tab ${currentTab === 'admin-users' ? 'active' : ''}\" onclick=\"setTab('admin-users')\">Usu\u00E1rios</button>\r\n                        <button class=\"tab ${currentTab === 'admin-contracts' ? 'active' : ''}\" onclick=\"setTab('admin-contracts')\">Todos os Contratos</button>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-services\" class=\"tab-content ${currentTab === 'admin-services' ? 'active' : ''}\">\r\n                        <div class=\"filters\">\r\n                            <select id=\"admin-status-filter\" onchange=\"loadAdminServices()\">\r\n                                <option value=\"\">Todos os status</option>\r\n                                <option value=\"pending\">Pendentes</option>\r\n                                <option value=\"approved\">Aprovados</option>\r\n                                <option value=\"rejected\">Rejeitados</option>\r\n                                <option value=\"removed\">Removidos</option>\r\n                            </select>\r\n                        </div>\r\n                        <div id=\"admin-services-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-users\" class=\"tab-content ${currentTab === 'admin-users' ? 'active' : ''}\">\r\n                        <div id=\"admin-users-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n\r\n                    <div id=\"tab-admin-contracts\" class=\"tab-content ${currentTab === 'admin-contracts' ? 'active' : ''}\">\r\n                        <div id=\"admin-contracts-list\">\r\n                            <div class=\"loading\">Carregando...</div>\r\n                        </div>\r\n                    </div>\r\n                </div>\r\n            `\r\n        };\r\n\r\n        // Fun\u00E7\u00F5es de Autentica\u00E7\u00E3o\r\n        function switchAuthTab(tab) {\r\n            document.querySelectorAll('.auth-container .tab').forEach(t => t.classList.remove('active'));\r\n            event.target.classList.add('active');\r\n            \r\n            if (tab === 'login') {\r\n                document.getElementById('login-form').classList.remove('hidden');\r\n                document.getElementById('register-form').classList.add('hidden');\r\n            } else {\r\n                document.getElementById('login-form').classList.add('hidden');\r\n                document.getElementById('register-form').classList.remove('hidden');\r\n            }\r\n        }\r\n\r\n        async function login() {\r\n            const email = document.getElementById('login-email').value;\r\n            const password = document.getElementById('login-password').value;\r\n\r\n            try {\r\n                const data = await api.post('/login', { email, password });\r\n                localStorage.setItem('token', data.token);\r\n                currentUser = data.user;\r\n                renderApp();\r\n                showToast('Login realizado com sucesso!');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function register() {\r\n            const name = document.getElementById('register-name').value;\r\n            const email = document.getElementById('register-email').value;\r\n            const password = document.getElementById('register-password').value;\r\n\r\n            try {\r\n                const data = await api.post('/register', { name, email, password });\r\n                localStorage.setItem('token', data.token);\r\n                currentUser = data.user;\r\n                renderApp();\r\n                showToast('Conta criada com sucesso!');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        function logout() {\r\n            localStorage.removeItem('token');\r\n            currentUser = null;\r\n            currentTab = 'browse';\r\n            renderApp();\r\n        }\r\n\r\n        // Navega\u00E7\u00E3o\r\n        function setTab(tab) {\r\n            currentTab = tab;\r\n            renderApp();\r\n        }\r\n\r\n        // Renderiza\u00E7\u00E3o Principal\r\n        function renderApp() {\r\n            const app = document.getElementById('app');\r\n            \r\n            if (!currentUser) {\r\n                app.innerHTML = templates.auth();\r\n                return;\r\n            }\r\n\r\n            if (currentUser.role === 'admin') {\r\n                app.innerHTML = templates.adminDashboard();\r\n                if (currentTab === 'admin-services') loadAdminServices();\r\n                else if (currentTab === 'admin-users') loadAdminUsers();\r\n                else if (currentTab === 'admin-contracts') loadAdminContracts();\r\n                else setTab('admin-services');\r\n            } else {\r\n                app.innerHTML = templates.userDashboard();\r\n                if (currentTab === 'browse') loadServices();\r\n                else if (currentTab === 'my-services') loadMyServices();\r\n                else if (currentTab === 'my-contracts') loadMyContracts();\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es de Servi\u00E7os (Usu\u00E1rio)\r\n        let searchTimeout;\r\n        function debounceSearch() {\r\n            clearTimeout(searchTimeout);\r\n            searchTimeout = setTimeout(loadServices, 500);\r\n        }\r\n\r\n        async function loadServices() {\r\n            const category = document.getElementById('category-filter')?.value || '';\r\n            const search = document.getElementById('search-input')?.value || '';\r\n            \r\n            try {\r\n                const services = await api.get(`/services?category=${category}&search=${search}`);\r\n                const container = document.getElementById('services-grid');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum servi\u00E7o encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">${escapeHtml(service.provider_name)} \u2022 ${formatDate(service.created_at)}</div>\r\n                            </div>\r\n                            <span class=\"badge badge-info\">${formatCurrency(service.price)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); font-size: 0.875rem; margin-bottom: 1rem;\">\r\n                            ${escapeHtml(service.description).substring(0, 150)}${service.description.length > 150 ? '...' : ''}\r\n                        </p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span class=\"badge badge-success\">${getCategoryLabel(service.category)}</span>\r\n                            ${service.user_id !== currentUser.id ? \r\n                                `<button class=\"btn btn-primary btn-sm\" onclick=\"hireService(${service.id})\">Contratar</button>` : \r\n                                '<span style=\"font-size: 0.875rem; color: var(--secondary);\">Seu servi\u00E7o</span>'\r\n                            }\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadMyServices() {\r\n            try {\r\n                const services = await api.get('/my-services');\r\n                const container = document.getElementById('my-services-list');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Voc\u00EA ainda n\u00E3o publicou nenhum servi\u00E7o</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">Criado em ${formatDate(service.created_at)}</div>\r\n                            </div>\r\n                            <span class=\"badge ${getStatusBadgeClass(service.status)}\">${getStatusLabel(service.status)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); margin-bottom: 1rem;\">${escapeHtml(service.description)}</p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600; color: var(--primary);\">${formatCurrency(service.price)}</span>\r\n                            <div class=\"flex gap-2\">\r\n                                <button class=\"btn btn-outline btn-sm\" onclick='editService(${JSON.stringify(service)})'>Editar</button>\r\n                                <button class=\"btn btn-danger btn-sm\" onclick=\"deleteService(${service.id})\">Excluir</button>\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        function openServiceModal(service = null) {\r\n            const modal = document.getElementById('service-modal');\r\n            const form = document.getElementById('service-form');\r\n            const title = document.getElementById('modal-title');\r\n            \r\n            if (service) {\r\n                title.textContent = 'Editar Servi\u00E7o';\r\n                document.getElementById('service-id').value = service.id;\r\n                document.getElementById('service-title').value = service.title;\r\n                document.getElementById('service-category').value = service.category;\r\n                document.getElementById('service-price').value = service.price;\r\n                document.getElementById('service-description').value = service.description;\r\n            } else {\r\n                title.textContent = 'Novo Servi\u00E7o';\r\n                form.reset();\r\n                document.getElementById('service-id').value = '';\r\n            }\r\n            \r\n            modal.classList.add('active');\r\n        }\r\n\r\n        function editService(service) {\r\n            openServiceModal(service);\r\n        }\r\n\r\n        function closeModal() {\r\n            document.getElementById('service-modal').classList.remove('active');\r\n        }\r\n\r\n        async function saveService(event) {\r\n            event.preventDefault();\r\n            \r\n            const id = document.getElementById('service-id').value;\r\n            const data = {\r\n                title: document.getElementById('service-title').value,\r\n                category: document.getElementById('service-category').value,\r\n                price: parseFloat(document.getElementById('service-price').value),\r\n                description: document.getElementById('service-description').value\r\n            };\r\n\r\n            try {\r\n                if (id) {\r\n                    await api.put(`/services/${id}`, data);\r\n                    showToast('Servi\u00E7o atualizado com sucesso!');\r\n                } else {\r\n                    await api.post('/services', data);\r\n                    showToast('Servi\u00E7o criado com sucesso! Aguardando aprova\u00E7\u00E3o.');\r\n                }\r\n                closeModal();\r\n                loadMyServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function deleteService(id) {\r\n            if (!confirm('Tem certeza que deseja excluir este servi\u00E7o?')) return;\r\n            \r\n            try {\r\n                await api.delete(`/services/${id}`);\r\n                showToast('Servi\u00E7o exclu\u00EDdo com sucesso!');\r\n                loadMyServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function hireService(serviceId) {\r\n            if (!confirm('Deseja contratar este servi\u00E7o?')) return;\r\n            \r\n            try {\r\n                await api.post('/contracts', { service_id: serviceId });\r\n                showToast('Servi\u00E7o contratado com sucesso!');\r\n                setTab('my-contracts');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es de Contratos\r\n        async function loadMyContracts() {\r\n            try {\r\n                const contracts = await api.get('/my-contracts');\r\n                const container = document.getElementById('contracts-list');\r\n                \r\n                if (contracts.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Voc\u00EA n\u00E3o possui contratos</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = contracts.map(contract => {\r\n                    const isClient = contract.client_id === currentUser.id;\r\n                    const otherParty = isClient ? contract.provider_name : contract.client_name;\r\n                    const role = isClient ? 'Contratante' : 'Prestador';\r\n                    \r\n                    return `\r\n                        <div class=\"card\">\r\n                            <div class=\"card-header\">\r\n                                <div>\r\n                                    <div class=\"card-title\">${escapeHtml(contract.service_title)}</div>\r\n                                    <div class=\"card-meta\">\r\n                                        ${role} \u2022 Com ${escapeHtml(otherParty)} \u2022 Iniciado em ${formatDate(contract.created_at)}\r\n                                    </div>\r\n                                </div>\r\n                                <span class=\"badge ${contract.status === 'active' ? 'badge-success' : 'badge-secondary'}\">\r\n                                    ${contract.status === 'active' ? 'Ativo' : contract.status === 'completed' ? 'Conclu\u00EDdo' : 'Cancelado'}\r\n                                </span>\r\n                            </div>\r\n                            <div class=\"flex justify-between items-center\">\r\n                                <span style=\"font-weight: 600;\">${formatCurrency(contract.price)}</span>\r\n                                ${contract.status === 'active' ? `\r\n                                    <div class=\"flex gap-2\">\r\n                                        <button class=\"btn btn-success btn-sm\" onclick=\"updateContractStatus(${contract.id}, 'completed')\">Concluir</button>\r\n                                        <button class=\"btn btn-danger btn-sm\" onclick=\"updateContractStatus(${contract.id}, 'cancelled')\">Cancelar</button>\r\n                                    </div>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    `;\r\n                }).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function updateContractStatus(id, status) {\r\n            const action = status === 'completed' ? 'concluir' : 'cancelar';\r\n            if (!confirm(`Deseja realmente ${action} este contrato?`)) return;\r\n            \r\n            try {\r\n                await api.put(`/contracts/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadMyContracts();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Fun\u00E7\u00F5es Administrativas\r\n        async function loadAdminServices() {\r\n            const status = document.getElementById('admin-status-filter')?.value || '';\r\n            \r\n            try {\r\n                const services = await api.get(`/admin/services?status=${status}`);\r\n                const container = document.getElementById('admin-services-list');\r\n                \r\n                if (services.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum servi\u00E7o encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = services.map(service => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(service.title)}</div>\r\n                                <div class=\"card-meta\">\r\n                                    Por ${escapeHtml(service.provider_name)} (${service.provider_email}) \u2022 \r\n                                    ${formatDate(service.created_at)}\r\n                                </div>\r\n                            </div>\r\n                            <span class=\"badge ${getStatusBadgeClass(service.status)}\">${getStatusLabel(service.status)}</span>\r\n                        </div>\r\n                        <p style=\"color: var(--secondary); margin-bottom: 1rem;\">${escapeHtml(service.description)}</p>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600;\">${formatCurrency(service.price)}</span>\r\n                            <div class=\"flex gap-2\">\r\n                                ${service.status === 'pending' ? `\r\n                                    <button class=\"btn btn-success btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'approved')\">Aprovar</button>\r\n                                    <button class=\"btn btn-danger btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'rejected')\">Rejeitar</button>\r\n                                ` : ''}\r\n                                ${service.status === 'approved' ? `\r\n                                    <button class=\"btn btn-danger btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'removed')\">Remover</button>\r\n                                ` : ''}\r\n                                ${service.status === 'removed' || service.status === 'rejected' ? `\r\n                                    <button class=\"btn btn-success btn-sm\" onclick=\"updateServiceStatus(${service.id}, 'approved')\">Restaurar</button>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function updateServiceStatus(id, status) {\r\n            try {\r\n                await api.put(`/admin/services/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadAdminServices();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadAdminUsers() {\r\n            try {\r\n                const users = await api.get('/admin/users');\r\n                const container = document.getElementById('admin-users-list');\r\n                \r\n                container.innerHTML = users.map(user => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(user.name)} ${user.role === 'admin' ? '(Admin)' : ''}</div>\r\n                                <div class=\"card-meta\">\r\n                                    ${user.email} \u2022 Membro desde ${formatDate(user.created_at)}\r\n                                </div>\r\n                                <div style=\"font-size: 0.875rem; color: var(--secondary); margin-top: 0.5rem;\">\r\n                                    ${user.services_count} servi\u00E7os \u2022 ${user.contracts_count} contratos\r\n                                </div>\r\n                            </div>\r\n                            <div class=\"flex gap-2 items-center\">\r\n                                <span class=\"badge ${user.status === 'active' ? 'badge-success' : 'badge-danger'}\">\r\n                                    ${user.status === 'active' ? 'Ativo' : 'Suspenso'}\r\n                                </span>\r\n                                ${user.id !== currentUser.id ? `\r\n                                    <button class=\"btn ${user.status === 'active' ? 'btn-danger' : 'btn-success'} btn-sm\" \r\n                                            onclick=\"toggleUserStatus(${user.id}, '${user.status === 'active' ? 'suspended' : 'active'}')\">\r\n                                        ${user.status === 'active' ? 'Suspender' : 'Reativar'}\r\n                                    </button>\r\n                                ` : ''}\r\n                            </div>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function toggleUserStatus(id, status) {\r\n            const action = status === 'suspended' ? 'suspender' : 'reativar';\r\n            if (!confirm(`Deseja realmente ${action} este usu\u00E1rio?`)) return;\r\n            \r\n            try {\r\n                await api.put(`/admin/users/${id}/status`, { status });\r\n                showToast('Status atualizado!');\r\n                loadAdminUsers();\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        async function loadAdminContracts() {\r\n            try {\r\n                const contracts = await api.get('/admin/contracts');\r\n                const container = document.getElementById('admin-contracts-list');\r\n                \r\n                if (contracts.length === 0) {\r\n                    container.innerHTML = '<div class=\"empty-state\">Nenhum contrato encontrado</div>';\r\n                    return;\r\n                }\r\n\r\n                container.innerHTML = contracts.map(contract => `\r\n                    <div class=\"card\">\r\n                        <div class=\"card-header\">\r\n                            <div>\r\n                                <div class=\"card-title\">${escapeHtml(contract.service_title)}</div>\r\n                                <div class=\"card-meta\">\r\n                                    ${escapeHtml(contract.client_name)} \u2192 ${escapeHtml(contract.provider_name)}\r\n                                </div>\r\n                            </div>\r\n                            <span class=\"badge ${contract.status === 'active' ? 'badge-success' : 'badge-secondary'}\">\r\n                                ${contract.status === 'active' ? 'Ativo' : contract.status === 'completed' ? 'Conclu\u00EDdo' : 'Cancelado'}\r\n                            </span>\r\n                        </div>\r\n                        <div class=\"flex justify-between items-center\">\r\n                            <span style=\"font-weight: 600;\">${formatCurrency(contract.price)}</span>\r\n                            <span style=\"font-size: 0.875rem; color: var(--secondary);\">${formatDate(contract.created_at)}</span>\r\n                        </div>\r\n                    </div>\r\n                `).join('');\r\n            } catch (error) {\r\n                showToast(error.message, 'error');\r\n            }\r\n        }\r\n\r\n        // Utilit\u00E1rios auxiliares\r\n        function escapeHtml(text) {\r\n            const div = document.createElement('div');\r\n            div.textContent = text;\r\n            return div.innerHTML;\r\n        }\r\n\r\n        function getCategoryLabel(category) {\r\n            const labels = {\r\n                design: 'Design',\r\n                development: 'Desenvolvimento',\r\n                marketing: 'Marketing',\r\n                writing: 'Reda\u00E7\u00E3o',\r\n                translation: 'Tradu\u00E7\u00E3o',\r\n                video: 'V\u00EDdeo/\u00C1udio',\r\n                other: 'Outros'\r\n            };\r\n            return labels[category] || category;\r\n        }\r\n\r\n        function getStatusLabel(status) {\r\n            const labels = {\r\n                pending: 'Pendente',\r\n                approved: 'Aprovado',\r\n                rejected: 'Rejeitado',\r\n                removed: 'Removido',\r\n                active: 'Ativo',\r\n                completed: 'Conclu\u00EDdo',\r\n                cancelled: 'Cancelado'\r\n            };\r\n            return labels[status] || status;\r\n        }\r\n\r\n        function getStatusBadgeClass(status) {\r\n            const classes = {\r\n                pending: 'badge-warning',\r\n                approved: 'badge-success',\r\n                rejected: 'badge-danger',\r\n                removed: 'badge-danger',\r\n                active: 'badge-success',\r\n                completed: 'badge-info',\r\n                cancelled: 'badge-danger'\r\n            };\r\n            return classes[status] || 'badge-secondary';\r\n        }\r\n\r\n        // Inicializa\u00E7\u00E3o\r\n        async function init() {\r\n            const token = localStorage.getItem('token');\r\n            if (token) {\r\n                try {\r\n                    // Validar token fazendo uma requisi\u00E7\u00E3o qualquer\r\n                    await api.get('/my-services');\r\n                    // Se n\u00E3o der erro, decodificar o token para pegar info do usu\u00E1rio\r\n                    const payload = JSON.parse(atob(token.split('.')[1]));\r\n                    currentUser = {\r\n                        id: payload.id,\r\n                        email: payload.email,\r\n                        role: payload.role,\r\n                        name: payload.name || payload.email.split('@')[0]\r\n                    };\r\n                } catch (error) {\r\n                    localStorage.removeItem('token');\r\n                }\r\n            }\r\n            renderApp();\r\n        }\r\n\r\n        init();\r\n    </script>",
+							"otherinfo": "No links have been found while there are scripts, which is an indication that this is a modern web application."
+						}
+					],
+					"count": "2",
+					"systemic": true,
+					"solution": "<p>This is an informational alert and so no changes are required.</p>",
+					"otherinfo": "<p>No links have been found while there are scripts, which is an indication that this is a modern web application.</p>",
+					"reference": "",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "1"
+				},
+				{
+					"pluginid": "10112",
+					"alertRef": "10112",
+					"alert": "Session Management Response Identified",
+					"name": "Session Management Response Identified",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>The given response has been identified as containing a session management token. The 'Other Info' field contains a set of header tokens that can be used in the Header Based Session Management Method. If the request is in a context which has a Session Management Method set to \"Auto-Detect\" then this rule will change the session management to use the tokens identified.</p>",
+					"instances":[ 
+						{
+							"id": "13",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "json:token"
+						},
+						{
+							"id": "44",
+							"uri": "http://localhost:3000/api/register",
+							"nodeName": "http:\/\/localhost:3000\/api\/register ()({name,email,password})",
+							"method": "POST",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "json:token"
+						},
+						{
+							"id": "14",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "json:token"
+						},
+						{
+							"id": "45",
+							"uri": "http://localhost:3000/api/register",
+							"nodeName": "http:\/\/localhost:3000\/api\/register ()({name,email,password})",
+							"method": "POST",
+							"param": "token",
+							"attack": "",
+							"evidence": "token",
+							"otherinfo": "json:token"
+						}
+					],
+					"count": "4",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>json:token</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/session-mgmt-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "4"
+				},
+				{
+					"pluginid": "10111",
+					"alertRef": "10111",
+					"alert": "Solicita\u00E7\u00E3o de autentica\u00E7\u00E3o identificada",
+					"name": "Solicita\u00E7\u00E3o de autentica\u00E7\u00E3o identificada",
+					"riskcode": "0",
+					"confidence": "3",
+					"riskdesc": "Informativo (Alto)",
+					"desc": "<p>A solicita\u00E7\u00E3o em quest\u00E3o foi identificada como uma solicita\u00E7\u00E3o de autentica\u00E7\u00E3o. O campo \"Outras Informa\u00E7\u00F5es\" cont\u00E9m um conjunto de linhas chave=valor que identificam quaisquer campos relevantes. Se a solicita\u00E7\u00E3o estiver em um contexto com um M\u00E9todo de Autentica\u00E7\u00E3o definido como \"Detec\u00E7\u00E3o Autom\u00E1tica\", esta regra alterar\u00E1 a autentica\u00E7\u00E3o para corresponder \u00E0 solicita\u00E7\u00E3o identificada.</p>",
+					"instances":[ 
+						{
+							"id": "12",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "email",
+							"attack": "",
+							"evidence": "password",
+							"otherinfo": "userParam=email\nuserValue=admin@marketplace.com\npasswordParam=password\nreferer=http://localhost:3000/"
+						}
+					],
+					"count": "1",
+					"systemic": false,
+					"solution": "<p>Este \u00E9 um alerta informativo e n\u00E3o uma vulnerabilidade, portanto n\u00E3o h\u00E1 nada a ser corrigido.</p>",
+					"otherinfo": "<p>userParam=email</p><p>userValue=admin@marketplace.com</p><p>passwordParam=password</p><p>referer=http://localhost:3000/</p>",
+					"reference": "<p>https://www.zaproxy.org/docs/desktop/addons/authentication-helper/auth-req-id/</p>",
+					"cweid": "-1",
+					"wascid": "-1",
+					"sourceid": "4"
+				},
+				{
+					"pluginid": "10104",
+					"alertRef": "10104",
+					"alert": "User Agent Fuzzer",
+					"name": "User Agent Fuzzer",
+					"riskcode": "0",
+					"confidence": "2",
+					"riskdesc": "Informativo (M\u00E9dio)",
+					"desc": "<p>Check for differences in response based on fuzzed User Agent (eg. mobile sites, access as a Search Engine Crawler). Compares the response statuscode and the hashcode of the response body with the original response.</p>",
+					"instances":[ 
+						{
+							"id": "432",
+							"uri": "http://localhost:3000/api/login",
+							"nodeName": "http:\/\/localhost:3000\/api\/login ()({email,password})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "433",
+							"uri": "http://localhost:3000/api/register",
+							"nodeName": "http:\/\/localhost:3000\/api\/register ()({name,email,password})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						},
+						{
+							"id": "434",
+							"uri": "http://localhost:3000/api/services",
+							"nodeName": "http:\/\/localhost:3000\/api\/services ()({title,category,price,description})",
+							"method": "POST",
+							"param": "Cabe\u00E7alho do Agente de Usu\u00E1rio",
+							"attack": "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)",
+							"evidence": "",
+							"otherinfo": ""
+						}
+					],
+					"count": "3",
+					"systemic": true,
+					"solution": "",
+					"otherinfo": "",
+					"reference": "<p>https://owasp.org/wstg</p>",
+					"cweid": "0",
+					"wascid": "0",
+					"sourceid": "5924"
+				}
+			]
+		}
+	],
+	"sequences":[
+	]
+
+}

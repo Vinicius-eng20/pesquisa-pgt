@@ -1,0 +1,13 @@
+﻿tipo;variavel;valor;n_apps;n_vibe;n_lowcode
+Chave anon do Supabase (JWT);VITE_SUPABASE_ANON_KEY;(valor diferente por app);10;0;10
+Chave publicavel do Supabase (sb_publishable_);SUPABASE_PUBLISHABLE_KEY;(valor diferente por app);10;0;10
+Chave publicavel do Supabase (sb_publishable_);VITE_SUPABASE_PUBLISHABLE_KEY;(valor diferente por app);10;0;10
+Segredo JWT fixo no codigo (fallback);JWT_SECRET;sua-chave-secreta-mude-em-producao;1;1;0
+Segredo de sessao/JWT;JWT_SECRET;sua-chave-super-secreta;1;1;0
+Segredo de sessao/JWT;JWT_SECRET;mude_esta_chave_para_algo_bem_seguro;1;1;0
+Segredo de sessao/JWT;JWT_SECRET;uma_chave_secreta_bem_segura_aqui;1;1;0
+Segredo de sessao/JWT;SECRET;coloque-um-texto-longo-e-aleatorio-aqui;1;1;0
+Segredo de sessao/JWT;SECRET;seu-texto-secreto;1;1;0
+Senha de banco;DB_PASSWORD;postgres;1;1;0
+Senha de banco;DB_PASSWORD;sua_senha_aqui;1;1;0
+Senha de banco;DB_PASSWORD;sua_senha;1;1;0

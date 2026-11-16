@@ -1,0 +1,52 @@
+# Container unico para as aplicacoes low-code (Bolt e Lovable).
+# Nao rode este arquivo diretamente: use o subir.bat na raiz do repositorio,
+# que prepara o Supabase local e preenche as variaveis abaixo.
+#
+#   APP_DIR     pasta "projeto" da aplicacao (montada somente leitura)
+#   APP_ID      identificador <plataforma>__<dominio>, nomeia o volume de trabalho
+#   PLATAFORMA  bolt | lovable
+#   SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY  chaves do Supabase local
+name: pgt-lowcode
+
+services:
+  app:
+    build:
+      context: .
+    image: pgt-lowcode:node22.22.0-bun1.4.4
+    container_name: pgt-lowcode
+    init: true
+    environment:
+      PLATAFORMA: ${PLATAFORMA:?defina PLATAFORMA}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?defina SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_HOST: host.docker.internal
+      # Variaveis lidas pelo codigo de servidor do Lovable (process.env).
+      SUPABASE_URL: http://127.0.0.1:54321
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_ANON_KEY}
+      VITE_SUPABASE_URL: http://127.0.0.1:54321
+      VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_ANON_KEY}
+    volumes:
+      - type: bind
+        source: ${APP_DIR:?defina APP_DIR}
+        target: /origem
+        read_only: true
+      - type: volume
+        source: trabalho
+        target: /app
+    ports:
+      # Publicadas so no loopback do Windows (nada exposto na rede).
+      - "127.0.0.1:5173:5173"   # Bolt
+      # Lovable usa 8081 (e nao a 8080 padrao da plataforma) porque a 8080 e a
+      # porta do proxy do OWASP ZAP.
+      - "127.0.0.1:8081:8081"   # Lovable
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      pgt.lowcode: "1"
+      pgt.app: ${APP_ID:-desconhecido}
+
+volumes:
+  # Um volume por aplicacao: guarda node_modules entre execucoes.
+  trabalho:
+    name: pgt_lowcode_${APP_ID:?defina APP_ID}

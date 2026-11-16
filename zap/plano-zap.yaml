@@ -24,10 +24,12 @@ env:
       urls:
         - "http://localhost:3000"
         - "http://localhost:5173"
+        - "http://localhost:8081"
         - "http://127.0.0.1:54321"
       includePaths:
         - "http://localhost:3000.*"
         - "http://localhost:5173.*"
+        - "http://localhost:8081.*"
         - "http://127.0.0.1:54321.*"
       excludePaths:
         - ".*/logout.*"
@@ -37,9 +39,14 @@ env:
         - "https?://.*\\.supabase\\.co.*"
         - "https?://.*\\.lovable\\.app.*"
         - "https?://.*\\.bolt\\.new.*"
+        - "https?://.*\\.googleapis\\.com.*"
+        - "https?://.*\\.gstatic\\.com.*"
+        - "https?://.*\\.cloudflare\\.com.*"
+        - "https?://.*\\.tailwindcss\\.com.*"
+        - "https?://.*\\.unsplash\\.com.*"
   vars:
     # >>> EDITE SOMENTE ESTA LINHA A CADA APLICACAO <<<
-    APP: "vibe__deepseek__agendamento_servicos"
+    APP: "vibe__bolt__tarefas_equipe"
   parameters:
     failOnError: false
     failOnWarning: false
@@ -79,7 +86,7 @@ jobs:
     parameters:
       context: "alvo"
       policy: "Default Policy"
-      maxScanDurationInMins: 30
+      maxScanDurationInMins: 15
 
   # Relatorio em JSON (dado da pesquisa, lido pelo consolidar_zap.py).
   - type: report
@@ -87,7 +94,7 @@ jobs:
       template: "traditional-json"
       reportDir: "C:/Users/vini/Documents/tcc_vini/pesquisa-pgt/relatorios_zap"
       reportFile: ${APP}
-      reportTitle: ZAP - ${APP}
+      reportTitle: ${APP}
       reportDescription: "Varredura automatizada - experimento TCC"
     risks:
       - high
@@ -106,7 +113,7 @@ jobs:
       template: "traditional-html"
       reportDir: "C:/Users/vini/Documents/tcc_vini/pesquisa-pgt/relatorios_zap"
       reportFile: ${APP}
-      reportTitle: ZAP - ${APP}
+      reportTitle: ${APP}
     risks:
       - high
       - medium

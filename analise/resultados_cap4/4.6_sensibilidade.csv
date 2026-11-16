@@ -1,0 +1,11 @@
+﻿cenario;achados_incluidos;media_achados_por_app;desfecho;pct_vibe;pct_lowcode;or_mh;or_mh_ic95_inf;or_mh_ic95_sup;p_cmh;p_fisher
+principal;201;2,8714;A05;75,4717;47,0588;3,5299;1,0861;11,4725;0,073;0,038
+principal;201;2,8714;A07;0,0;0,0;;;;;1,0
+principal;201;2,8714;qualquer_achado;100,0;100,0;;;;;1,0
+principal;201;2,8714;medio_ou_mais;56,6038;100,0;0,0;;;0,0062;0,0006
+principal;201;2,8714;alto;11,3208;23,5294;0,5733;0,1526;2,1546;0,6231;0,242
+conservador;135;1,9286;A05;11,3208;23,5294;0,5733;0,1526;2,1546;0,6231;0,242
+conservador;135;1,9286;A07;0,0;0,0;;;;;1,0
+conservador;135;1,9286;qualquer_achado;90,566;100,0;0,0;;;0,5508;0,3255
+conservador;135;1,9286;medio_ou_mais;56,6038;100,0;0,0;;;0,0062;0,0006
+conservador;135;1,9286;alto;11,3208;23,5294;0,5733;0,1526;2,1546;0,6231;0,242
